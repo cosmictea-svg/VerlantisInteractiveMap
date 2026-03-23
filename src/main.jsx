@@ -7,6 +7,46 @@ const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsI
 function authedHeaders(token) {
   return { "apikey": SUPA_KEY, "Authorization": `Bearer ${token || SUPA_KEY}`, "Content-Type": "application/json", "Prefer": "return=representation" };
 }
+
+// Realtime via WebSocket
+function supabaseRealtime(token, campaignId, { onPOI, onMarker, onAnnotation }) {
+  const wsUrl = `${SUPA_URL.replace("https://", "wss://")}/realtime/v1/websocket?apikey=${SUPA_KEY}&vsn=1.0.0`;
+  const ws = new WebSocket(wsUrl);
+  const topic = `realtime:public`;
+  let heartbeat;
+
+  ws.onopen = () => {
+    ws.send(JSON.stringify({ topic, event: "phx_join", payload: { user_token: token }, ref: "1" }));
+    // Subscribe to each table filtered by campaign_id
+    ["pois", "markers", "annotations"].forEach((table, i) => {
+      ws.send(JSON.stringify({
+        topic: `realtime:public:${table}:campaign_id=eq.${campaignId}`,
+        event: "phx_join",
+        payload: { config: { broadcast: { self: false }, presence: { key: "" }, postgres_changes: [{ event: "*", schema: "public", table, filter: `campaign_id=eq.${campaignId}` }] } },
+        ref: String(i + 2)
+      }));
+    });
+    heartbeat = setInterval(() => { ws.send(JSON.stringify({ topic: "phoenix", event: "heartbeat", payload: {}, ref: "hb" })); }, 25000);
+  };
+
+  ws.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.event !== "postgres_changes") return;
+      const payload = msg.payload?.data;
+      if (!payload) return;
+      const table = payload.table;
+      if (table === "pois") onPOI(payload);
+      if (table === "markers") onMarker(payload);
+      if (table === "annotations") onAnnotation(payload);
+    } catch {}
+  };
+
+  ws.onerror = () => {};
+  ws.onclose = () => { clearInterval(heartbeat); };
+
+  return { unsubscribe: () => { clearInterval(heartbeat); ws.close(); } };
+}
 async function aSelect(token, table, params = "") {
   const r = await fetch(`${SUPA_URL}/rest/v1/${table}?${params}`, { headers: authedHeaders(token) });
   if (!r.ok) throw new Error(await r.text());
@@ -44,7 +84,7 @@ function parseHashSession() {
   return { access_token, refresh_token };
 }
 function signInWithGoogle() {
-  const redirectTo = encodeURIComponent("https://verlantisinteractivemap.com");
+  const redirectTo = encodeURIComponent(window.location.origin + window.location.pathname);
   window.location.href = `${SUPA_URL}/auth/v1/authorize?provider=google&redirect_to=${redirectTo}`;
 }
 async function signOut(token) {
@@ -199,6 +239,32 @@ function App() {
   }, []);
 
   useEffect(() => { if (user && session) loadCampaigns(); }, [user]);
+
+  // Realtime subscriptions
+  useEffect(() => {
+    if (!activeCampaign || !session) return;
+    const campId = activeCampaign.id;
+
+    const channel = supabaseRealtime(session.access_token, campId, {
+      onPOI: (payload) => {
+        if (payload.eventType === "INSERT") setPois(p => [...p, payload.new]);
+        if (payload.eventType === "UPDATE") setPois(p => p.map(x => x.id === payload.new.id ? payload.new : x));
+        if (payload.eventType === "DELETE") setPois(p => p.filter(x => x.id !== payload.old.id));
+      },
+      onMarker: (payload) => {
+        if (payload.eventType === "INSERT") setMarkers(m => [...m, payload.new]);
+        if (payload.eventType === "UPDATE") setMarkers(m => m.map(x => x.id === payload.new.id ? payload.new : x));
+        if (payload.eventType === "DELETE") setMarkers(m => m.filter(x => x.id !== payload.old.id));
+      },
+      onAnnotation: (payload) => {
+        if (payload.eventType === "INSERT") setAnnotations(a => [...a, payload.new]);
+        if (payload.eventType === "UPDATE") setAnnotations(a => a.map(x => x.id === payload.new.id ? payload.new : x));
+        if (payload.eventType === "DELETE") setAnnotations(a => a.filter(x => x.id !== payload.old.id));
+      },
+    });
+
+    return () => { channel && channel.unsubscribe(); };
+  }, [activeCampaign?.id]);
 
   async function loadCampaigns() {
     try {
