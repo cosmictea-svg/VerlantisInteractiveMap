@@ -44,7 +44,7 @@ function parseHashSession() {
   return { access_token, refresh_token };
 }
 function signInWithGoogle() {
-  const redirectTo = encodeURIComponent(window.location.origin + window.location.pathname);
+  const redirectTo = encodeURIComponent("https://verlantisinteractivemap.com");
   window.location.href = `${SUPA_URL}/auth/v1/authorize?provider=google&redirect_to=${redirectTo}`;
 }
 async function signOut(token) {
