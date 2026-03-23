@@ -1,51 +1,14 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { createRoot } from "react-dom/client";
+import { createClient } from "@supabase/supabase-js";
 
 const SUPA_URL = "https://iqmaumupuftguhurnsdt.supabase.co";
 const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlxbWF1bXVwdWZ0Z3VodXJuc2R0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyNTQ5MjEsImV4cCI6MjA4OTgzMDkyMX0.m7lg88RD_3M3OAqt0g17voz_jbZ0f02w-LocREn5Ffg";
 
+const sb = createClient(SUPA_URL, SUPA_KEY);
+
 function authedHeaders(token) {
   return { "apikey": SUPA_KEY, "Authorization": `Bearer ${token || SUPA_KEY}`, "Content-Type": "application/json", "Prefer": "return=representation" };
-}
-
-// Realtime via WebSocket
-function supabaseRealtime(token, campaignId, { onPOI, onMarker, onAnnotation }) {
-  const wsUrl = `${SUPA_URL.replace("https://", "wss://")}/realtime/v1/websocket?apikey=${SUPA_KEY}&vsn=1.0.0`;
-  const ws = new WebSocket(wsUrl);
-  const topic = `realtime:public`;
-  let heartbeat;
-
-  ws.onopen = () => {
-    ws.send(JSON.stringify({ topic, event: "phx_join", payload: { user_token: token }, ref: "1" }));
-    // Subscribe to each table filtered by campaign_id
-    ["pois", "markers", "annotations"].forEach((table, i) => {
-      ws.send(JSON.stringify({
-        topic: `realtime:public:${table}:campaign_id=eq.${campaignId}`,
-        event: "phx_join",
-        payload: { config: { broadcast: { self: false }, presence: { key: "" }, postgres_changes: [{ event: "*", schema: "public", table, filter: `campaign_id=eq.${campaignId}` }] } },
-        ref: String(i + 2)
-      }));
-    });
-    heartbeat = setInterval(() => { ws.send(JSON.stringify({ topic: "phoenix", event: "heartbeat", payload: {}, ref: "hb" })); }, 25000);
-  };
-
-  ws.onmessage = (e) => {
-    try {
-      const msg = JSON.parse(e.data);
-      if (msg.event !== "postgres_changes") return;
-      const payload = msg.payload?.data;
-      if (!payload) return;
-      const table = payload.table;
-      if (table === "pois") onPOI(payload);
-      if (table === "markers") onMarker(payload);
-      if (table === "annotations") onAnnotation(payload);
-    } catch {}
-  };
-
-  ws.onerror = () => {};
-  ws.onclose = () => { clearInterval(heartbeat); };
-
-  return { unsubscribe: () => { clearInterval(heartbeat); ws.close(); } };
 }
 async function aSelect(token, table, params = "") {
   const r = await fetch(`${SUPA_URL}/rest/v1/${table}?${params}`, { headers: authedHeaders(token) });
@@ -84,7 +47,7 @@ function parseHashSession() {
   return { access_token, refresh_token };
 }
 function signInWithGoogle() {
-  const redirectTo = encodeURIComponent(window.location.origin + window.location.pathname);
+  const redirectTo = encodeURIComponent("https://verlantisinteractivemap.com");
   window.location.href = `${SUPA_URL}/auth/v1/authorize?provider=google&redirect_to=${redirectTo}`;
 }
 async function signOut(token) {
@@ -213,12 +176,17 @@ function App() {
   const placingRef = useRef(null);
   const transformRef = useRef(transform);
   const imgSizeRef = useRef(imgSize);
+  const scrollSensRef = useRef(scrollSens);
   const poiDragState = useRef(null);
+  const realtimeChannel = useRef(null);
+  const wheelListenerRef = useRef(null);
 
   useEffect(() => { placingRef.current = placingMode; }, [placingMode]);
   useEffect(() => { transformRef.current = transform; }, [transform]);
   useEffect(() => { imgSizeRef.current = imgSize; }, [imgSize]);
+  useEffect(() => { scrollSensRef.current = scrollSens; }, [scrollSens]);
 
+  // Auth init
   useEffect(() => {
     async function init() {
       let sess = parseHashSession();
@@ -240,30 +208,41 @@ function App() {
 
   useEffect(() => { if (user && session) loadCampaigns(); }, [user]);
 
-  // Realtime subscriptions
+  // Realtime subscriptions using Supabase JS client
   useEffect(() => {
-    if (!activeCampaign || !session) return;
+    if (!activeCampaign) return;
     const campId = activeCampaign.id;
 
-    const channel = supabaseRealtime(session.access_token, campId, {
-      onPOI: (payload) => {
-        if (payload.eventType === "INSERT") setPois(p => [...p, payload.new]);
+    // Clean up previous channel
+    if (realtimeChannel.current) {
+      sb.removeChannel(realtimeChannel.current);
+    }
+
+    const channel = sb
+      .channel(`campaign-${campId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "pois", filter: `campaign_id=eq.${campId}` }, payload => {
+        if (payload.eventType === "INSERT") setPois(p => [...p.filter(x => x.id !== payload.new.id), payload.new]);
         if (payload.eventType === "UPDATE") setPois(p => p.map(x => x.id === payload.new.id ? payload.new : x));
         if (payload.eventType === "DELETE") setPois(p => p.filter(x => x.id !== payload.old.id));
-      },
-      onMarker: (payload) => {
-        if (payload.eventType === "INSERT") setMarkers(m => [...m, payload.new]);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "markers", filter: `campaign_id=eq.${campId}` }, payload => {
+        if (payload.eventType === "INSERT") setMarkers(m => [...m.filter(x => x.id !== payload.new.id), payload.new]);
         if (payload.eventType === "UPDATE") setMarkers(m => m.map(x => x.id === payload.new.id ? payload.new : x));
         if (payload.eventType === "DELETE") setMarkers(m => m.filter(x => x.id !== payload.old.id));
-      },
-      onAnnotation: (payload) => {
-        if (payload.eventType === "INSERT") setAnnotations(a => [...a, payload.new]);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "annotations", filter: `campaign_id=eq.${campId}` }, payload => {
+        if (payload.eventType === "INSERT") setAnnotations(a => [...a.filter(x => x.id !== payload.new.id), payload.new]);
         if (payload.eventType === "UPDATE") setAnnotations(a => a.map(x => x.id === payload.new.id ? payload.new : x));
         if (payload.eventType === "DELETE") setAnnotations(a => a.filter(x => x.id !== payload.old.id));
-      },
-    });
+      })
+      .subscribe();
 
-    return () => { channel && channel.unsubscribe(); };
+    realtimeChannel.current = channel;
+
+    return () => {
+      sb.removeChannel(channel);
+      realtimeChannel.current = null;
+    };
   }, [activeCampaign?.id]);
 
   async function loadCampaigns() {
@@ -317,7 +296,6 @@ function App() {
   const mapPOIs = pois.filter(p => p.map_id === activeMapId && (isGM || p.revealed));
   const mapMarkers = markers.filter(m => m.map_id === activeMapId);
   const mapAnnotations = annotations.filter(a => a.map_id === activeMapId && (isGM || a.visible));
-  const sensitivity = scrollSens / 10;
 
   function fitToContainer(iw, ih) {
     const rect = mapRef.current?.getBoundingClientRect();
@@ -343,6 +321,7 @@ function App() {
     return { x: (cx - rect.left - t.x) / t.scale, y: (cy - rect.top - t.y) / t.scale };
   }
 
+  // POI drag
   function startPOIDrag(e, poi) {
     e.stopPropagation();
     const startCx = e.touches ? e.touches[0].clientX : e.clientX;
@@ -378,6 +357,7 @@ function App() {
     window.addEventListener("touchmove", onMove, { passive: true }); window.addEventListener("touchend", onUp);
   }
 
+  // Map pan
   function onPointerDown(e) {
     if (poiDragState.current) return;
     if (e.touches && e.touches.length === 2) return;
@@ -416,8 +396,32 @@ function App() {
     window.addEventListener("touchmove", onMove, { passive: true }); window.addEventListener("touchend", onUp);
   }
 
-  const pinchSetup = useCallback(() => {
-    const el = mapRef.current; if (!el) return () => {};
+  // Attach wheel listener — uses ref so sensitivity changes don't cause re-attach
+  function attachWheelListener(el) {
+    if (!el) return;
+    if (wheelListenerRef.current) {
+      el.removeEventListener("wheel", wheelListenerRef.current);
+    }
+    function onWheel(e) {
+      e.preventDefault();
+      const sens = scrollSensRef.current / 10;
+      const factor = 1 + (e.deltaY < 0 ? 1 : -1) * 0.08 * sens * 10;
+      const rect = el.getBoundingClientRect();
+      const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+      setTransform(t => {
+        const ns = Math.min(8, Math.max(0.1, t.scale * factor));
+        const sr = ns / t.scale;
+        const next = { scale: ns, x: mx - sr * (mx - t.x), y: my - sr * (my - t.y) };
+        return clamp(next, rect.width, rect.height, imgSizeRef.current.w, imgSizeRef.current.h);
+      });
+    }
+    el.addEventListener("wheel", onWheel, { passive: false });
+    wheelListenerRef.current = onWheel;
+  }
+
+  // Pinch zoom
+  const pinchSetup = useCallback((el) => {
+    if (!el) return () => {};
     let lastDist = null, isPinching = false;
     function getDist(t) { const dx=t[0].clientX-t[1].clientX,dy=t[0].clientY-t[1].clientY; return Math.sqrt(dx*dx+dy*dy); }
     function getMid(t) { return { x:(t[0].clientX+t[1].clientX)/2, y:(t[0].clientY+t[1].clientY)/2 }; }
@@ -431,22 +435,27 @@ function App() {
       setTransform(t=>{const ns=Math.min(8,Math.max(0.1,t.scale*factor));const sr=ns/t.scale;const next={scale:ns,x:mx-sr*(mx-t.x),y:my-sr*(my-t.y)};return clamp(next,rect.width,rect.height,imgSizeRef.current.w,imgSizeRef.current.h);});
     }
     function onTE(e){if(e.touches.length<2){isPinching=false;lastDist=null;}}
-    el.addEventListener("touchstart",onTS,{passive:true}); el.addEventListener("touchmove",onTM,{passive:false}); el.addEventListener("touchend",onTE,{passive:true});
+    el.addEventListener("touchstart",onTS,{passive:true});
+    el.addEventListener("touchmove",onTM,{passive:false});
+    el.addEventListener("touchend",onTE,{passive:true});
     return ()=>{el.removeEventListener("touchstart",onTS);el.removeEventListener("touchmove",onTM);el.removeEventListener("touchend",onTE);};
   }, []);
-  useEffect(() => { if(tab!=="map")return; return pinchSetup(); }, [tab, pinchSetup]);
 
+  // Map ref callback — attaches listeners as soon as the div is in the DOM
+  const setMapRef = useCallback((el) => {
+    mapRef.current = el;
+    if (!el) return;
+    attachWheelListener(el);
+    pinchSetup(el);
+  }, [pinchSetup]);
+
+  // Re-attach when switching back to map tab
   useEffect(() => {
-    const el = mapRef.current; if (!el) return;
-    function onWheel(e) {
-      e.preventDefault();
-      const factor = 1+(e.deltaY<0?1:-1)*0.08*sensitivity*10;
-      const rect=el.getBoundingClientRect(); const mx=e.clientX-rect.left,my=e.clientY-rect.top;
-      setTransform(t=>{const ns=Math.min(8,Math.max(0.1,t.scale*factor));const sr=ns/t.scale;const next={scale:ns,x:mx-sr*(mx-t.x),y:my-sr*(my-t.y)};return clamp(next,rect.width,rect.height,imgSizeRef.current.w,imgSizeRef.current.h);});
+    if (tab === "map" && mapRef.current) {
+      attachWheelListener(mapRef.current);
+      pinchSetup(mapRef.current);
     }
-    el.addEventListener("wheel",onWheel,{passive:false});
-    return ()=>el.removeEventListener("wheel",onWheel);
-  }, [sensitivity, tab]);
+  }, [tab]);
 
   async function savePOI(form, iconFile) {
     let icon_url = form.clearIcon ? "" : (form.poi?.icon_url || "");
@@ -599,6 +608,7 @@ function App() {
       </div>
       {error && <div style={{ background:"#fee",color:"#A32D2D",padding:"5px 14px",fontSize:12 }}>{error}<button onClick={()=>setError("")} style={{ marginLeft:8,border:"none",background:"none",cursor:"pointer" }}>✕</button></div>}
       {isGM && <div style={{ padding:"3px 14px",background:"#f0f0ff",fontSize:11,color:"#555",borderBottom:"0.5px solid #ddd" }}>Campaign ID for players: <strong>{activeCampaign.id}</strong></div>}
+
       <div style={{ display:"flex",borderBottom:"0.5px solid #ddd",padding:"0 14px" }}>
         {tabs.map(t=>(
           <button key={t} onClick={()=>setTab(t)} style={{ padding:"7px 12px",border:"none",borderBottom:tab===t?"2px solid #3C3489":"2px solid transparent",background:"transparent",cursor:"pointer",fontSize:12,fontWeight:tab===t?500:400,color:tab===t?"#3C3489":"#888",textTransform:"capitalize" }}>{t}</button>
@@ -622,9 +632,12 @@ function App() {
             <span style={{ fontSize:11,color:"#888",minWidth:12 }}>{scrollSens}</span>
           </div>
           <div style={{ flex:1,minHeight:0,position:"relative" }}>
-            <div ref={mapRef} style={{ position:"absolute",inset:0,overflow:"hidden",background:"#1a1a2e",cursor:placingMode?"crosshair":isDragging?"grabbing":"grab",touchAction:"none",userSelect:"none" }}
-              onMouseDown={onPointerDown} onTouchStart={onPointerDown}
-              onClick={()=>{ if(!dragRef.current.moved) setOpenPOICard(null); }}>
+            <div ref={setMapRef}
+              style={{ position:"absolute",inset:0,overflow:"hidden",background:"#1a1a2e",cursor:placingMode?"crosshair":isDragging?"grabbing":"grab",touchAction:"none",userSelect:"none" }}
+              onMouseDown={onPointerDown}
+              onTouchStart={onPointerDown}
+              onClick={()=>{ if(!dragRef.current.moved) setOpenPOICard(null); }}
+            >
               {!currentMap ? (
                 <div style={{ display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",color:"#aaa",gap:8 }}>
                   <span style={{ fontSize:40 }}>🗺</span>
@@ -657,6 +670,7 @@ function App() {
                 </div>
               )}
             </div>
+
             {openPOI && poiCardPos && (
               <div onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
                 style={{ position:"absolute",left:poiCardPos.left,top:poiCardPos.top,width:poiCardPos.cardW,background:"white",borderRadius:10,border:`2px solid ${getCatColor(openPOI.category)}`,zIndex:100,overflow:"hidden",boxSizing:"border-box" }}>
@@ -679,6 +693,7 @@ function App() {
               </div>
             )}
           </div>
+
           <div style={{ padding:"4px 14px",borderTop:"0.5px solid #ddd",display:"flex",gap:12,fontSize:10,color:"#888",flexWrap:"wrap" }}>
             <span>Tap POI to view</span>
             {isGM && <span style={{ color:"#185FA5" }}>GM: drag pin to move, tap to edit</span>}
