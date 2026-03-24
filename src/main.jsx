@@ -366,6 +366,8 @@ function App() {
   const [copiedCode, setCopiedCode] = useState(false);
   const [visFilter, setVisFilter] = useState({ categories: {}, players: {}, zones: {} });
   const [showFilter, setShowFilter] = useState(false);
+  const [renamingOverlay, setRenamingOverlay] = useState(null); // { id, name }
+  const [campInfoEdit, setCampInfoEdit] = useState(null); // { name, sub_header, description } or null
 
   const mapRef = useRef(null);
   const dragRef = useRef({ active: false, startX: 0, startY: 0, lastX: 0, lastY: 0, moved: false });
@@ -454,7 +456,13 @@ function App() {
       onCampaign: (payload) => {
         if (payload.eventType === "UPDATE") {
           setMarkerLimit(payload.new.marker_limit ?? 10);
-          setActiveCampaign(prev => prev ? { ...prev, marker_limit: payload.new.marker_limit } : prev);
+          setActiveCampaign(prev => prev ? {
+            ...prev,
+            marker_limit: payload.new.marker_limit,
+            name: payload.new.name ?? prev.name,
+            sub_header: payload.new.sub_header ?? null,
+            description: payload.new.description ?? null,
+          } : prev);
         }
       },
       // Real-time colour + display name sync: when any player updates their profile, all clients see it immediately
@@ -586,6 +594,32 @@ function App() {
     const zns = {}; mapZones.forEach(z => { zns[z.id] = show; });
     setVisFilter({ categories: cats, players: players, zones: zns });
     mapOverlays.forEach(ov => setOverlaySetting(ov.id, "visible", show));
+  }
+
+  async function saveOverlayName() {
+    if (!renamingOverlay) return;
+    const name = renamingOverlay.name.trim();
+    if (!name) return;
+    try {
+      await dbUpdate(session.access_token, "overlays", renamingOverlay.id, { name });
+      setOverlays(prev => prev.map(o => o.id === renamingOverlay.id ? { ...o, name } : o));
+      setRenamingOverlay(null);
+    } catch(e) { setError(e.message); }
+  }
+
+  async function saveCampaignInfo() {
+    if (!campInfoEdit) return;
+    const name = campInfoEdit.name.trim();
+    if (!name) return;
+    const sub_header = campInfoEdit.sub_header.trim() || null;
+    const description = campInfoEdit.description.trim() || null;
+    try {
+      await dbUpdate(session.access_token, "campaigns", activeCampaign.id, { name, sub_header, description });
+      const updated = { ...activeCampaign, name, sub_header, description };
+      setActiveCampaign(updated);
+      setCampaigns(prev => prev.map(c => c.id === activeCampaign.id ? { ...c, name, sub_header, description } : c));
+      setCampInfoEdit(null);
+    } catch(e) { setError(e.message); }
   }
 
   async function uploadOverlay(file) {
@@ -995,7 +1029,7 @@ function App() {
   const markerCardPos = openMarker ? getCardPos(openMarker.x, openMarker.y) : null;
   const sortedLibPOIs = [...pois].sort((a,b)=>libSort==="name"?(a.name||"").localeCompare(b.name||""):(a.category||"").localeCompare(b.category||""));
   // Profile tab is available to everyone; library and overlays are GM-only
-  const tabs = ["map", ...(isGM ? ["library", "overlays"] : []), "profile"];
+  const tabs = ["map", "info", ...(isGM ? ["library", "overlays"] : []), "profile"];
   const buildVersion = (typeof __BUILD_DATE__ !== "undefined" && typeof __COMMIT__ !== "undefined") ? `v${__BUILD_DATE__}-${__COMMIT__}` : "vdev";
 
   if (loading) return <div style={{ display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",fontFamily:"sans-serif",color:"#888",fontSize:16 }}>Loading...</div>;
@@ -1459,6 +1493,44 @@ function App() {
         </div>
       )}
 
+      {/* INFO TAB */}
+      {tab==="info" && (
+        <div style={{ flex:1,overflowY:"auto",padding:16 }}>
+          {campInfoEdit === null ? <>
+            <h2 style={{ margin:"0 0 4px",fontSize:20,fontWeight:700,color:"#3C3489" }}>{activeCampaign?.name}</h2>
+            {activeCampaign?.sub_header && <div style={{ fontSize:13,color:"#888",fontStyle:"italic",marginBottom:8 }}>{activeCampaign.sub_header}</div>}
+            {activeCampaign?.description
+              ? <p style={{ fontSize:13,color:"#444",lineHeight:1.7,marginTop:10,whiteSpace:"pre-wrap" }}>{activeCampaign.description}</p>
+              : <p style={{ color:"#bbb",fontSize:13,fontStyle:"italic",marginTop:10 }}>{isGM ? "No description yet. Click Edit to add one." : "No campaign description has been added yet."}</p>
+            }
+            {isGM && <Btn size="sm" onClick={()=>setCampInfoEdit({ name:activeCampaign?.name||"", sub_header:activeCampaign?.sub_header||"", description:activeCampaign?.description||"" })} style={{ marginTop:16 }}>✎ Edit Campaign Info</Btn>}
+          </> : <>
+            <h3 style={{ margin:"0 0 14px",fontSize:15,fontWeight:600,color:"#3C3489" }}>Edit Campaign Info</h3>
+            <div style={{ marginBottom:10 }}>
+              <label style={{ fontSize:12,color:"#666",display:"block",marginBottom:4 }}>Campaign Name</label>
+              <input value={campInfoEdit.name} onChange={e=>setCampInfoEdit(p=>({...p,name:e.target.value}))}
+                style={{ width:"100%",boxSizing:"border-box",padding:"7px 10px",borderRadius:7,border:"1px solid #ccc",fontSize:13 }} />
+            </div>
+            <div style={{ marginBottom:10 }}>
+              <label style={{ fontSize:12,color:"#666",display:"block",marginBottom:4 }}>Sub Header <span style={{ color:"#bbb" }}>(optional)</span></label>
+              <input value={campInfoEdit.sub_header} onChange={e=>setCampInfoEdit(p=>({...p,sub_header:e.target.value}))}
+                placeholder="e.g. A dark fantasy adventure..."
+                style={{ width:"100%",boxSizing:"border-box",padding:"7px 10px",borderRadius:7,border:"1px solid #ccc",fontSize:13 }} />
+            </div>
+            <div style={{ marginBottom:14 }}>
+              <label style={{ fontSize:12,color:"#666",display:"block",marginBottom:4 }}>Description <span style={{ color:"#bbb" }}>(optional)</span></label>
+              <textarea value={campInfoEdit.description} onChange={e=>setCampInfoEdit(p=>({...p,description:e.target.value}))}
+                rows={6} placeholder="Describe the campaign setting, background, or any information for your players..."
+                style={{ width:"100%",boxSizing:"border-box",padding:"7px 10px",borderRadius:7,border:"1px solid #ccc",fontSize:13,resize:"vertical",lineHeight:1.6 }} />
+            </div>
+            <div style={{ display:"flex",gap:8 }}>
+              <Btn variant="primary" onClick={saveCampaignInfo}>Save</Btn>
+              <Btn onClick={()=>setCampInfoEdit(null)}>Cancel</Btn>
+            </div>
+          </>}
+        </div>
+      )}
+
       {/* LIBRARY TAB */}
       {tab==="library" && isGM && (
         <div style={{ display:"flex",flexDirection:"column",flex:1,minHeight:0 }}>
@@ -1591,8 +1663,18 @@ function App() {
               {mapOverlays.map(ov=>(
                 <div key={ov.id} style={{ display:"flex",alignItems:"center",gap:10,padding:"8px 10px",background:"#f5f5f5",borderRadius:8,marginBottom:8 }}>
                   <img src={ov.src} alt={ov.name} style={{ width:40,height:40,objectFit:"cover",borderRadius:4,flexShrink:0,border:"0.5px solid #ddd" }} />
-                  <div style={{ flex:1,fontSize:13,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{ov.name}</div>
-                  <Btn size="sm" variant="danger" onClick={()=>deleteOverlay(ov.id)}>✕ Delete</Btn>
+                  {renamingOverlay?.id === ov.id ? <>
+                    <input autoFocus value={renamingOverlay.name}
+                      onChange={e=>setRenamingOverlay(r=>({...r,name:e.target.value}))}
+                      onKeyDown={e=>{ if(e.key==="Enter") saveOverlayName(); if(e.key==="Escape") setRenamingOverlay(null); }}
+                      style={{ flex:1,fontSize:13,padding:"3px 8px",borderRadius:6,border:"1px solid #3C3489" }} />
+                    <Btn size="sm" variant="primary" onClick={saveOverlayName}>Save</Btn>
+                    <Btn size="sm" onClick={()=>setRenamingOverlay(null)}>Cancel</Btn>
+                  </> : <>
+                    <div style={{ flex:1,fontSize:13,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{ov.name}</div>
+                    <Btn size="sm" onClick={()=>setRenamingOverlay({id:ov.id,name:ov.name})}>✎ Rename</Btn>
+                    <Btn size="sm" variant="danger" onClick={()=>deleteOverlay(ov.id)}>✕ Delete</Btn>
+                  </>}
                 </div>
               ))}
             </>}
