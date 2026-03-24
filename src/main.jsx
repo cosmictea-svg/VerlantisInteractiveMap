@@ -345,7 +345,7 @@ function App() {
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
   const [isDragging, setIsDragging] = useState(false);
   const [imgSize, setImgSize] = useState({ w: 0, h: 0 });
-  const [scrollSens, setScrollSens] = useState(5);
+  const [scrollSens, setScrollSens] = useState(1.0);
   const [libSort, setLibSort] = useState("name");
   const [showCampaignModal, setShowCampaignModal] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
@@ -364,6 +364,8 @@ function App() {
   const [editingZonePoints, setEditingZonePoints] = useState(null); // { zoneId, points, originalPoints }
   const [fitScale, setFitScale] = useState(1);
   const [copiedCode, setCopiedCode] = useState(false);
+  const [visFilter, setVisFilter] = useState({ categories: {}, players: {}, zones: {} });
+  const [showFilter, setShowFilter] = useState(false);
 
   const mapRef = useRef(null);
   const dragRef = useRef({ active: false, startX: 0, startY: 0, lastX: 0, lastY: 0, moved: false });
@@ -569,6 +571,21 @@ function App() {
       if (activeCampaign) localStorage.setItem(`ov_settings_${activeCampaign.id}`, JSON.stringify(next));
       return next;
     });
+  }
+
+  // ── Personal visibility filter (per-user, does not affect server reveal/hide) ─
+  function isVisible(type, id) {
+    return visFilter[type]?.[id] !== false;
+  }
+  function setVis(type, id, show) {
+    setVisFilter(prev => ({ ...prev, [type]: { ...prev[type], [id]: show } }));
+  }
+  function setAllVisible(show) {
+    const cats = {}; CATEGORIES.forEach(c => { cats[c.id] = show; });
+    const players = {}; members.forEach(m => { players[m.user_id] = show; });
+    const zns = {}; mapZones.forEach(z => { zns[z.id] = show; });
+    setVisFilter({ categories: cats, players: players, zones: zns });
+    mapOverlays.forEach(ov => setOverlaySetting(ov.id, "visible", show));
   }
 
   async function uploadOverlay(file) {
@@ -844,8 +861,7 @@ function App() {
       if (!el) { if (attempts++ < 30) { setTimeout(attachAll, 100); return; } return; }
       function onWheel(e) {
         e.preventDefault();
-        const sens = scrollSensRef.current / 10;
-        const factor = 1 + (e.deltaY < 0 ? 1 : -1) * 0.08 * sens * 10;
+        const factor = 1 + (e.deltaY < 0 ? 1 : -1) * 0.08 * scrollSensRef.current;
         const rect = el.getBoundingClientRect();
         const mx = e.clientX - rect.left, my = e.clientY - rect.top;
         setTransform(t => { const ns = Math.min(8, Math.max(0.1, t.scale * factor)); const sr = ns / t.scale; return clamp({ scale: ns, x: mx - sr * (mx - t.x), y: my - sr * (my - t.y) }, rect.width, rect.height, imgSizeRef.current.w, imgSizeRef.current.h); });
@@ -1073,7 +1089,7 @@ function App() {
 
       {/* MAP TAB */}
       {tab==="map" && (
-        <div style={{ flex:1,display:"flex",flexDirection:"column",minHeight:0 }}>
+        <div style={{ flex:1,display:"flex",flexDirection:"column",minHeight:0,position:"relative" }}>
           <div style={{ display:"flex",gap:6,padding:"7px 14px",borderBottom:"0.5px solid #ddd",flexWrap:"wrap",alignItems:"center" }}>
             {isGM && <>
               <Btn size="sm" onClick={()=>setPlacingMode(p=>p==="poi"?null:"poi")} style={{ background:placingMode==="poi"?"#EAF3DE":undefined }}>+ POI</Btn>
@@ -1112,9 +1128,69 @@ function App() {
           </div>
           <div style={{ display:"flex",alignItems:"center",gap:8,padding:"4px 14px",borderBottom:"0.5px solid #ddd",background:"#f9f9f9" }}>
             <span style={{ fontSize:11,color:"#888",whiteSpace:"nowrap" }}>Zoom speed</span>
-            <input type="range" min={1} max={10} step={1} value={scrollSens} onChange={e=>setScrollSens(Number(e.target.value))} style={{ flex:1,maxWidth:120 }} />
-            <span style={{ fontSize:11,color:"#888",minWidth:12 }}>{scrollSens}</span>
+            <input type="range" min={0.1} max={2} step={0.1} value={scrollSens} onChange={e=>setScrollSens(Number(e.target.value))} style={{ flex:1,maxWidth:120 }} />
+            <span style={{ fontSize:11,color:"#888",minWidth:24 }}>{scrollSens.toFixed(1)}</span>
+            <button onClick={()=>setShowFilter(f=>!f)} style={{ marginLeft:"auto",padding:"2px 10px",borderRadius:6,border:`1px solid ${showFilter?"#3C3489":"#ccc"}`,background:showFilter?"#3C3489":"#fff",color:showFilter?"#fff":"#555",fontSize:11,cursor:"pointer",flexShrink:0 }}>
+              ☰ Filter
+            </button>
           </div>
+          {/* ── Personal visibility filter dropdown ── */}
+          {showFilter && (()=>{
+            const allVisible =
+              CATEGORIES.every(c => isVisible("categories", c.id)) &&
+              members.every(m => isVisible("players", m.user_id)) &&
+              mapZones.every(z => isVisible("zones", z.id)) &&
+              mapOverlays.every(ov => (overlaySettings[ov.id]?.visible ?? true));
+            const rowStyle = { display:"flex",alignItems:"center",gap:8,padding:"4px 14px",cursor:"pointer" };
+            const headStyle = { fontSize:10,fontWeight:600,color:"#888",textTransform:"uppercase",padding:"6px 14px 2px",letterSpacing:"0.05em" };
+            return (
+              <div style={{ position:"absolute",top:80,right:14,zIndex:300,background:"#fff",border:"1px solid #ddd",borderRadius:10,boxShadow:"0 4px 18px rgba(0,0,0,0.13)",minWidth:220,maxHeight:340,overflowY:"auto",paddingBottom:6 }}>
+                {/* Toggle All */}
+                <label style={{ ...rowStyle, borderBottom:"0.5px solid #eee",paddingBottom:8,marginBottom:2,fontWeight:500,fontSize:12 }}>
+                  <input type="checkbox" checked={allVisible} onChange={()=>setAllVisible(!allVisible)} />
+                  <span>Toggle All</span>
+                </label>
+                {/* POI Categories */}
+                {CATEGORIES.length > 0 && <div style={headStyle}>POI Categories</div>}
+                {CATEGORIES.map(cat => (
+                  <label key={cat.id} style={{ ...rowStyle, fontSize:12 }}>
+                    <input type="checkbox" checked={isVisible("categories", cat.id)} onChange={e=>setVis("categories", cat.id, e.target.checked)} />
+                    <span style={{ width:10,height:10,borderRadius:"50%",background:cat.color,display:"inline-block",flexShrink:0 }} />
+                    <span>{cat.label}</span>
+                  </label>
+                ))}
+                {/* Player Markers */}
+                {members.length > 0 && <div style={headStyle}>Player Markers</div>}
+                {members.map(mb => (
+                  <label key={mb.user_id} style={{ ...rowStyle, fontSize:12 }}>
+                    <input type="checkbox" checked={isVisible("players", mb.user_id)} onChange={e=>setVis("players", mb.user_id, e.target.checked)} />
+                    <span style={{ width:10,height:10,borderRadius:"50%",background:mb.player_color||"#378ADD",display:"inline-block",flexShrink:0 }} />
+                    <span>{mb.display_name||"(no name)"}</span>
+                  </label>
+                ))}
+                {/* Zones */}
+                {mapZones.length > 0 && <div style={headStyle}>Zones</div>}
+                {mapZones.map(z => (
+                  <label key={z.id} style={{ ...rowStyle, fontSize:12 }}>
+                    <input type="checkbox" checked={isVisible("zones", z.id)} onChange={e=>setVis("zones", z.id, e.target.checked)} />
+                    <span style={{ width:10,height:10,borderRadius:3,background:z.fill_color,display:"inline-block",flexShrink:0 }} />
+                    <span>{z.name||"Unnamed zone"}</span>
+                  </label>
+                ))}
+                {/* Overlay Layers */}
+                {mapOverlays.length > 0 && <div style={headStyle}>Overlay Layers</div>}
+                {mapOverlays.map(ov => {
+                  const s = overlaySettings[ov.id] || { visible: true };
+                  return (
+                    <label key={ov.id} style={{ ...rowStyle, fontSize:12 }}>
+                      <input type="checkbox" checked={s.visible !== false} onChange={e=>setOverlaySetting(ov.id,"visible",e.target.checked)} />
+                      <span>{ov.name||"Unnamed layer"}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            );
+          })()}
 
           {/* ── Layers & Zones quick controls — visible to everyone on the map page ── */}
           {(mapOverlays.length > 0 || mapZones.filter(z => isGM || z.revealed).length > 0) && (
@@ -1201,7 +1277,7 @@ function App() {
                           );
                         })}
                       </defs>
-                      {mapZones.map(z => {
+                      {mapZones.filter(z=>isVisible("zones", z.id)).map(z => {
                         if (!isGM && !z.revealed) return null;
                         if (editingZonePoints && z.id === editingZonePoints.zoneId) return null; // rendered separately below
                         const pts = z.points.map(p=>`${p.x},${p.y}`).join(" ");
@@ -1291,7 +1367,7 @@ function App() {
                       })()}
                     </svg>
                   )}
-                  {mapPOIs.map(p=>(
+                  {mapPOIs.filter(p=>isVisible("categories", p.category)).map(p=>(
                     <POIPin key={p.id} poi={p} scale={transform.scale} isGM={isGM}
                       resolvedIconUrl={categoryIcons[p.category]||""}
                       poiOpacity={poiOpacity}
@@ -1305,7 +1381,7 @@ function App() {
                       {isGM && <div style={{ fontSize:10,color:a.visible?"#0F6E56":"#854F0B",marginTop:3 }}>{a.visible?"Visible — tap to hide":"Hidden — tap to show"}</div>}
                     </div>
                   ))}
-                  {mapMarkers.map(m => {
+                  {mapMarkers.filter(m=>isVisible("players", m.user_id)).map(m => {
                     const isOwner = m.user_id === user.id;
                     const memberInfo = members.find(mb => mb.user_id === m.user_id);
                     return (
