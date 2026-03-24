@@ -99,6 +99,9 @@ function createRealtimeChannel(token, campaignId, handlers) {
         { table: "campaigns",        filter: `id=eq.${campaignId}` },
         { table: "overlays",         filter: `campaign_id=eq.${campaignId}` },
         { table: "zones",            filter: `campaign_id=eq.${campaignId}` },
+        { table: "npcs",             filter: `campaign_id=eq.${campaignId}` },
+        { table: "announcements",    filter: `campaign_id=eq.${campaignId}` },
+        { table: "notification_log", filter: `campaign_id=eq.${campaignId}` },
       ];
       tableConfigs.forEach(({ table, filter }, i) => {
         ws.send(JSON.stringify({
@@ -126,6 +129,9 @@ function createRealtimeChannel(token, campaignId, handlers) {
         if (table === "campaigns") handlers.onCampaign?.(mapped);
         if (table === "overlays") handlers.onOverlay?.(mapped);
         if (table === "zones") handlers.onZone?.(mapped);
+        if (table === "npcs") handlers.onNPC?.(mapped);
+        if (table === "announcements") handlers.onAnnouncement?.(mapped);
+        if (table === "notification_log") handlers.onNotifLog?.(mapped);
       } catch {}
     };
     ws.onclose = () => { clearInterval(heartbeatTimer); if (!closed) reconnectTimer = setTimeout(connect, 3000); };
@@ -274,7 +280,7 @@ function POIPin({ poi, scale, isGM, onTap, onDragStart, resolvedIconUrl, poiOpac
 }
 
 // ── Profile Tab ───────────────────────────────────────────────────────────────
-function ProfileTab({ user, members, myColor, takenColors, isGM, onColorChange, onSaveDisplayName }) {
+function ProfileTab({ user, members, myColor, takenColors, isGM, onColorChange, onSaveDisplayName, soundVolume, onVolumeChange }) {
   const me = members.find(m => m.user_id === user.id);
   const [displayName, setDisplayName] = useState(me?.display_name || "");
   const [saved, setSaved] = useState(false);
@@ -323,11 +329,20 @@ function ProfileTab({ user, members, myColor, takenColors, isGM, onColorChange, 
         </Field>
       )}
 
-      <div style={{ marginTop: 20, padding: "12px 14px", background: "#f5f5f5", borderRadius: 10, fontSize: 12, color: "#666" }}>
-        <div style={{ fontWeight: 500, marginBottom: 4 }}>Account</div>
-        <div>{user.user_metadata?.full_name || "—"}</div>
-        <div style={{ color: "#999" }}>{user.email}</div>
-        <div style={{ fontSize: 11, color: "#bbb", marginTop: 4 }}>{isGM ? "Game Master" : "Player"}</div>
+      <Field label="Sound Effects Volume">
+        <div style={{ display:"flex",alignItems:"center",gap:10 }}>
+          <span style={{ fontSize:16 }}>{soundVolume===0?"🔇":soundVolume<0.4?"🔉":"🔊"}</span>
+          <input type="range" min={0} max={1} step={0.05} value={soundVolume} onChange={e=>onVolumeChange(Number(e.target.value))} style={{ flex:1 }} />
+          <span style={{ fontSize:12,color:T.muted,minWidth:36 }}>{Math.round(soundVolume*100)}%</span>
+        </div>
+        <div style={{ fontSize:11,color:T.muted,marginTop:3 }}>Plays on announcements, revealed POIs, and NPC movements.</div>
+      </Field>
+
+      <div style={{ marginTop:16,padding:"12px 14px",background:T.surface,borderRadius:10,fontSize:12,color:T.muted,border:`1px solid ${T.border}` }}>
+        <div style={{ fontWeight:500,marginBottom:4,color:T.ink }}>Account</div>
+        <div style={{ color:T.ink }}>{user.user_metadata?.full_name || "—"}</div>
+        <div style={{ color:T.muted }}>{user.email}</div>
+        <div style={{ fontSize:11,color:T.muted,marginTop:4 }}>{isGM ? "Game Master" : "Player"}</div>
       </div>
     </div>
   );
@@ -387,6 +402,15 @@ function App() {
   const [showFilter, setShowFilter] = useState(false);
   const [renamingOverlay, setRenamingOverlay] = useState(null); // { id, name }
   const [campInfoEdit, setCampInfoEdit] = useState(null); // { name, sub_header, description } or null
+  const [npcs, setNpcs] = useState([]);
+  const [npcForm, setNpcForm] = useState(null);
+  const [announcements, setAnnouncements] = useState([]);
+  const [notifLog, setNotifLog] = useState([]);
+  const [toasts, setToasts] = useState([]);
+  const [showBell, setShowBell] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [announceForm, setAnnounceForm] = useState(null);
+  const [soundVolume, setSoundVolume] = useState(() => { try { return Number(localStorage.getItem("sound_volume") ?? 0.5); } catch { return 0.5; } });
 
   const mapRef = useRef(null);
   const dragRef = useRef({ active: false, startX: 0, startY: 0, lastX: 0, lastY: 0, moved: false });
@@ -402,6 +426,9 @@ function App() {
   const zonesRef = useRef(zones);
   const addPointZoneRef = useRef(null);
   const zonePointDragRef = useRef(null);
+  const npcDragState = useRef(null);
+  const soundVolumeRef = useRef(0.5);
+  const npcsRef = useRef([]);
 
   useEffect(() => { placingRef.current = placingMode; }, [placingMode]);
   useEffect(() => { transformRef.current = transform; }, [transform]);
@@ -409,6 +436,8 @@ function App() {
   useEffect(() => { scrollSensRef.current = scrollSens; }, [scrollSens]);
   useEffect(() => { sessionRef.current = session; }, [session]);
   useEffect(() => { zonesRef.current = zones; }, [zones]);
+  useEffect(() => { soundVolumeRef.current = soundVolume; localStorage.setItem("sound_volume", String(soundVolume)); }, [soundVolume]);
+  useEffect(() => { npcsRef.current = npcs; }, [npcs]);
   // Restore per-user overlay opacity/visibility and master zone opacity from localStorage
   useEffect(() => {
     if (!activeCampaign) return;
@@ -526,6 +555,31 @@ function App() {
           });
         }
       },
+      onNPC: (payload) => {
+        if (payload.eventType === "INSERT") setNpcs(p => p.find(x => x.id === payload.new.id) ? p : [...p, payload.new]);
+        if (payload.eventType === "UPDATE") setNpcs(p => p.map(x => x.id === payload.new.id ? payload.new : x));
+        if (payload.eventType === "DELETE") setNpcs(p => p.filter(x => x.id !== payload.old?.id));
+      },
+      onAnnouncement: (payload) => {
+        if (payload.eventType === "INSERT") {
+          setAnnouncements(p => p.find(x => x.id === payload.new.id) ? p : [payload.new, ...p]);
+          playSound("announcement");
+          addToast(`📜 ${payload.new.title || "New Announcement"}`, "announcement");
+          setUnreadCount(c => c + 1);
+        }
+        if (payload.eventType === "UPDATE") setAnnouncements(p => p.map(x => x.id === payload.new.id ? payload.new : x));
+        if (payload.eventType === "DELETE") setAnnouncements(p => p.filter(x => x.id !== payload.old?.id));
+      },
+      onNotifLog: (payload) => {
+        if (payload.eventType === "INSERT") {
+          setNotifLog(p => p.find(x => x.id === payload.new.id) ? p : [payload.new, ...p]);
+          setUnreadCount(c => c + 1);
+          if (payload.new.type !== "announcement") {
+            playSound(payload.new.type);
+            addToast(payload.new.message || payload.new.title || "Update", payload.new.type);
+          }
+        }
+      },
     });
     return () => { if (realtimeRef.current) realtimeRef.current.unsubscribe(); };
   }, [activeCampaign?.id, session?.access_token]);
@@ -556,7 +610,7 @@ function App() {
     setActiveCampaign(camp); setMemberRole(role);
     setMarkerLimit(camp.marker_limit || 10);
     try {
-      const [mapsData, poisData, markersData, annsData, catIconsData, membersData, overlaysData, zonesData] = await Promise.all([
+      const [mapsData, poisData, markersData, annsData, catIconsData, membersData, overlaysData, zonesData, npcsData, announceData, notifData] = await Promise.all([
         dbSelect(session.access_token, "maps", `campaign_id=eq.${camp.id}&order=created_at`),
         dbSelect(session.access_token, "pois", `campaign_id=eq.${camp.id}`),
         dbSelect(session.access_token, "markers", `campaign_id=eq.${camp.id}`),
@@ -565,9 +619,13 @@ function App() {
         dbSelect(session.access_token, "campaign_members", `campaign_id=eq.${camp.id}&select=user_id,role,player_color,joined_at,display_name`),
         dbSelect(session.access_token, "overlays", `campaign_id=eq.${camp.id}&order=z_order`),
         dbSelect(session.access_token, "zones", `campaign_id=eq.${camp.id}`),
+        dbSelect(session.access_token, "npcs", `campaign_id=eq.${camp.id}`),
+        dbSelect(session.access_token, "announcements", `campaign_id=eq.${camp.id}&order=created_at.desc&limit=50`),
+        dbSelect(session.access_token, "notification_log", `campaign_id=eq.${camp.id}&order=created_at.desc&limit=100`),
       ]);
       setMaps(mapsData); setPois(poisData); setMarkers(markersData); setAnnotations(annsData);
       setMembers(membersData); setOverlays(overlaysData); setZones(zonesData);
+      setNpcs(npcsData); setAnnouncements(announceData); setNotifLog(notifData);
       const catMap = {};
       catIconsData.forEach(ci => { catMap[ci.category_id] = ci.icon_url; });
       setCategoryIcons(catMap);
@@ -775,6 +833,9 @@ function App() {
   const takenColors = members.filter(m => m.user_id !== user?.id && m.player_color).map(m => m.player_color);
   const mapOverlays = overlays.filter(o => o.map_id === activeMapId);
   const mapZones = zones.filter(z => z.map_id === activeMapId);
+  const mapNPCs = npcs.filter(n => n.map_id === activeMapId && (isGM || n.is_visible_to_players));
+  const accessibleMaps = maps.filter(m => isGM || m.is_main || m.player_accessible);
+  const mainMap = maps.find(m => m.is_main) || maps[0];
   // POIs fade out as user zooms toward the fit scale; fully visible at 2× fit zoom
   const poiOpacity = fitScale > 0 ? Math.min(1, Math.max(0, (transform.scale / fitScale) - 1)) : 1;
 
@@ -974,7 +1035,7 @@ function App() {
   async function savePOI(form, iconFile) {
     let icon_url = form.clearIcon ? "" : (form.poi?.icon_url || "");
     if (iconFile) { try { icon_url = await uploadToStorage(session.access_token, iconFile); } catch { icon_url = await readFile(iconFile); } }
-    const body = { name: form.name||"Unnamed POI", description: form.description||"", revealed: form.revealed, category: form.category||"other", size: form.size||"large", icon_url };
+    const body = { name: form.name||"Unnamed POI", description: form.description||"", revealed: form.revealed, category: form.category||"other", size: form.size||"large", icon_url, poi_type: form.poi_type||"standard", linked_map_id: form.linked_map_id||null };
     try {
       if (form.poi) { await dbUpdate(session.access_token, "pois", form.poi.id, body); setPois(prev => prev.map(p => p.id === form.poi.id ? { ...p, ...body } : p)); }
       else { const [np] = await dbInsert(session.access_token, "pois", { ...body, campaign_id: activeCampaign.id, map_id: activeMapId, x: form.x, y: form.y }); setPois(prev => [...prev, np]); }
@@ -990,7 +1051,14 @@ function App() {
     setPoiForm(null);
   }
   async function togglePOIReveal(id, current) {
-    try { await dbUpdate(session.access_token, "pois", id, { revealed: !current }); setPois(prev=>prev.map(p=>p.id===id?{...p,revealed:!current}:p)); } catch(e) { setError(e.message); }
+    try {
+      await dbUpdate(session.access_token, "pois", id, { revealed: !current });
+      setPois(prev=>prev.map(p=>p.id===id?{...p,revealed:!current}:p));
+      const poi = pois.find(p=>p.id===id);
+      const label = poi?.name || "A location";
+      if (!current) logNotif("poi_revealed", label, `${label} has been revealed on the map`, id);
+      else logNotif("poi_hidden", label, `${label} has been hidden`, id);
+    } catch(e) { setError(e.message); }
   }
   async function saveMarker(label, description) {
     if (!markerForm || !("x" in markerForm)) return;
@@ -1057,6 +1125,143 @@ function App() {
     try { await dbDelete(session.access_token, "maps", id); const remaining = maps.filter(m=>m.id!==id); setMaps(remaining); if (activeMapId===id) setActiveMapId(remaining[0]?.id||null); } catch(e) { setError(e.message); }
   }
   function goBack() { const prev=mapStack[mapStack.length-1]; setMapStack(s=>s.slice(0,-1)); setActiveMapId(prev||null); setTransform({x:0,y:0,scale:1}); setImgSize({w:0,h:0}); }
+  function goHome() { setMapStack([]); const main=maps.find(m=>m.is_main)||maps[0]; if(main){setActiveMapId(main.id);setTransform({x:0,y:0,scale:1});setImgSize({w:0,h:0});} }
+
+  // ── Sound ──
+  function playSound(type) {
+    if (soundVolumeRef.current <= 0) return;
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator(); const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      gain.gain.value = soundVolumeRef.current * 0.22;
+      if (type === "announcement") {
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(523, ctx.currentTime);
+        osc.frequency.setValueAtTime(659, ctx.currentTime + 0.15);
+        osc.frequency.setValueAtTime(784, ctx.currentTime + 0.3);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
+        osc.start(); osc.stop(ctx.currentTime + 0.8);
+      } else if (type === "poi_revealed") {
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        osc.frequency.setValueAtTime(1100, ctx.currentTime + 0.12);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+        osc.start(); osc.stop(ctx.currentTime + 0.4);
+      } else {
+        osc.type = "triangle"; osc.frequency.value = 330;
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+        osc.start(); osc.stop(ctx.currentTime + 0.25);
+      }
+    } catch {}
+  }
+
+  // ── Toasts ──
+  function addToast(msg, type) {
+    const id = Date.now() + Math.random();
+    setToasts(prev => [...prev.slice(-3), { id, msg, type }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 5000);
+  }
+
+  // ── Notification log helper ──
+  function logNotif(type, title, message, relatedId) {
+    if (!activeCampaign || !session) return;
+    dbInsert(session.access_token, "notification_log", { campaign_id: activeCampaign.id, type, title, message, related_id: relatedId }).catch(() => {});
+  }
+
+  // ── NPC CRUD ──
+  async function saveNPC(form) {
+    const body = { name: form.name||"Unknown NPC", status: form.status||"Alive", border_color: form.border_color||"#C9A84C", aura_radius: form.aura_radius??80, show_name: form.show_name??true, show_status: form.show_status??true, show_aura: form.show_aura??true, is_visible_to_players: form.is_visible_to_players??false };
+    try {
+      if (form.npc) {
+        await dbUpdate(session.access_token, "npcs", form.npc.id, body);
+        setNpcs(prev => prev.map(n => n.id === form.npc.id ? { ...n, ...body } : n));
+      } else {
+        const [n] = await dbInsert(session.access_token, "npcs", { ...body, campaign_id: activeCampaign.id, map_id: activeMapId, x: form.x??200, y: form.y??200 });
+        setNpcs(prev => [...prev, n]);
+      }
+      setNpcForm(null);
+    } catch(e) { setError(e.message); }
+  }
+  async function deleteNPC(id) {
+    try { await dbDelete(session.access_token, "npcs", id); setNpcs(prev => prev.filter(n => n.id !== id)); setNpcForm(null); } catch(e) { setError(e.message); }
+  }
+  function startNPCDrag(e, npc) {
+    e.stopPropagation();
+    const startCx = e.touches?e.touches[0].clientX:e.clientX, startCy = e.touches?e.touches[0].clientY:e.clientY;
+    npcDragState.current = { npcId:npc.id, originX:npc.x, originY:npc.y, startCx, startCy, scaleAtStart:transformRef.current.scale, moved:false, mapX:npc.x, mapY:npc.y };
+    function onMove(ev) {
+      if (!npcDragState.current) return;
+      const cx=ev.touches?ev.touches[0].clientX:ev.clientX, cy=ev.touches?ev.touches[0].clientY:ev.clientY;
+      const dx=cx-npcDragState.current.startCx, dy=cy-npcDragState.current.startCy;
+      if (Math.sqrt(dx*dx+dy*dy)>8) npcDragState.current.moved=true;
+      const nx=npcDragState.current.originX+dx/npcDragState.current.scaleAtStart, ny=npcDragState.current.originY+dy/npcDragState.current.scaleAtStart;
+      npcDragState.current.mapX=nx; npcDragState.current.mapY=ny;
+      setNpcs(prev=>prev.map(n=>n.id===npcDragState.current?.npcId?{...n,x:nx,y:ny}:n));
+    }
+    function onUp() {
+      if (!npcDragState.current) return;
+      const { npcId, mapX, mapY, moved, originX, originY } = npcDragState.current;
+      npcDragState.current = null;
+      window.removeEventListener("mousemove",onMove); window.removeEventListener("mouseup",onUp);
+      window.removeEventListener("touchmove",onMove); window.removeEventListener("touchend",onUp);
+      if (!moved) {
+        setNpcs(prev=>prev.map(n=>n.id===npcId?{...n,x:originX,y:originY}:n));
+        const n=npcsRef.current.find(n=>n.id===npcId); if(n) setNpcForm({npc:n,...n});
+      } else {
+        dbUpdate(session.access_token,"npcs",npcId,{x:mapX,y:mapY}).then(()=>{
+          const n=npcsRef.current.find(n=>n.id===npcId);
+          if(n) logNotif("npc_moved", n.show_name?`${n.name} spotted`:"NPC sighted", `${n.show_name?n.name:"An NPC"} has been sighted in a new location`, npcId);
+        }).catch(console.error);
+      }
+    }
+    window.addEventListener("mousemove",onMove); window.addEventListener("mouseup",onUp);
+    window.addEventListener("touchmove",onMove,{passive:true}); window.addEventListener("touchend",onUp);
+  }
+
+  // ── Announcements ──
+  async function saveAnnouncement(form) {
+    const body = { title:form.title||"", sub_header:form.sub_header?.trim()||null, message:form.message?.trim()||null };
+    try {
+      if (form.announcement) {
+        await dbUpdate(session.access_token,"announcements",form.announcement.id,{...body,updated_at:new Date().toISOString()});
+        setAnnouncements(prev=>prev.map(a=>a.id===form.announcement.id?{...a,...body}:a));
+      } else {
+        const [a] = await dbInsert(session.access_token,"announcements",{...body,campaign_id:activeCampaign.id,created_by:user.id});
+        setAnnouncements(prev=>[a,...prev]);
+        logNotif("announcement",body.title,body.message,a.id);
+      }
+      setAnnounceForm(null);
+    } catch(e) { setError(e.message); }
+  }
+  async function deleteAnnouncement(id) {
+    try { await dbDelete(session.access_token,"announcements",id); setAnnouncements(prev=>prev.filter(a=>a.id!==id)); } catch(e) { setError(e.message); }
+  }
+
+  // ── Map access toggle ──
+  async function toggleMapAccess(mapId, current) {
+    try { await dbUpdate(session.access_token,"maps",mapId,{player_accessible:!current}); setMaps(prev=>prev.map(m=>m.id===mapId?{...m,player_accessible:!current}:m)); } catch(e) { setError(e.message); }
+  }
+
+  // ── Keyboard shortcuts ──
+  useEffect(() => {
+    function onKey(e) {
+      if (e.target.tagName==="INPUT"||e.target.tagName==="TEXTAREA"||e.target.tagName==="SELECT") return;
+      if (e.key==="Escape") {
+        if (poiForm) { setPoiForm(null); return; }
+        if (markerForm) { setMarkerForm(null); return; }
+        if (zoneForm) { setZoneForm(null); return; }
+        if (npcForm) { setNpcForm(null); return; }
+        if (announceForm) { setAnnounceForm(null); return; }
+        if (showFilter) { setShowFilter(false); return; }
+        if (showBell) { setShowBell(false); return; }
+        if (placingMode) { setPlacingMode(null); setPlacingZonePoints(null); return; }
+      }
+      if ((e.key==="f"||e.key==="F") && tab==="map") { e.preventDefault(); resetView(); }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [tab, poiForm, markerForm, zoneForm, npcForm, announceForm, showFilter, showBell, placingMode]);
 
   // Card positions
   const openPOI = mapPOIs.find(p=>p.id===openPOICard);
@@ -1146,8 +1351,16 @@ function App() {
       <div style={{ display:"flex",alignItems:"center",gap:8,padding:"8px 14px",borderBottom:`1px solid ${T.border}`,background:T.header,flexWrap:"wrap" }}>
         <button onClick={()=>{setActiveCampaign(null);localStorage.removeItem("sb_last_campaign");if(realtimeRef.current)realtimeRef.current.unsubscribe();}} style={{ background:"none",border:"none",cursor:"pointer",fontSize:18,padding:0,color:T.headerFg }}>←</button>
         <span style={{ fontFamily:T.fHead,fontWeight:600,fontSize:14,flex:1,color:T.headerFg,letterSpacing:"0.06em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{activeCampaign.name}</span>
-        {mapStack.length>0 && <Btn size="sm" onClick={goBack} style={{ background:"transparent",color:T.headerFg,borderColor:T.headerFg+"66" }}>↩ Back</Btn>}
+        {mapStack.length>0 && <>
+          <Btn size="sm" onClick={goBack} style={{ background:"transparent",color:T.headerFg,borderColor:T.headerFg+"66" }}>↩ Back</Btn>
+          {mapStack.length>1 && <Btn size="sm" onClick={goHome} style={{ background:"transparent",color:T.gold,borderColor:T.gold+"66",fontSize:10 }}>⌂ Main</Btn>}
+        </>}
         <span style={{ fontSize:11,padding:"2px 9px",borderRadius:20,background:isGM?`${T.gold}33`:`${T.headerFg}22`,color:isGM?T.gold:T.headerFg,fontWeight:600,border:`1px solid ${isGM?T.gold:T.headerFg+"44"}`,fontFamily:T.fBody }}>{isGM?"GM":"Player"}</span>
+        {/* Bell notification icon */}
+        <button onClick={()=>{setShowBell(b=>!b);setUnreadCount(0);}} style={{ position:"relative",background:"none",border:"none",cursor:"pointer",color:T.headerFg,fontSize:16,padding:"2px 4px",flexShrink:0 }} title="Announcements & Notifications">
+          🔔
+          {unreadCount>0 && <span style={{ position:"absolute",top:-2,right:-2,background:T.danger,color:"#fff",fontSize:9,fontWeight:700,borderRadius:"50%",width:14,height:14,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1 }}>{unreadCount>9?"9+":unreadCount}</span>}
+        </button>
         {!isGM && (
           <div onClick={()=>setTab("profile")} title="Edit your profile"
             style={{ width:18,height:18,borderRadius:"50%",background:myColor||"#ccc",border:`2px solid ${T.gold}`,cursor:"pointer",flexShrink:0 }} />
@@ -1187,6 +1400,7 @@ function App() {
           <div style={{ display:"flex",gap:6,padding:"7px 14px",borderBottom:`1px solid ${T.border}`,background:T.surface,flexWrap:"wrap",alignItems:"center" }}>
             {isGM && <>
               <Btn size="sm" onClick={()=>setPlacingMode(p=>p==="poi"?null:"poi")} style={{ background:placingMode==="poi"?`${T.gold}33`:undefined,borderColor:placingMode==="poi"?T.gold:undefined }}>+ POI</Btn>
+              <Btn size="sm" onClick={()=>setNpcForm({npc:null,name:"",status:"Alive",border_color:"#C9A84C",aura_radius:80,show_name:true,show_status:true,show_aura:true,is_visible_to_players:false,x:200,y:200})}>+ NPC</Btn>
             </>}
             <Btn size="sm" onClick={()=>{
               if (!myColor && !isGM) { setShowColorPicker(true); return; }
@@ -1194,7 +1408,13 @@ function App() {
             }} style={{ background:placingMode==="marker"?`${T.gold}33`:undefined,borderColor:placingMode==="marker"?T.gold:undefined }}>
               + Marker {!isGM && myMarkers.length >= markerLimit ? `(${myMarkers.length}/${markerLimit} full)` : !isGM ? `(${myMarkers.length}/${markerLimit})` : ""}
             </Btn>
-            <Btn size="sm" onClick={resetView}>Fit</Btn>
+            <Btn size="sm" onClick={resetView}>Fit (F)</Btn>
+            {accessibleMaps.length > 1 && (
+              <select value={activeMapId||""} onChange={e=>{setActiveMapId(e.target.value);setTransform({x:0,y:0,scale:1});setImgSize({w:0,h:0});setMapStack([]);}}
+                style={{ fontSize:11,padding:"3px 8px",borderRadius:6,border:`1px solid ${T.border}`,background:T.bg,color:T.ink,fontFamily:T.fBody,maxWidth:130 }}>
+                {accessibleMaps.map(m=><option key={m.id} value={m.id}>{m.name}{m.is_main?" ★":""}</option>)}
+              </select>
+            )}
             {placingMode && placingMode !== "zone" && placingMode !== "addpoint" && <span style={{ fontSize:11,color:T.purple,padding:"2px 8px",background:`${T.purple}15`,borderRadius:20,border:`1px solid ${T.purple}44` }}>Tap map to place {placingMode}</span>}
             {placingMode === "zone" && (
               <span style={{ display:"flex",alignItems:"center",gap:6,flexWrap:"wrap" }}>
@@ -1224,7 +1444,7 @@ function App() {
             <input type="range" min={0.1} max={2} step={0.1} value={scrollSens} onChange={e=>setScrollSens(Number(e.target.value))} style={{ flex:1,maxWidth:120 }} />
             <span style={{ fontSize:11,color:T.muted,minWidth:24 }}>{scrollSens.toFixed(1)}</span>
             <button onClick={()=>setShowFilter(f=>!f)} style={{ marginLeft:"auto",padding:"2px 10px",borderRadius:6,border:`1px solid ${showFilter?T.gold:T.border}`,background:showFilter?T.purple:T.bg,color:showFilter?T.headerFg:T.muted,fontSize:11,cursor:"pointer",flexShrink:0,fontFamily:T.fBody }}>
-              ☰ Filter
+              ☰ Filter (Esc)
             </button>
           </div>
           {/* ── Personal visibility filter dropdown ── */}
@@ -1464,9 +1684,40 @@ function App() {
                     <POIPin key={p.id} poi={p} scale={transform.scale} isGM={isGM}
                       resolvedIconUrl={categoryIcons[p.category]||""}
                       poiOpacity={poiOpacity}
-                      onTap={poi=>{ if(!isGM) setOpenPOICard(openPOICard===poi.id?null:poi.id); }}
+                      onTap={poi=>{
+                        if (poi.poi_type==="portal" && poi.linked_map_id) {
+                          setMapStack(s=>[...s, activeMapId]);
+                          setActiveMapId(poi.linked_map_id);
+                          setTransform({x:0,y:0,scale:1}); setImgSize({w:0,h:0});
+                        } else if (!isGM) { setOpenPOICard(openPOICard===poi.id?null:poi.id); }
+                      }}
                       onDragStart={startPOIDrag} />
                   ))}
+                  {/* NPC nodes */}
+                  {mapNPCs.map(npc => {
+                    const r = Math.max(20, npc.aura_radius||80);
+                    const ns = Math.max(14, 18/transform.scale);
+                    const bw = Math.max(1, 2/transform.scale);
+                    const fs = Math.max(7, 10/transform.scale);
+                    const showName = isGM || npc.show_name;
+                    const showStatus = isGM || npc.show_status;
+                    const showAura = npc.show_aura;
+                    return (
+                      <div key={npc.id} style={{ position:"absolute", left:npc.x-r, top:npc.y-r, width:r*2, height:r*2, pointerEvents:"none" }}>
+                        {showAura && <div style={{ position:"absolute", inset:0, borderRadius:"50%", border:`${bw}px dashed ${npc.border_color}`, background:`${npc.border_color}1A`, pointerEvents:"none" }} />}
+                        <div
+                          onMouseDown={isGM ? e=>startNPCDrag(e,npc) : undefined}
+                          onTouchStart={isGM ? e=>startNPCDrag(e,npc) : undefined}
+                          style={{ position:"absolute", left:r-ns/2, top:r-ns/2, width:ns, height:ns, borderRadius:"50%", background:`${npc.border_color}33`, border:`${bw}px solid ${npc.border_color}`, cursor:isGM?"grab":"default", pointerEvents:"all", display:"flex", alignItems:"center", justifyContent:"center", boxShadow:`0 0 ${6/transform.scale}px ${npc.border_color}88` }}>
+                          <span style={{ fontSize:fs, pointerEvents:"none", userSelect:"none" }}>👤</span>
+                        </div>
+                        <div style={{ position:"absolute", left:r, top:r+ns/2+4/transform.scale, transform:"translateX(-50%)", fontSize:fs, fontWeight:600, color:npc.border_color, textShadow:"0 1px 3px rgba(0,0,0,0.85)", whiteSpace:"nowrap", pointerEvents:"none", userSelect:"none", lineHeight:1.3 }}>
+                          {showName ? npc.name : "???"}
+                          {showStatus && <span style={{ opacity:0.8, fontWeight:400 }}> · {showStatus ? npc.status : "???"}</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
                   {mapAnnotations.map(a=>(
                     <div key={a.id} onClick={e=>{e.stopPropagation();if(dragRef.current.moved)return;if(isGM)toggleAnnotation(a.id,a.visible);}}
                       style={{ position:"absolute",left:Math.min(a.x,(imgSize.w||800)-210),top:Math.max(0,a.y),maxWidth:200,background:"rgba(255,255,255,0.95)",border:`1.5px solid ${a.visible?"#1D9E75":"#BA7517"}`,borderRadius:8,padding:"6px 8px",cursor:isGM?"pointer":"default",fontSize:12,zIndex:30 }}>
@@ -1556,37 +1807,48 @@ function App() {
       {tab==="info" && (
         <div style={{ flex:1,overflowY:"auto",padding:16 }}>
           {campInfoEdit === null ? <>
-            <h2 style={{ margin:"0 0 4px",fontSize:20,fontWeight:700,color:"#3C3489" }}>{activeCampaign?.name}</h2>
-            {activeCampaign?.sub_header && <div style={{ fontSize:13,color:"#888",fontStyle:"italic",marginBottom:8 }}>{activeCampaign.sub_header}</div>}
+            <h2 style={{ margin:"0 0 4px",fontSize:20,fontWeight:700,fontFamily:T.fHead,color:T.ink }}>{activeCampaign?.name}</h2>
+            {activeCampaign?.sub_header && <div style={{ fontSize:13,color:T.muted,fontStyle:"italic",marginBottom:8 }}>{activeCampaign.sub_header}</div>}
             {activeCampaign?.description
-              ? <p style={{ fontSize:13,color:"#444",lineHeight:1.7,marginTop:10,whiteSpace:"pre-wrap" }}>{activeCampaign.description}</p>
-              : <p style={{ color:"#bbb",fontSize:13,fontStyle:"italic",marginTop:10 }}>{isGM ? "No description yet. Click Edit to add one." : "No campaign description has been added yet."}</p>
+              ? <p style={{ fontSize:13,color:T.ink,lineHeight:1.7,marginTop:10,whiteSpace:"pre-wrap" }}>{activeCampaign.description}</p>
+              : <p style={{ color:T.muted,fontSize:13,fontStyle:"italic",marginTop:10 }}>{isGM ? "No description yet. Click Edit to add one." : "No campaign description has been added yet."}</p>
             }
             {isGM && <Btn size="sm" onClick={()=>setCampInfoEdit({ name:activeCampaign?.name||"", sub_header:activeCampaign?.sub_header||"", description:activeCampaign?.description||"" })} style={{ marginTop:16 }}>✎ Edit Campaign Info</Btn>}
           </> : <>
-            <h3 style={{ margin:"0 0 14px",fontSize:15,fontWeight:600,color:"#3C3489" }}>Edit Campaign Info</h3>
-            <div style={{ marginBottom:10 }}>
-              <label style={{ fontSize:12,color:"#666",display:"block",marginBottom:4 }}>Campaign Name</label>
-              <input value={campInfoEdit.name} onChange={e=>setCampInfoEdit(p=>({...p,name:e.target.value}))}
-                style={{ width:"100%",boxSizing:"border-box",padding:"7px 10px",borderRadius:7,border:"1px solid #ccc",fontSize:13 }} />
-            </div>
-            <div style={{ marginBottom:10 }}>
-              <label style={{ fontSize:12,color:"#666",display:"block",marginBottom:4 }}>Sub Header <span style={{ color:"#bbb" }}>(optional)</span></label>
-              <input value={campInfoEdit.sub_header} onChange={e=>setCampInfoEdit(p=>({...p,sub_header:e.target.value}))}
-                placeholder="e.g. A dark fantasy adventure..."
-                style={{ width:"100%",boxSizing:"border-box",padding:"7px 10px",borderRadius:7,border:"1px solid #ccc",fontSize:13 }} />
-            </div>
-            <div style={{ marginBottom:14 }}>
-              <label style={{ fontSize:12,color:"#666",display:"block",marginBottom:4 }}>Description <span style={{ color:"#bbb" }}>(optional)</span></label>
-              <textarea value={campInfoEdit.description} onChange={e=>setCampInfoEdit(p=>({...p,description:e.target.value}))}
-                rows={6} placeholder="Describe the campaign setting, background, or any information for your players..."
-                style={{ width:"100%",boxSizing:"border-box",padding:"7px 10px",borderRadius:7,border:"1px solid #ccc",fontSize:13,resize:"vertical",lineHeight:1.6 }} />
-            </div>
+            <h3 style={{ margin:"0 0 14px",fontSize:15,fontWeight:600,fontFamily:T.fHead,color:T.ink }}>Edit Campaign Info</h3>
+            <Field label="Campaign Name"><input value={campInfoEdit.name} onChange={e=>setCampInfoEdit(p=>({...p,name:e.target.value}))} style={IS} /></Field>
+            <Field label="Sub Header (optional)"><input value={campInfoEdit.sub_header} onChange={e=>setCampInfoEdit(p=>({...p,sub_header:e.target.value}))} placeholder="e.g. A dark fantasy adventure..." style={IS} /></Field>
+            <Field label="Description (optional)"><textarea value={campInfoEdit.description} onChange={e=>setCampInfoEdit(p=>({...p,description:e.target.value}))} rows={6} placeholder="Describe the campaign setting..." style={{ ...IS,resize:"vertical",lineHeight:1.6 }} /></Field>
             <div style={{ display:"flex",gap:8 }}>
               <Btn variant="primary" onClick={saveCampaignInfo}>Save</Btn>
               <Btn onClick={()=>setCampInfoEdit(null)}>Cancel</Btn>
             </div>
           </>}
+
+          {/* Announcements */}
+          <div style={{ marginTop:24,borderTop:`1px solid ${T.border}`,paddingTop:16 }}>
+            <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:12 }}>
+              <span style={{ fontFamily:T.fHead,fontWeight:600,fontSize:14,color:T.ink }}>📜 Announcements</span>
+              {isGM && <Btn size="sm" variant="primary" onClick={()=>setAnnounceForm({announcement:null,title:"",sub_header:"",message:""})}>+ New</Btn>}
+            </div>
+            {announcements.length===0 && <p style={{ color:T.muted,fontSize:13,fontStyle:"italic" }}>No announcements yet.</p>}
+            {announcements.map(a=>(
+              <div key={a.id} style={{ padding:"10px 14px",background:T.surface,borderRadius:8,marginBottom:8,border:`1px solid ${T.border}` }}>
+                <div style={{ display:"flex",alignItems:"flex-start",gap:8 }}>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontFamily:T.fHead,fontWeight:600,fontSize:13,color:T.ink }}>{a.title||"(No title)"}</div>
+                    {a.sub_header && <div style={{ fontSize:11,color:T.muted,fontStyle:"italic",marginTop:1 }}>{a.sub_header}</div>}
+                    {a.message && <div style={{ fontSize:12,color:T.ink,lineHeight:1.6,marginTop:6,whiteSpace:"pre-wrap" }}>{a.message}</div>}
+                    <div style={{ fontSize:10,color:T.muted,marginTop:6 }}>{new Date(a.created_at).toLocaleDateString(undefined,{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}</div>
+                  </div>
+                  {isGM && <div style={{ display:"flex",gap:4,flexShrink:0 }}>
+                    <Btn size="sm" onClick={()=>setAnnounceForm({announcement:a,title:a.title,sub_header:a.sub_header||"",message:a.message||""})}>✎</Btn>
+                    <Btn size="sm" variant="danger" onClick={()=>deleteAnnouncement(a.id)}>✕</Btn>
+                  </div>}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -1594,7 +1856,7 @@ function App() {
       {tab==="library" && isGM && (
         <div style={{ display:"flex",flexDirection:"column",flex:1,minHeight:0 }}>
           <div style={{ display:"flex",borderBottom:`1px solid ${T.border}`,padding:"0 14px",background:T.surface }}>
-            {["maps","pois","categories","players"].map(st=>(
+            {["maps","pois","npcs","categories","players"].map(st=>(
               <button key={st} onClick={()=>setLibSubTab(st)} style={{ padding:"6px 12px",border:"none",borderBottom:libSubTab===st?`2px solid ${T.gold}`:"2px solid transparent",background:"transparent",cursor:"pointer",fontSize:12,fontWeight:libSubTab===st?600:400,color:libSubTab===st?T.goldDim:T.muted,textTransform:"capitalize",fontFamily:T.fBody }}>{st}</button>
             ))}
           </div>
@@ -1611,8 +1873,12 @@ function App() {
                     <img src={m.src} alt={m.name} style={{ width:"100%",height:75,objectFit:"cover",display:"block" }} />
                     <div style={{ padding:"6px 8px" }}>
                       <div style={{ fontSize:12,fontWeight:500,marginBottom:5,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{m.name}</div>
-                      <div style={{ display:"flex",gap:4 }}>
-                        {m.is_main?<span style={{ fontSize:10,color:T.goldDim,fontWeight:600,fontFamily:T.fHead }}>Main</span>:<Btn size="sm" variant="primary" onClick={()=>setMainMap(m.id)}>Set Main</Btn>}
+                      <div style={{ display:"flex",gap:4,flexWrap:"wrap" }}>
+                        {m.is_main?<span style={{ fontSize:10,color:T.goldDim,fontWeight:600,fontFamily:T.fHead }}>★ Main</span>:<Btn size="sm" variant="primary" onClick={()=>setMainMap(m.id)}>Set Main</Btn>}
+                        {!m.is_main && <button onClick={()=>toggleMapAccess(m.id,m.player_accessible)}
+                          style={{ padding:"2px 6px",fontSize:10,borderRadius:6,border:"none",background:m.player_accessible?"#EAF3DE":"#f0f0f0",color:m.player_accessible?"#3B6D11":"#888",cursor:"pointer",fontWeight:500 }}>
+                          {m.player_accessible?"Unlocked":"Locked"}
+                        </button>}
                         <Btn size="sm" variant="danger" onClick={()=>deleteMap(m.id)}>Del</Btn>
                       </div>
                     </div>
@@ -1648,6 +1914,29 @@ function App() {
                   </div>
                 );
               })}
+            </>}
+
+            {libSubTab==="npcs" && <>
+              <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:12,flexWrap:"wrap" }}>
+                <span style={{ fontWeight:500 }}>VIP NPCs</span>
+                <Btn size="sm" variant="primary" onClick={()=>{setNpcForm({npc:null,name:"",status:"Alive",border_color:"#C9A84C",aura_radius:80,show_name:true,show_status:true,show_aura:true,is_visible_to_players:false,x:200,y:200});setTab("map");}}>+ Add NPC</Btn>
+              </div>
+              <p style={{ fontSize:12,color:T.muted,marginBottom:10 }}>NPC nodes are placed on the map. Drag them to update their location. Individual fields can be hidden to show "???" to players.</p>
+              {npcs.filter(n=>n.map_id===activeMapId).length===0 && <p style={{ color:T.muted,fontSize:13 }}>No NPCs on this map yet.</p>}
+              {npcs.filter(n=>n.map_id===activeMapId).map(npc=>(
+                <div key={npc.id} style={{ display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:T.surface,borderRadius:8,marginBottom:6,border:`1px solid ${T.border}` }}>
+                  <div style={{ width:24,height:24,borderRadius:"50%",background:`${npc.border_color}33`,border:`2px solid ${npc.border_color}`,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12 }}>👤</div>
+                  <div style={{ flex:1,minWidth:0 }}>
+                    <div style={{ fontSize:13,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{npc.name}</div>
+                    <div style={{ fontSize:11,color:T.muted }}>{npc.status} · aura {npc.aura_radius}px</div>
+                  </div>
+                  <button onClick={()=>{ const n=npcs.find(x=>x.id===npc.id); if(n){setNpcForm({npc:n,...n});setTab("map");} }}
+                    style={{ padding:"3px 8px",borderRadius:10,border:"none",background:npc.is_visible_to_players?"#EAF3DE":"#FEF3E2",color:npc.is_visible_to_players?"#3B6D11":"#854F0B",fontSize:11,fontWeight:500,cursor:"pointer",flexShrink:0 }}>
+                    {npc.is_visible_to_players?"Revealed":"Hidden"}
+                  </button>
+                  <Btn size="sm" onClick={()=>{const n=npcs.find(x=>x.id===npc.id);if(n) setNpcForm({npc:n,...n});}}>Edit</Btn>
+                </div>
+              ))}
             </>}
 
             {libSubTab==="categories" && <>
@@ -1779,6 +2068,8 @@ function App() {
             isGM={isGM}
             onColorChange={chooseColor}
             onSaveDisplayName={saveDisplayName}
+            soundVolume={soundVolume}
+            onVolumeChange={setSoundVolume}
           />
         </div>
       )}
@@ -1789,9 +2080,45 @@ function App() {
         onAddPoint={zId=>{ setZoneForm(null); addPointZoneRef.current=zId; setPlacingMode("addpoint"); setTab("map"); }}
         onMovePoints={zone=>startZonePointEdit(zone)}
         onClose={()=>setZoneForm(null)} />}
-      {poiForm && <POIFormModal form={poiForm} categoryIcons={categoryIcons} onSave={savePOI} onDelete={deletePOI} onDuplicate={duplicatePOI} onClose={()=>setPoiForm(null)} />}
+      {poiForm && <POIFormModal form={poiForm} categoryIcons={categoryIcons} maps={maps} onSave={savePOI} onDelete={deletePOI} onDuplicate={duplicatePOI} onClose={()=>setPoiForm(null)} />}
       {markerForm && <MarkerFormModal form={markerForm} onSave={saveMarker} onEdit={editMarker} onCancel={()=>setMarkerForm(null)} />}
       {annotationForm && <AnnotationModal form={annotationForm} onSave={saveAnnotation} onDelete={deleteAnnotation} onCancel={()=>setAnnotationForm(null)} />}
+
+      {/* Bell — notification history panel */}
+      {showBell && (
+        <div style={{ position:"fixed",top:48,right:8,zIndex:3000,width:Math.min(320,window.innerWidth-16),background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:10,boxShadow:"0 8px 32px rgba(26,16,53,0.25)",overflow:"hidden" }}>
+          <div style={{ display:"flex",alignItems:"center",padding:"10px 14px",borderBottom:`1px solid ${T.border}`,background:T.header }}>
+            <span style={{ fontFamily:T.fHead,fontSize:13,fontWeight:600,color:T.headerFg,flex:1 }}>Notifications</span>
+            <button onClick={()=>setShowBell(false)} style={{ background:"none",border:"none",color:T.headerFg,cursor:"pointer",fontSize:16,padding:0 }}>✕</button>
+          </div>
+          <div style={{ maxHeight:360,overflowY:"auto",padding:"6px 0" }}>
+            {notifLog.length===0 && <p style={{ padding:"10px 14px",color:T.muted,fontSize:13,fontStyle:"italic" }}>No notifications yet.</p>}
+            {notifLog.map(n=>(
+              <div key={n.id} style={{ padding:"8px 14px",borderBottom:`0.5px solid ${T.border}` }}>
+                <div style={{ fontSize:12,fontWeight:500,color:T.ink }}>{n.title||"Notification"}</div>
+                {n.message && <div style={{ fontSize:11,color:T.muted,marginTop:2 }}>{n.message}</div>}
+                <div style={{ fontSize:10,color:T.muted,marginTop:3 }}>{new Date(n.created_at).toLocaleDateString(undefined,{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Toast notifications */}
+      <div style={{ position:"fixed",bottom:16,right:16,zIndex:8000,display:"flex",flexDirection:"column-reverse",gap:8,maxWidth:Math.min(280,window.innerWidth-32),pointerEvents:"none" }}>
+        {toasts.map(t=>(
+          <div key={t.id} style={{ background:T.header,color:T.headerFg,borderRadius:10,padding:"10px 14px",boxShadow:"0 4px 16px rgba(0,0,0,0.35)",border:`1px solid ${T.gold}55`,fontSize:12,display:"flex",gap:8,alignItems:"flex-start",pointerEvents:"all" }}>
+            <span style={{ flex:1,lineHeight:1.4 }}>{t.msg}</span>
+            <button onClick={()=>setToasts(p=>p.filter(x=>x.id!==t.id))} style={{ background:"none",border:"none",color:T.headerFg,cursor:"pointer",padding:0,fontSize:14,flexShrink:0 }}>✕</button>
+          </div>
+        ))}
+      </div>
+
+      {/* NPC form modal */}
+      {npcForm && <NpcFormModal form={npcForm} onSave={saveNPC} onDelete={deleteNPC} onClose={()=>setNpcForm(null)} />}
+
+      {/* Announcement form modal */}
+      {announceForm && <AnnouncementModal form={announceForm} onSave={saveAnnouncement} onClose={()=>setAnnounceForm(null)} />}
 
       {/* Colour picker modal (still shown on first join if no colour set) */}
       {showColorPicker && (
@@ -1909,12 +2236,14 @@ function ZoneFormModal({ form, onSave, onDelete, onAddPoint, onMovePoints, onClo
   );
 }
 
-function POIFormModal({ form, categoryIcons, onSave, onDelete, onDuplicate, onClose }) {
+function POIFormModal({ form, categoryIcons, maps, onSave, onDelete, onDuplicate, onClose }) {
   const [name, setName] = useState(form.poi?.name||"");
   const [description, setDescription] = useState(form.poi?.description||"");
   const [revealed, setRevealed] = useState(form.poi?.revealed||false);
   const [category, setCategory] = useState(form.poi?.category||"other");
   const [size, setSize] = useState(form.poi?.size||"large");
+  const [poiType, setPoiType] = useState(form.poi?.poi_type||"standard");
+  const [linkedMapId, setLinkedMapId] = useState(form.poi?.linked_map_id||"");
   const [iconFile, setIconFile] = useState(null);
   const [iconPreview, setIconPreview] = useState(form.poi?.icon_url||"");
   const [clearIcon, setClearIcon] = useState(false);
@@ -1960,12 +2289,31 @@ function POIFormModal({ form, categoryIcons, onSave, onDelete, onDuplicate, onCl
         </div>
       </Field>
       <Field label="Description"><textarea value={description} onChange={e=>setDescription(e.target.value)} rows={3} style={IS} placeholder="What players see when they tap this POI..." /></Field>
+      <Field label="Type">
+        <div style={{ display:"flex",gap:8 }}>
+          {[["standard","Standard"],["portal","⛩ Portal"]].map(([val,lbl])=>(
+            <button key={val} onClick={()=>setPoiType(val)}
+              style={{ flex:1,padding:"4px 0",borderRadius:8,border:`2px solid ${poiType===val?T.gold:T.border}`,background:poiType===val?`${T.gold}22`:"transparent",cursor:"pointer",fontSize:12,fontWeight:poiType===val?600:400,color:poiType===val?T.goldDim:T.muted }}>
+              {lbl}
+            </button>
+          ))}
+        </div>
+        {poiType==="portal" && (
+          <div style={{ marginTop:8 }}>
+            <select value={linkedMapId} onChange={e=>setLinkedMapId(e.target.value)} style={{ ...IS,marginTop:0 }}>
+              <option value="">— Select destination map —</option>
+              {(maps||[]).map(m=><option key={m.id} value={m.id}>{m.name}{m.is_main?" (Main)":""}</option>)}
+            </select>
+            <div style={{ fontSize:11,color:T.muted,marginTop:3 }}>Players who tap this POI will travel to the selected map.</div>
+          </div>
+        )}
+      </Field>
       <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:16 }}>
         <input type="checkbox" checked={revealed} onChange={e=>setRevealed(e.target.checked)} id="rev" />
         <label htmlFor="rev" style={{ fontSize:13 }}>Revealed to players</label>
       </div>
       <div style={{ display:"flex",gap:8,flexWrap:"wrap" }}>
-        <Btn variant="primary" onClick={()=>onSave({...form,name,description,revealed,category,size,clearIcon},iconFile)} style={{ flex:1 }}>Save</Btn>
+        <Btn variant="primary" onClick={()=>onSave({...form,name,description,revealed,category,size,clearIcon,poi_type:poiType,linked_map_id:linkedMapId||null},iconFile)} style={{ flex:1 }}>Save</Btn>
         {form.poi&&<Btn onClick={()=>onDuplicate(form.poi)}>Duplicate</Btn>}
         {form.poi&&<Btn variant="danger" onClick={()=>onDelete(form.poi.id)}>Delete</Btn>}
       </div>
@@ -2001,6 +2349,102 @@ function AnnotationModal({ form, onSave, onDelete, onCancel }) {
         <Btn variant="primary" onClick={()=>onSave(form,form.ann?.type||"text",content)} style={{ flex:1 }}>Save</Btn>
         {form.ann&&<Btn variant="danger" onClick={()=>onDelete(form.ann.id)}>Delete</Btn>}
         <Btn onClick={onCancel}>Cancel</Btn>
+      </div>
+    </Modal>
+  );
+}
+
+const NPC_STATUSES = ["Alive","Dead","Missing","Hidden"];
+const NPC_COLORS = ["#C9A84C","#E74C3C","#3498DB","#2ECC71","#9B59B6","#E67E22","#1ABC9C","#E91E63","#FFFFFF","#555555"];
+
+function NpcFormModal({ form, onSave, onDelete, onClose }) {
+  const isEdit = !!form.npc;
+  const [name, setName] = useState(form.name||"");
+  const [status, setStatus] = useState(form.status||"Alive");
+  const [borderColor, setBorderColor] = useState(form.border_color||"#C9A84C");
+  const [auraRadius, setAuraRadius] = useState(form.aura_radius??80);
+  const [showName, setShowName] = useState(form.show_name??true);
+  const [showStatus, setShowStatus] = useState(form.show_status??true);
+  const [showAura, setShowAura] = useState(form.show_aura??true);
+  const [visToPlayers, setVisToPlayers] = useState(form.is_visible_to_players??false);
+  return (
+    <Modal title={isEdit?"Edit NPC":"New NPC"} onClose={onClose} width={400}>
+      <Field label="Name">
+        <input value={name} onChange={e=>setName(e.target.value)} style={IS} placeholder="e.g. The Hooded Stranger" autoFocus />
+      </Field>
+      <Field label="Status">
+        <div style={{ display:"flex",gap:6,flexWrap:"wrap" }}>
+          {NPC_STATUSES.map(s=>(
+            <button key={s} onClick={()=>setStatus(s)}
+              style={{ padding:"3px 10px",fontSize:12,borderRadius:20,border:`2px solid ${s==="Alive"?"#2ECC71":s==="Dead"?"#E74C3C":s==="Missing"?"#E67E22":"#888"}`,background:status===s?(s==="Alive"?"#2ECC71":s==="Dead"?"#E74C3C":s==="Missing"?"#E67E22":"#888"):"transparent",color:status===s?"#fff":"#333",cursor:"pointer",fontWeight:status===s?600:400 }}>
+              {s}
+            </button>
+          ))}
+        </div>
+      </Field>
+      <Field label="Border Colour">
+        <div style={{ display:"flex",flexWrap:"wrap",gap:6,alignItems:"center" }}>
+          {NPC_COLORS.map(c=>(
+            <div key={c} onClick={()=>setBorderColor(c)}
+              style={{ width:24,height:24,borderRadius:"50%",background:c,border:borderColor===c?"3px solid #3C3489":"2px solid #ddd",cursor:"pointer",boxSizing:"border-box" }} />
+          ))}
+          <input type="color" value={borderColor} onChange={e=>setBorderColor(e.target.value)} style={{ width:24,height:24,padding:1,border:"2px solid #ddd",borderRadius:"50%",cursor:"pointer",background:"none" }} />
+        </div>
+        <div style={{ marginTop:8,display:"flex",alignItems:"center",gap:8 }}>
+          <div style={{ width:36,height:36,borderRadius:"50%",background:`${borderColor}33`,border:`2px solid ${borderColor}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16 }}>👤</div>
+          <span style={{ fontSize:11,color:"#888" }}>Preview</span>
+        </div>
+      </Field>
+      <Field label={`Aura Radius: ${auraRadius}px`}>
+        <input type="range" min={20} max={300} step={5} value={auraRadius} onChange={e=>setAuraRadius(Number(e.target.value))} style={{ width:"100%" }} />
+        <div style={{ fontSize:11,color:"#888",marginTop:2 }}>Shows the uncertainty range around the NPC's location.</div>
+      </Field>
+      <div style={{ background:T.surface,borderRadius:8,padding:"10px 12px",marginBottom:12,border:`1px solid ${T.border}` }}>
+        <div style={{ fontSize:12,fontWeight:500,marginBottom:8,color:T.ink }}>Visibility to Players</div>
+        <div style={{ display:"flex",flexDirection:"column",gap:6 }}>
+          {[["show_name","Show name (hides as \"???\")"],["show_status","Show status"],["show_aura","Show aura radius"]].map(([key,label])=>{
+            const val = key==="show_name"?showName:key==="show_status"?showStatus:showAura;
+            const set = key==="show_name"?setShowName:key==="show_status"?setShowStatus:setShowAura;
+            return (
+              <label key={key} style={{ display:"flex",alignItems:"center",gap:8,fontSize:12,cursor:"pointer" }}>
+                <input type="checkbox" checked={val} onChange={e=>set(e.target.checked)} />
+                {label}
+              </label>
+            );
+          })}
+          <label style={{ display:"flex",alignItems:"center",gap:8,fontSize:12,cursor:"pointer",marginTop:4,paddingTop:8,borderTop:`0.5px solid ${T.border}` }}>
+            <input type="checkbox" checked={visToPlayers} onChange={e=>setVisToPlayers(e.target.checked)} />
+            <span style={{ fontWeight:500 }}>Visible to players</span>
+          </label>
+        </div>
+      </div>
+      <div style={{ display:"flex",gap:8,flexWrap:"wrap" }}>
+        <Btn variant="primary" style={{ flex:1 }} onClick={()=>onSave({...form,name,status,border_color:borderColor,aura_radius:auraRadius,show_name:showName,show_status:showStatus,show_aura:showAura,is_visible_to_players:visToPlayers})}>Save</Btn>
+        {isEdit && <Btn variant="danger" onClick={()=>onDelete(form.npc.id)}>Delete</Btn>}
+      </div>
+    </Modal>
+  );
+}
+
+function AnnouncementModal({ form, onSave, onClose }) {
+  const isEdit = !!form.announcement;
+  const [title, setTitle] = useState(form.title||"");
+  const [subHeader, setSubHeader] = useState(form.sub_header||"");
+  const [message, setMessage] = useState(form.message||"");
+  return (
+    <Modal title={isEdit?"Edit Announcement":"New Announcement"} onClose={onClose} width={420}>
+      <Field label="Title">
+        <input value={title} onChange={e=>setTitle(e.target.value)} style={IS} placeholder="e.g. Session Update" autoFocus />
+      </Field>
+      <Field label="Sub Header (optional)">
+        <input value={subHeader} onChange={e=>setSubHeader(e.target.value)} style={IS} placeholder="e.g. An urgent missive from the crown..." />
+      </Field>
+      <Field label="Message (optional)">
+        <textarea value={message} onChange={e=>setMessage(e.target.value)} rows={5} style={{ ...IS,resize:"vertical",lineHeight:1.6 }} placeholder="Write your announcement here..." />
+      </Field>
+      <div style={{ display:"flex",gap:8 }}>
+        <Btn variant="primary" style={{ flex:1 }} onClick={()=>onSave({...form,title,sub_header:subHeader,message})}>{isEdit?"Save Changes":"Broadcast"}</Btn>
+        <Btn onClick={onClose}>Cancel</Btn>
       </div>
     </Modal>
   );
