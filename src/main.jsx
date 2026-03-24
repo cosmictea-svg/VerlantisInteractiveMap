@@ -84,12 +84,11 @@ function createRealtimeChannel(token, campaignId, handlers) {
   const wsUrl = `${SUPA_URL.replace("https://", "wss://")}/realtime/v1/websocket?apikey=${SUPA_KEY}&vsn=1.0.0`;
   let ws, heartbeatTimer, reconnectTimer;
   let closed = false;
-
   function connect() {
     if (closed) return;
     ws = new WebSocket(wsUrl);
     ws.onopen = () => {
-      ["pois", "markers", "annotations"].forEach((table, i) => {
+      ["pois","markers","annotations"].forEach((table, i) => {
         ws.send(JSON.stringify({
           topic: `realtime:public:${table}:campaign_id=eq.${campaignId}`,
           event: "phx_join",
@@ -139,6 +138,14 @@ const POI_SIZES = [
   { id: "medium", label: "M", scale: 0.66 },
   { id: "small",  label: "S", scale: 0.45 },
 ];
+
+// Preset colours players can choose from
+const PLAYER_COLORS = [
+  "#E74C3C","#E67E22","#F1C40F","#2ECC71","#1ABC9C",
+  "#3498DB","#9B59B6","#E91E63","#FF5722","#00BCD4",
+  "#8BC34A","#FF9800","#607D8B","#795548","#FFFFFF",
+];
+
 function getCatColor(id) { return CATEGORIES.find(c => c.id === id)?.color || "#95A5A6"; }
 function getCatLabel(id) { return CATEGORIES.find(c => c.id === id)?.label || "Others"; }
 function getSizeScale(id) { return POI_SIZES.find(s => s.id === id)?.scale ?? 1.0; }
@@ -181,16 +188,36 @@ function readFile(file) {
   return new Promise(res => { const r = new FileReader(); r.onload = e => res(e.target.result); r.readAsDataURL(file); });
 }
 
+// ── Marker Pin ────────────────────────────────────────────────────────────────
+function MarkerPin({ marker, scale, isOwner, isGM, onTap, onDragStart }) {
+  const color = marker.player_color || "#378ADD";
+  const initial = (marker.user_name || "?")[0].toUpperCase();
+  const size = Math.max(20, 24 / scale);
+  const fontSize = Math.max(8, 11 / scale);
+
+  return (
+    <div
+      onMouseDown={e => { if (isOwner) { e.stopPropagation(); onDragStart(e, marker); } }}
+      onTouchStart={e => { if (isOwner) { e.stopPropagation(); onDragStart(e, marker); } }}
+      onClick={e => { e.stopPropagation(); onTap(marker); }}
+      style={{ position: "absolute", left: marker.x - size/2, top: marker.y - size, width: size, height: size, cursor: isOwner ? "grab" : "pointer", zIndex: 25 }}
+    >
+      {/* Teardrop shape */}
+      <div style={{ width: size, height: size, borderRadius: "50% 50% 50% 0", transform: "rotate(-45deg)", background: color, border: `${Math.max(1.5, 2/scale)}px solid white`, boxSizing: "border-box", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <span style={{ transform: "rotate(45deg)", color: "white", fontWeight: 700, fontSize, lineHeight: 1, textShadow: "0 0 2px rgba(0,0,0,0.5)" }}>{initial}</span>
+      </div>
+    </div>
+  );
+}
+
 // ── POI Pin ───────────────────────────────────────────────────────────────────
 function POIPin({ poi, scale, isGM, onTap, onDragStart, resolvedIconUrl }) {
   const ss = getSizeScale(poi.size);
   const size = Math.max(28 * ss, (36 / scale) * ss);
   const bw = Math.max(1.5, 3 / scale);
   const cc = getCatColor(poi.category);
-  // Dashed border = hidden, solid = revealed
   const borderStyle = (isGM && !poi.revealed) ? "dashed" : "solid";
   const iconUrl = poi.icon_url || resolvedIconUrl || "";
-
   return (
     <div
       onMouseDown={e => { if (isGM) { e.stopPropagation(); onDragStart(e, poi); } }}
@@ -216,20 +243,24 @@ function App() {
   const [campaigns, setCampaigns] = useState([]);
   const [activeCampaign, setActiveCampaign] = useState(null);
   const [memberRole, setMemberRole] = useState(null);
+  const [myColor, setMyColor] = useState(null);
+  const [members, setMembers] = useState([]); // all campaign members with colors
   const [maps, setMaps] = useState([]);
   const [activeMapId, setActiveMapId] = useState(null);
   const [mapStack, setMapStack] = useState([]);
   const [pois, setPois] = useState([]);
   const [markers, setMarkers] = useState([]);
   const [annotations, setAnnotations] = useState([]);
-  const [categoryIcons, setCategoryIcons] = useState({}); // { category_id: icon_url }
+  const [categoryIcons, setCategoryIcons] = useState({});
   const [tab, setTab] = useState("map");
-  const [libSubTab, setLibSubTab] = useState("maps"); // "maps" | "pois" | "categories"
+  const [libSubTab, setLibSubTab] = useState("maps");
   const [placingMode, setPlacingMode] = useState(null);
   const [poiForm, setPoiForm] = useState(null);
-  const [markerForm, setMarkerForm] = useState(null);
+  const [markerForm, setMarkerForm] = useState(null); // { x, y } | { marker } for edit
   const [annotationForm, setAnnotationForm] = useState(null);
   const [openPOICard, setOpenPOICard] = useState(null);
+  const [openMarkerCard, setOpenMarkerCard] = useState(null);
+  const [showColorPicker, setShowColorPicker] = useState(false);
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
   const [isDragging, setIsDragging] = useState(false);
   const [imgSize, setImgSize] = useState({ w: 0, h: 0 });
@@ -239,6 +270,7 @@ function App() {
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [newCampaignName, setNewCampaignName] = useState("");
   const [joinCode, setJoinCode] = useState("");
+  const [markerLimit, setMarkerLimit] = useState(10);
   const [error, setError] = useState("");
 
   const mapRef = useRef(null);
@@ -248,6 +280,7 @@ function App() {
   const imgSizeRef = useRef(imgSize);
   const scrollSensRef = useRef(scrollSens);
   const poiDragState = useRef(null);
+  const markerDragState = useRef(null);
   const realtimeRef = useRef(null);
 
   useEffect(() => { placingRef.current = placingMode; }, [placingMode]);
@@ -255,7 +288,7 @@ function App() {
   useEffect(() => { imgSizeRef.current = imgSize; }, [imgSize]);
   useEffect(() => { scrollSensRef.current = scrollSens; }, [scrollSens]);
 
-  // ── Auth init ──
+  // ── Auth ──
   useEffect(() => {
     async function init() {
       let sess = parseHashSession();
@@ -298,7 +331,7 @@ function App() {
       },
       onMarker: (payload) => {
         if (payload.eventType === "INSERT") setMarkers(m => m.find(x => x.id === payload.new.id) ? m : [...m, payload.new]);
-        if (payload.eventType === "UPDATE") setMarkers(m => m.map(x => x.id === payload.new.id ? payload.new : x));
+        if (payload.eventType === "UPDATE") setMarkers(m => m.map(x => x.id === payload.new.id ? { ...payload.new, player_color: payload.new.player_color } : x));
         if (payload.eventType === "DELETE") setMarkers(m => m.filter(x => x.id !== (payload.old?.id || payload.old_record?.id)));
       },
       onAnnotation: (payload) => {
@@ -312,30 +345,61 @@ function App() {
 
   async function loadCampaigns() {
     try {
-      const members = await dbSelect(session.access_token, "campaign_members", `user_id=eq.${user.id}&select=campaign_id,role`);
-      if (!members.length) { setCampaigns([]); return; }
-      const ids = members.map(m => m.campaign_id).join(",");
+      const memberData = await dbSelect(session.access_token, "campaign_members", `user_id=eq.${user.id}&select=campaign_id,role,player_color`);
+      if (!memberData.length) { setCampaigns([]); return; }
+      const ids = memberData.map(m => m.campaign_id).join(",");
       const camps = await dbSelect(session.access_token, "campaigns", `id=in.(${ids})`);
-      setCampaigns(camps.map(c => ({ ...c, myRole: members.find(m => m.campaign_id === c.id)?.role })));
+      setCampaigns(camps.map(c => ({ ...c, myRole: memberData.find(m => m.campaign_id === c.id)?.role, myColor: memberData.find(m => m.campaign_id === c.id)?.player_color })));
     } catch(e) { setError(e.message); }
   }
 
   async function loadCampaignData(camp, role) {
     setActiveCampaign(camp); setMemberRole(role);
+    setMarkerLimit(camp.marker_limit || 10);
     try {
-      const [mapsData, poisData, markersData, annsData, catIconsData] = await Promise.all([
+      const [mapsData, poisData, markersData, annsData, catIconsData, membersData] = await Promise.all([
         dbSelect(session.access_token, "maps", `campaign_id=eq.${camp.id}&order=created_at`),
         dbSelect(session.access_token, "pois", `campaign_id=eq.${camp.id}`),
         dbSelect(session.access_token, "markers", `campaign_id=eq.${camp.id}`),
         dbSelect(session.access_token, "annotations", `campaign_id=eq.${camp.id}`),
         dbSelect(session.access_token, "category_icons", `campaign_id=eq.${camp.id}`),
+        dbSelect(session.access_token, "campaign_members", `campaign_id=eq.${camp.id}&select=user_id,role,player_color,joined_at`),
       ]);
       setMaps(mapsData); setPois(poisData); setMarkers(markersData); setAnnotations(annsData);
+      setMembers(membersData);
       const catMap = {};
       catIconsData.forEach(ci => { catMap[ci.category_id] = ci.icon_url; });
       setCategoryIcons(catMap);
+      const me = membersData.find(m => m.user_id === user.id);
+      setMyColor(me?.player_color || null);
       const main = mapsData.find(m => m.is_main) || mapsData[0];
       if (main) setActiveMapId(main.id);
+      // Show color picker if player has no color yet
+      if (!me?.player_color && role !== "gm") setShowColorPicker(true);
+    } catch(e) { setError(e.message); }
+  }
+
+  async function chooseColor(color) {
+    // Check if color is taken
+    const taken = members.find(m => m.player_color === color && m.user_id !== user.id);
+    if (taken) { setError("That colour is already taken by another player. Please choose a different one."); return; }
+    try {
+      await fetch(`${SUPA_URL}/rest/v1/campaign_members?campaign_id=eq.${activeCampaign.id}&user_id=eq.${user.id}`, {
+        method: "PATCH", headers: hdrs(session.access_token), body: JSON.stringify({ player_color: color })
+      });
+      setMyColor(color);
+      setMembers(prev => prev.map(m => m.user_id === user.id ? { ...m, player_color: color } : m));
+      setShowColorPicker(false);
+      setError("");
+    } catch(e) { setError(e.message); }
+  }
+
+  async function updateMarkerLimit(limit) {
+    try {
+      await fetch(`${SUPA_URL}/rest/v1/campaigns?id=eq.${activeCampaign.id}`, {
+        method: "PATCH", headers: hdrs(session.access_token), body: JSON.stringify({ marker_limit: limit })
+      });
+      setMarkerLimit(limit);
     } catch(e) { setError(e.message); }
   }
 
@@ -365,6 +429,8 @@ function App() {
   const mapPOIs = pois.filter(p => p.map_id === activeMapId && (isGM || p.revealed));
   const mapMarkers = markers.filter(m => m.map_id === activeMapId);
   const mapAnnotations = annotations.filter(a => a.map_id === activeMapId && (isGM || a.visible));
+  const myMarkers = markers.filter(m => m.map_id === activeMapId && m.user_id === user?.id);
+  const takenColors = members.filter(m => m.user_id !== user?.id && m.player_color).map(m => m.player_color);
 
   function fitToContainer(iw, ih) {
     const rect = mapRef.current?.getBoundingClientRect();
@@ -390,6 +456,7 @@ function App() {
     return { x: (cx - rect.left - t.x) / t.scale, y: (cy - rect.top - t.y) / t.scale };
   }
 
+  // ── POI drag ──
   function startPOIDrag(e, poi) {
     e.stopPropagation();
     const startCx = e.touches ? e.touches[0].clientX : e.clientX;
@@ -425,8 +492,45 @@ function App() {
     window.addEventListener("touchmove", onMove, { passive: true }); window.addEventListener("touchend", onUp);
   }
 
+  // ── Marker drag (owner only) ──
+  function startMarkerDrag(e, marker) {
+    e.stopPropagation();
+    const startCx = e.touches ? e.touches[0].clientX : e.clientX;
+    const startCy = e.touches ? e.touches[0].clientY : e.clientY;
+    const scaleAtStart = transformRef.current.scale;
+    markerDragState.current = { markerId: marker.id, originX: marker.x, originY: marker.y, startCx, startCy, scaleAtStart, moved: false, mapX: marker.x, mapY: marker.y };
+    function onMove(ev) {
+      if (!markerDragState.current) return;
+      const cx = ev.touches ? ev.touches[0].clientX : ev.clientX;
+      const cy = ev.touches ? ev.touches[0].clientY : ev.clientY;
+      const dx = cx - markerDragState.current.startCx, dy = cy - markerDragState.current.startCy;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) markerDragState.current.moved = true;
+      const nx = markerDragState.current.originX + dx / markerDragState.current.scaleAtStart;
+      const ny = markerDragState.current.originY + dy / markerDragState.current.scaleAtStart;
+      markerDragState.current.mapX = nx; markerDragState.current.mapY = ny;
+      setMarkers(prev => prev.map(m => m.id === markerDragState.current?.markerId ? { ...m, x: nx, y: ny } : m));
+    }
+    function onUp() {
+      if (!markerDragState.current) return;
+      const { markerId, mapX, mapY, moved, originX, originY } = markerDragState.current;
+      markerDragState.current = null;
+      window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("touchmove", onMove); window.removeEventListener("touchend", onUp);
+      if (!moved) {
+        // Tap — open card, don't delete
+        setMarkers(prev => prev.map(m => m.id === markerId ? { ...m, x: originX, y: originY } : m));
+        setOpenMarkerCard(openMarkerCard === markerId ? null : markerId);
+      } else {
+        dbUpdate(session.access_token, "markers", markerId, { x: mapX, y: mapY }).catch(console.error);
+      }
+    }
+    window.addEventListener("mousemove", onMove); window.addEventListener("mouseup", onUp);
+    window.addEventListener("touchmove", onMove, { passive: true }); window.addEventListener("touchend", onUp);
+  }
+
+  // ── Map pan ──
   function onPointerDown(e) {
-    if (poiDragState.current) return;
+    if (poiDragState.current || markerDragState.current) return;
     if (e.touches && e.touches.length === 2) return;
     if (e.button !== undefined && e.button !== 0) return;
     const cx = e.touches ? e.touches[0].clientX : e.clientX;
@@ -455,7 +559,10 @@ function App() {
         const coords = toMapCoords(cx2, cy2);
         const mode = placingRef.current; setPlacingMode(null);
         if (mode === "poi") setPoiForm({ poi: null, x: coords.x, y: coords.y, name: "", description: "", revealed: false, category: "other", size: "large" });
-        if (mode === "marker") setMarkerForm({ x: coords.x, y: coords.y });
+        if (mode === "marker") {
+          if (!myColor && !isGM) { setShowColorPicker(true); setPlacingMode(null); return; }
+          setMarkerForm({ x: coords.x, y: coords.y });
+        }
         if (mode === "annotation") setAnnotationForm({ ann: null, x: coords.x, y: coords.y });
       }
     }
@@ -463,11 +570,10 @@ function App() {
     window.addEventListener("touchmove", onMove, { passive: true }); window.addEventListener("touchend", onUp);
   }
 
-  // Attach wheel + pinch once map is ready
+  // ── Zoom / pinch ──
   useEffect(() => {
     if (tab !== "map") return;
-    let wheelCleanup = null, pinchCleanup = null;
-    let attempts = 0;
+    let wheelCleanup = null, pinchCleanup = null, attempts = 0;
     function attachAll() {
       const el = mapRef.current;
       if (!el) { if (attempts++ < 30) { setTimeout(attachAll, 100); return; } return; }
@@ -477,11 +583,7 @@ function App() {
         const factor = 1 + (e.deltaY < 0 ? 1 : -1) * 0.08 * sens * 10;
         const rect = el.getBoundingClientRect();
         const mx = e.clientX - rect.left, my = e.clientY - rect.top;
-        setTransform(t => {
-          const ns = Math.min(8, Math.max(0.1, t.scale * factor));
-          const sr = ns / t.scale;
-          return clamp({ scale: ns, x: mx - sr * (mx - t.x), y: my - sr * (my - t.y) }, rect.width, rect.height, imgSizeRef.current.w, imgSizeRef.current.h);
-        });
+        setTransform(t => { const ns = Math.min(8, Math.max(0.1, t.scale * factor)); const sr = ns / t.scale; return clamp({ scale: ns, x: mx - sr * (mx - t.x), y: my - sr * (my - t.y) }, rect.width, rect.height, imgSizeRef.current.w, imgSizeRef.current.h); });
       }
       el.addEventListener("wheel", onWheel, { passive: false });
       wheelCleanup = () => el.removeEventListener("wheel", onWheel);
@@ -504,22 +606,14 @@ function App() {
     return () => { clearTimeout(t); wheelCleanup && wheelCleanup(); pinchCleanup && pinchCleanup(); };
   }, [tab, activeCampaign]);
 
-  // CRUD
+  // ── CRUD ──
   async function savePOI(form, iconFile) {
     let icon_url = form.clearIcon ? "" : (form.poi?.icon_url || "");
-    if (iconFile) {
-      try { icon_url = await uploadToStorage(session.access_token, iconFile); }
-      catch { icon_url = await readFile(iconFile); }
-    }
+    if (iconFile) { try { icon_url = await uploadToStorage(session.access_token, iconFile); } catch { icon_url = await readFile(iconFile); } }
     const body = { name: form.name||"Unnamed POI", description: form.description||"", revealed: form.revealed, category: form.category||"other", size: form.size||"large", icon_url };
     try {
-      if (form.poi) {
-        await dbUpdate(session.access_token, "pois", form.poi.id, body);
-        setPois(prev => prev.map(p => p.id === form.poi.id ? { ...p, ...body } : p));
-      } else {
-        const [np] = await dbInsert(session.access_token, "pois", { ...body, campaign_id: activeCampaign.id, map_id: activeMapId, x: form.x, y: form.y });
-        setPois(prev => [...prev, np]);
-      }
+      if (form.poi) { await dbUpdate(session.access_token, "pois", form.poi.id, body); setPois(prev => prev.map(p => p.id === form.poi.id ? { ...p, ...body } : p)); }
+      else { const [np] = await dbInsert(session.access_token, "pois", { ...body, campaign_id: activeCampaign.id, map_id: activeMapId, x: form.x, y: form.y }); setPois(prev => [...prev, np]); }
       setPoiForm(null);
     } catch(e) { setError(e.message); }
   }
@@ -534,6 +628,29 @@ function App() {
   async function togglePOIReveal(id, current) {
     try { await dbUpdate(session.access_token, "pois", id, { revealed: !current }); setPois(prev=>prev.map(p=>p.id===id?{...p,revealed:!current}:p)); } catch(e) { setError(e.message); }
   }
+  async function saveMarker(label, description) {
+    if (!markerForm || !("x" in markerForm)) return;
+    if (myMarkers.length >= markerLimit && !isGM) { setError(`Marker limit reached (${markerLimit}). Ask your GM to increase it.`); return; }
+    try {
+      const [nm] = await dbInsert(session.access_token, "markers", {
+        campaign_id: activeCampaign.id, map_id: activeMapId, user_id: user.id,
+        user_name: user.user_metadata?.full_name||user.email,
+        player_color: myColor || "#378ADD", label, description: description||"",
+        x: markerForm.x, y: markerForm.y
+      });
+      setMarkers(prev=>[...prev,nm]); setMarkerForm(null);
+    } catch(e) { setError(e.message); }
+  }
+  async function editMarker(marker, label, description) {
+    try {
+      await dbUpdate(session.access_token, "markers", marker.id, { label, description });
+      setMarkers(prev=>prev.map(m=>m.id===marker.id?{...m,label,description}:m));
+      setMarkerForm(null);
+    } catch(e) { setError(e.message); }
+  }
+  async function deleteMarker(id) {
+    try { await dbDelete(session.access_token, "markers", id); setMarkers(prev=>prev.filter(m=>m.id!==id)); setOpenMarkerCard(null); } catch(e) { setError(e.message); }
+  }
   async function saveCategoryIcon(catId, file) {
     try {
       const url = await uploadToStorage(session.access_token, file);
@@ -547,25 +664,10 @@ function App() {
       setCategoryIcons(prev => { const n = {...prev}; delete n[catId]; return n; });
     } catch(e) { setError(e.message); }
   }
-  async function saveMarker(label) {
-    if (!markerForm) return;
-    try {
-      const [nm] = await dbInsert(session.access_token, "markers", { campaign_id: activeCampaign.id, map_id: activeMapId, user_id: user.id, user_name: user.user_metadata?.full_name||user.email, label, x: markerForm.x, y: markerForm.y });
-      setMarkers(prev=>[...prev,nm]); setMarkerForm(null);
-    } catch(e) { setError(e.message); }
-  }
-  async function deleteMarker(id) {
-    try { await dbDelete(session.access_token, "markers", id); setMarkers(prev=>prev.filter(m=>m.id!==id)); } catch(e) { setError(e.message); }
-  }
   async function saveAnnotation(form, type, content) {
     try {
-      if (form.ann) {
-        await dbUpdate(session.access_token, "annotations", form.ann.id, { type, content });
-        setAnnotations(prev=>prev.map(a=>a.id===form.ann.id?{...a,type,content}:a));
-      } else {
-        const [na] = await dbInsert(session.access_token, "annotations", { campaign_id: activeCampaign.id, map_id: activeMapId, type, content, visible: false, x: form.x, y: form.y });
-        setAnnotations(prev=>[...prev,na]);
-      }
+      if (form.ann) { await dbUpdate(session.access_token, "annotations", form.ann.id, { type, content }); setAnnotations(prev=>prev.map(a=>a.id===form.ann.id?{...a,type,content}:a)); }
+      else { const [na] = await dbInsert(session.access_token, "annotations", { campaign_id: activeCampaign.id, map_id: activeMapId, type, content, visible: false, x: form.x, y: form.y }); setAnnotations(prev=>[...prev,na]); }
       setAnnotationForm(null);
     } catch(e) { setError(e.message); }
   }
@@ -583,39 +685,34 @@ function App() {
     } catch(e) { setError(e.message); }
   }
   async function setMainMap(id) {
-    try {
-      for (const m of maps) await dbUpdate(session.access_token, "maps", m.id, { is_main: m.id===id });
-      setMaps(prev=>prev.map(m=>({...m,is_main:m.id===id})));
-    } catch(e) { setError(e.message); }
+    try { for (const m of maps) await dbUpdate(session.access_token, "maps", m.id, { is_main: m.id===id }); setMaps(prev=>prev.map(m=>({...m,is_main:m.id===id}))); } catch(e) { setError(e.message); }
   }
   async function deleteMap(id) {
     if (!window.confirm("Delete this map?")) return;
-    try {
-      await dbDelete(session.access_token, "maps", id);
-      const remaining = maps.filter(m=>m.id!==id); setMaps(remaining);
-      if (activeMapId===id) setActiveMapId(remaining[0]?.id||null);
-    } catch(e) { setError(e.message); }
+    try { await dbDelete(session.access_token, "maps", id); const remaining = maps.filter(m=>m.id!==id); setMaps(remaining); if (activeMapId===id) setActiveMapId(remaining[0]?.id||null); } catch(e) { setError(e.message); }
   }
   function goBack() { const prev=mapStack[mapStack.length-1]; setMapStack(s=>s.slice(0,-1)); setActiveMapId(prev||null); setTransform({x:0,y:0,scale:1}); setImgSize({w:0,h:0}); }
 
+  // Card positions
   const openPOI = mapPOIs.find(p=>p.id===openPOICard);
-  const poiCardPos = openPOI ? (() => {
-    const rect=getContainerRect();
-    const sx=openPOI.x*transform.scale+transform.x, sy=openPOI.y*transform.scale+transform.y;
-    const cardW=210,cardH=240,pad=8;
-    let left=sx+16,top=sy-cardH/2;
-    if(left+cardW>rect.width-pad) left=sx-cardW-16;
-    left=Math.max(pad,Math.min(rect.width-cardW-pad,left));
-    top=Math.max(pad,Math.min(rect.height-cardH-pad,top));
-    return {left,top,cardW};
-  })() : null;
+  const openMarker = mapMarkers.find(m=>m.id===openMarkerCard);
 
+  function getCardPos(x, y) {
+    const rect = getContainerRect();
+    const sx = x * transform.scale + transform.x, sy = y * transform.scale + transform.y;
+    const cardW = 210, cardH = 200, pad = 8;
+    let left = sx + 16, top = sy - cardH / 2;
+    if (left + cardW > rect.width - pad) left = sx - cardW - 16;
+    left = Math.max(pad, Math.min(rect.width - cardW - pad, left));
+    top = Math.max(pad, Math.min(rect.height - cardH - pad, top));
+    return { left, top, cardW };
+  }
+
+  const poiCardPos = openPOI ? getCardPos(openPOI.x, openPOI.y) : null;
+  const markerCardPos = openMarker ? getCardPos(openMarker.x, openMarker.y) : null;
   const sortedLibPOIs = [...pois].sort((a,b)=>libSort==="name"?(a.name||"").localeCompare(b.name||""):(a.category||"").localeCompare(b.category||""));
   const tabs = ["map",...(isGM?["library","overlays"]:[])];
-
-  // Build version — injected by vite
-  const buildVersion = (typeof __BUILD_DATE__ !== "undefined" && typeof __COMMIT__ !== "undefined")
-    ? `v${__BUILD_DATE__}-${__COMMIT__}` : "vdev";
+  const buildVersion = (typeof __BUILD_DATE__ !== "undefined" && typeof __COMMIT__ !== "undefined") ? `v${__BUILD_DATE__}-${__COMMIT__}` : "vdev";
 
   if (loading) return <div style={{ display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",fontFamily:"sans-serif",color:"#888",fontSize:16 }}>Loading...</div>;
 
@@ -668,14 +765,20 @@ function App() {
   return (
     <div style={{ fontFamily:"sans-serif",fontSize:14,color:"#111",display:"flex",flexDirection:"column",height:"100vh",background:"#fff" }}>
       {/* Header */}
-      <div style={{ display:"flex",alignItems:"center",gap:8,padding:"8px 14px",borderBottom:"0.5px solid #ddd",flexWrap:"wrap",background:"#fff" }}>
+      <div style={{ display:"flex",alignItems:"center",gap:8,padding:"8px 14px",borderBottom:"0.5px solid #ddd",background:"#fff",flexWrap:"wrap" }}>
         <button onClick={()=>{setActiveCampaign(null);if(realtimeRef.current)realtimeRef.current.unsubscribe();}} style={{ background:"none",border:"none",cursor:"pointer",fontSize:18,padding:0,color:"#555" }}>←</button>
         <span style={{ fontWeight:500,fontSize:14,flex:1 }}>{activeCampaign.name}</span>
         {mapStack.length>0 && <Btn size="sm" onClick={goBack}>↩ Back</Btn>}
         <span style={{ fontSize:11,padding:"2px 8px",borderRadius:20,background:isGM?"#EAF3DE":"#E6F1FB",color:isGM?"#3B6D11":"#185FA5",fontWeight:500 }}>{isGM?"GM":"Player"}</span>
+        {/* Player colour dot */}
+        {!isGM && (
+          <div onClick={()=>setShowColorPicker(true)} title="Change your colour"
+            style={{ width:18,height:18,borderRadius:"50%",background:myColor||"#ccc",border:"2px solid #aaa",cursor:"pointer",flexShrink:0 }} />
+        )}
         <span style={{ fontSize:11,color:"#888",maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{user.user_metadata?.full_name||user.email}</span>
         <span style={{ fontSize:10,color:"#bbb",whiteSpace:"nowrap" }}>{buildVersion}</span>
       </div>
+
       {error && <div style={{ background:"#fee",color:"#A32D2D",padding:"5px 14px",fontSize:12 }}>{error}<button onClick={()=>setError("")} style={{ marginLeft:8,border:"none",background:"none",cursor:"pointer" }}>✕</button></div>}
       {isGM && <div style={{ padding:"3px 14px",background:"#f0f0ff",fontSize:11,color:"#555",borderBottom:"0.5px solid #ddd" }}>Campaign ID for players: <strong>{activeCampaign.id}</strong></div>}
 
@@ -694,7 +797,12 @@ function App() {
               <Btn size="sm" onClick={()=>setPlacingMode(p=>p==="poi"?null:"poi")} style={{ background:placingMode==="poi"?"#EAF3DE":undefined }}>+ POI</Btn>
               <Btn size="sm" onClick={()=>setPlacingMode(p=>p==="annotation"?null:"annotation")} style={{ background:placingMode==="annotation"?"#EAF3DE":undefined }}>+ Note</Btn>
             </>}
-            <Btn size="sm" onClick={()=>setPlacingMode(p=>p==="marker"?null:"marker")} style={{ background:placingMode==="marker"?"#dce8fa":undefined }}>+ Marker</Btn>
+            <Btn size="sm" onClick={()=>{
+              if (!myColor && !isGM) { setShowColorPicker(true); return; }
+              setPlacingMode(p=>p==="marker"?null:"marker");
+            }} style={{ background:placingMode==="marker"?"#dce8fa":undefined }}>
+              + Marker {!isGM && myMarkers.length >= markerLimit ? `(${myMarkers.length}/${markerLimit} full)` : !isGM ? `(${myMarkers.length}/${markerLimit})` : ""}
+            </Btn>
             <Btn size="sm" onClick={resetView}>Fit</Btn>
             {placingMode && <span style={{ fontSize:11,color:"#185FA5",padding:"2px 8px",background:"#E6F1FB",borderRadius:20 }}>Tap map to place {placingMode}</span>}
           </div>
@@ -703,10 +811,11 @@ function App() {
             <input type="range" min={1} max={10} step={1} value={scrollSens} onChange={e=>setScrollSens(Number(e.target.value))} style={{ flex:1,maxWidth:120 }} />
             <span style={{ fontSize:11,color:"#888",minWidth:12 }}>{scrollSens}</span>
           </div>
+
           <div style={{ flex:1,minHeight:0,position:"relative" }}>
             <div ref={mapRef} style={{ position:"absolute",inset:0,overflow:"hidden",background:"#1a1a2e",cursor:placingMode?"crosshair":isDragging?"grabbing":"grab",touchAction:"none",userSelect:"none" }}
               onMouseDown={onPointerDown} onTouchStart={onPointerDown}
-              onClick={()=>{ if(!dragRef.current.moved) setOpenPOICard(null); }}>
+              onClick={()=>{ if(!dragRef.current.moved){ setOpenPOICard(null); setOpenMarkerCard(null); } }}>
               {!currentMap ? (
                 <div style={{ display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",color:"#aaa",gap:8 }}>
                   <span style={{ fontSize:40 }}>🗺</span>
@@ -717,7 +826,7 @@ function App() {
                   <img src={currentMap.src} alt="map" style={{ display:"block",maxWidth:"none" }} draggable={false} onLoad={onImgLoad} />
                   {mapPOIs.map(p=>(
                     <POIPin key={p.id} poi={p} scale={transform.scale} isGM={isGM}
-                      resolvedIconUrl={categoryIcons[p.category] || ""}
+                      resolvedIconUrl={categoryIcons[p.category]||""}
                       onTap={poi=>{ if(!isGM) setOpenPOICard(openPOICard===poi.id?null:poi.id); }}
                       onDragStart={startPOIDrag} />
                   ))}
@@ -728,27 +837,25 @@ function App() {
                       {isGM && <div style={{ fontSize:10,color:a.visible?"#0F6E56":"#854F0B",marginTop:3 }}>{a.visible?"Visible — tap to hide":"Hidden — tap to show"}</div>}
                     </div>
                   ))}
-                  {mapMarkers.map(m=>(
-                    <div key={m.id} onClick={e=>{e.stopPropagation();if(dragRef.current.moved)return;if(isGM||m.user_id===user.id)deleteMarker(m.id);}}
-                      style={{ position:"absolute",left:m.x-8,top:m.y-20,cursor:"pointer",zIndex:25 }}>
-                      <div style={{ width:16,height:16,background:m.user_id===user.id?"#378ADD":"#E67E22",borderRadius:"50% 50% 50% 0",transform:"rotate(-45deg)",border:"2px solid white" }} />
-                      <div style={{ position:"absolute",top:18,left:-24,fontSize:9,background:"white",padding:"1px 4px",borderRadius:4,whiteSpace:"nowrap",border:"0.5px solid #ccc",color:"#111",maxWidth:80,overflow:"hidden",textOverflow:"ellipsis" }}>
-                        {m.user_name?.split(" ")[0]||"?"}{m.label?`: ${m.label}`:""}
-                      </div>
-                    </div>
-                  ))}
+                  {mapMarkers.map(m=>{
+                    const isOwner = m.user_id === user.id;
+                    return (
+                      <MarkerPin key={m.id} marker={m} scale={transform.scale} isOwner={isOwner} isGM={isGM}
+                        onTap={marker=>{ setOpenMarkerCard(openMarkerCard===marker.id?null:marker.id); }}
+                        onDragStart={isOwner ? startMarkerDrag : ()=>{}} />
+                    );
+                  })}
                 </div>
               )}
             </div>
+
             {/* POI popup */}
             {openPOI && poiCardPos && (
               <div onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
                 style={{ position:"absolute",left:poiCardPos.left,top:poiCardPos.top,width:poiCardPos.cardW,background:"white",borderRadius:10,border:`2px solid ${getCatColor(openPOI.category)}`,zIndex:100,overflow:"hidden",boxSizing:"border-box" }}>
                 <div style={{ display:"flex",alignItems:"center",gap:8,padding:"8px 10px 6px",borderBottom:"0.5px solid #eee" }}>
                   <div style={{ width:32,height:32,borderRadius:"50%",border:`2px solid ${getCatColor(openPOI.category)}`,overflow:"hidden",flexShrink:0,background:getCatColor(openPOI.category)+"33",display:"flex",alignItems:"center",justifyContent:"center" }}>
-                    {(openPOI.icon_url||categoryIcons[openPOI.category])
-                      ? <img src={openPOI.icon_url||categoryIcons[openPOI.category]} alt="" draggable={false} style={{ width:"100%",height:"100%",objectFit:"contain" }} />
-                      : <span style={{ fontSize:14,fontWeight:700,color:getCatColor(openPOI.category) }}>?</span>}
+                    {(openPOI.icon_url||categoryIcons[openPOI.category])?<img src={openPOI.icon_url||categoryIcons[openPOI.category]} alt="" draggable={false} style={{ width:"100%",height:"100%",objectFit:"contain" }} />:<span style={{ fontSize:14,fontWeight:700,color:getCatColor(openPOI.category) }}>?</span>}
                   </div>
                   <div style={{ flex:1,overflow:"hidden" }}>
                     <div style={{ fontWeight:500,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{openPOI.name}</div>
@@ -764,13 +871,40 @@ function App() {
                 </div>
               </div>
             )}
+
+            {/* Marker popup */}
+            {openMarker && markerCardPos && (
+              <div onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
+                style={{ position:"absolute",left:markerCardPos.left,top:markerCardPos.top,width:markerCardPos.cardW,background:"white",borderRadius:10,border:`2px solid ${openMarker.player_color||"#378ADD"}`,zIndex:100,overflow:"hidden",boxSizing:"border-box" }}>
+                <div style={{ display:"flex",alignItems:"center",gap:8,padding:"8px 10px 6px",borderBottom:"0.5px solid #eee" }}>
+                  <div style={{ width:28,height:28,borderRadius:"50% 50% 50% 0",transform:"rotate(-45deg)",background:openMarker.player_color||"#378ADD",border:"2px solid #eee",flexShrink:0 }} />
+                  <div style={{ flex:1,overflow:"hidden" }}>
+                    <div style={{ fontWeight:500,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{openMarker.label||"Marker"}</div>
+                    <div style={{ fontSize:10,color:"#888" }}>{openMarker.user_name?.split(" ")[0]||"Player"}</div>
+                  </div>
+                </div>
+                {openMarker.description && (
+                  <div onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()}
+                    style={{ padding:"7px 10px",fontSize:12,color:"#555",lineHeight:1.5,maxHeight:80,overflowY:"auto",touchAction:"pan-y" }}>
+                    {openMarker.description}
+                  </div>
+                )}
+                <div style={{ padding:"4px 10px 8px",display:"flex",gap:6,justifyContent:"flex-end" }}>
+                  {openMarker.user_id === user.id && <>
+                    <Btn size="sm" onClick={()=>{ setMarkerForm({ marker: openMarker }); setOpenMarkerCard(null); }}>Edit</Btn>
+                    <Btn size="sm" variant="danger" onClick={()=>deleteMarker(openMarker.id)}>Delete</Btn>
+                  </>}
+                  {isGM && openMarker.user_id !== user.id && <Btn size="sm" variant="danger" onClick={()=>deleteMarker(openMarker.id)}>Delete</Btn>}
+                  <Btn size="sm" onClick={()=>setOpenMarkerCard(null)}>Close</Btn>
+                </div>
+              </div>
+            )}
           </div>
+
           <div style={{ padding:"4px 14px",borderTop:"0.5px solid #ddd",display:"flex",gap:12,fontSize:10,color:"#888",flexWrap:"wrap" }}>
-            <span>Tap POI to view</span>
-            {isGM && <span style={{ color:"#185FA5" }}>GM: drag to move, tap to edit</span>}
-            {isGM && <span>— — dashed = hidden from players</span>}
-            <span><span style={{ display:"inline-block",width:7,height:7,background:"#378ADD",borderRadius:"50%",marginRight:3,verticalAlign:"middle" }} />Your markers</span>
-            <span><span style={{ display:"inline-block",width:7,height:7,background:"#E67E22",borderRadius:"50%",marginRight:3,verticalAlign:"middle" }} />Others</span>
+            <span>Tap POI or marker to view</span>
+            {isGM && <span style={{ color:"#185FA5" }}>GM: drag POI to move · — — dashed = hidden</span>}
+            <span>Drag your own marker to move it</span>
           </div>
         </div>
       )}
@@ -778,15 +912,12 @@ function App() {
       {/* LIBRARY TAB */}
       {tab==="library" && isGM && (
         <div style={{ display:"flex",flexDirection:"column",flex:1,minHeight:0 }}>
-          {/* Sub-tabs */}
           <div style={{ display:"flex",borderBottom:"0.5px solid #ddd",padding:"0 14px",background:"#fafafa" }}>
-            {["maps","pois","categories"].map(st=>(
+            {["maps","pois","categories","players"].map(st=>(
               <button key={st} onClick={()=>setLibSubTab(st)} style={{ padding:"6px 12px",border:"none",borderBottom:libSubTab===st?"2px solid #3C3489":"2px solid transparent",background:"transparent",cursor:"pointer",fontSize:12,fontWeight:libSubTab===st?500:400,color:libSubTab===st?"#3C3489":"#888",textTransform:"capitalize" }}>{st}</button>
             ))}
           </div>
           <div style={{ flex:1,overflowY:"auto",padding:14 }}>
-
-            {/* Maps */}
             {libSubTab==="maps" && <>
               <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:12 }}>
                 <span style={{ fontWeight:500 }}>Maps</span>
@@ -809,7 +940,6 @@ function App() {
               </div>
             </>}
 
-            {/* POIs */}
             {libSubTab==="pois" && <>
               <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:10,flexWrap:"wrap" }}>
                 <span style={{ fontWeight:500 }}>POIs</span>
@@ -839,11 +969,10 @@ function App() {
               })}
             </>}
 
-            {/* Category Icons */}
             {libSubTab==="categories" && <>
               <div style={{ marginBottom:12 }}>
                 <span style={{ fontWeight:500 }}>Category Icons</span>
-                <p style={{ fontSize:12,color:"#888",marginTop:4 }}>Assign a default icon to each POI category. Any POI without a custom icon will use this automatically.</p>
+                <p style={{ fontSize:12,color:"#888",marginTop:4 }}>Assign a default icon per category. POIs without a custom icon use this automatically.</p>
               </div>
               {CATEGORIES.map(cat=>{
                 const iconUrl = categoryIcons[cat.id];
@@ -861,6 +990,30 @@ function App() {
                 );
               })}
             </>}
+
+            {libSubTab==="players" && <>
+              <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:12,flexWrap:"wrap" }}>
+                <span style={{ fontWeight:500 }}>Players</span>
+                <div style={{ display:"flex",alignItems:"center",gap:8,marginLeft:"auto" }}>
+                  <span style={{ fontSize:12,color:"#666" }}>Marker limit per player:</span>
+                  <input type="number" min={0} max={50} value={markerLimit}
+                    onChange={e=>setMarkerLimit(Number(e.target.value))}
+                    onBlur={e=>updateMarkerLimit(Number(e.target.value))}
+                    style={{ ...IS,width:60 }} />
+                </div>
+              </div>
+              {members.length===0 && <p style={{ color:"#888",fontSize:13 }}>No members yet.</p>}
+              {members.map(m=>(
+                <div key={m.user_id} style={{ display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:"#f5f5f5",borderRadius:8,marginBottom:6 }}>
+                  <div style={{ width:24,height:24,borderRadius:"50%",background:m.player_color||"#ddd",border:"2px solid #ccc",flexShrink:0 }} />
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:13,fontWeight:500 }}>{m.role==="gm"?"Game Master":m.user_id===user.id?"You":m.user_id.slice(0,8)+"..."}</div>
+                    <div style={{ fontSize:11,color:"#888" }}>{m.role} · {markers.filter(mk=>mk.user_id===m.user_id&&mk.map_id===activeMapId).length} markers placed</div>
+                  </div>
+                  {m.player_color && <div style={{ fontSize:11,padding:"2px 8px",borderRadius:10,background:m.player_color+"22",color:m.player_color==="#FFFFFF"?"#aaa":m.player_color,border:`1px solid ${m.player_color}`,fontWeight:500 }}>{m.player_color}</div>}
+                </div>
+              ))}
+            </>}
           </div>
         </div>
       )}
@@ -872,9 +1025,32 @@ function App() {
         </div>
       )}
 
+      {/* Modals */}
       {poiForm && <POIFormModal form={poiForm} categoryIcons={categoryIcons} onSave={savePOI} onDelete={deletePOI} onDuplicate={duplicatePOI} onClose={()=>setPoiForm(null)} />}
-      {markerForm && <MarkerModal onSave={saveMarker} onCancel={()=>setMarkerForm(null)} />}
+      {markerForm && <MarkerFormModal form={markerForm} onSave={saveMarker} onEdit={editMarker} onCancel={()=>setMarkerForm(null)} />}
       {annotationForm && <AnnotationModal form={annotationForm} onSave={saveAnnotation} onDelete={deleteAnnotation} onCancel={()=>setAnnotationForm(null)} />}
+
+      {/* Colour picker */}
+      {showColorPicker && (
+        <Modal title="Choose your colour" onClose={()=>myColor&&setShowColorPicker(false)} width={340}>
+          <p style={{ fontSize:13,color:"#666",marginBottom:12 }}>Pick a colour to represent you on the map. Each player must have a unique colour.</p>
+          {error && <div style={{ background:"#fee",color:"#A32D2D",padding:"6px 10px",borderRadius:8,marginBottom:10,fontSize:12 }}>{error}</div>}
+          <div style={{ display:"flex",flexWrap:"wrap",gap:10,marginBottom:16 }}>
+            {PLAYER_COLORS.map(c=>{
+              const isTaken = takenColors.includes(c);
+              const isSelected = myColor === c;
+              return (
+                <div key={c} onClick={()=>!isTaken&&chooseColor(c)}
+                  title={isTaken?"Taken by another player":c}
+                  style={{ width:36,height:36,borderRadius:"50%",background:c,border:isSelected?"3px solid #3C3489":isTaken?"2px dashed #ccc":"2px solid #ddd",cursor:isTaken?"not-allowed":"pointer",opacity:isTaken?0.35:1,boxSizing:"border-box",position:"relative" }}>
+                  {isTaken && <div style={{ position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,color:"rgba(0,0,0,0.4)" }}>✕</div>}
+                </div>
+              );
+            })}
+          </div>
+          {myColor && <Btn variant="primary" onClick={()=>setShowColorPicker(false)} style={{ width:"100%" }}>Confirm</Btn>}
+        </Modal>
+      )}
     </div>
   );
 }
@@ -891,9 +1067,7 @@ function POIFormModal({ form, categoryIcons, onSave, onDelete, onDuplicate, onCl
   const cc = getCatColor(category);
   const catIconUrl = categoryIcons[category] || "";
   const displayIcon = clearIcon ? "" : (iconPreview || catIconUrl);
-
   async function handleIcon(f) { setIconFile(f); setClearIcon(false); setIconPreview(await readFile(f)); }
-
   return (
     <Modal title={form.poi?"Edit POI":"New POI"} onClose={onClose} width={420}>
       <Field label="Name"><input value={name} onChange={e=>setName(e.target.value)} style={IS} placeholder="e.g. The Rusty Flagon" /></Field>
@@ -945,13 +1119,19 @@ function POIFormModal({ form, categoryIcons, onSave, onDelete, onDuplicate, onCl
   );
 }
 
-function MarkerModal({ onSave, onCancel }) {
-  const [label, setLabel] = useState("");
+function MarkerFormModal({ form, onSave, onEdit, onCancel }) {
+  const isEdit = !!form.marker;
+  const [label, setLabel] = useState(form.marker?.label||"");
+  const [description, setDescription] = useState(form.marker?.description||"");
   return (
-    <Modal title="Place Marker" onClose={onCancel} width={300}>
-      <Field label="Label (optional)"><input value={label} onChange={e=>setLabel(e.target.value)} style={IS} placeholder="e.g. We camped here" autoFocus onKeyDown={e=>{if(e.key==="Enter")onSave(label);}} /></Field>
+    <Modal title={isEdit?"Edit Marker":"Place Marker"} onClose={onCancel} width={320}>
+      <Field label="Title"><input value={label} onChange={e=>setLabel(e.target.value)} style={IS} placeholder="e.g. Camp site" autoFocus /></Field>
+      <Field label="Description (optional)"><textarea value={description} onChange={e=>setDescription(e.target.value)} rows={3} style={IS} placeholder="Add a note..." /></Field>
       <div style={{ display:"flex",gap:8 }}>
-        <Btn variant="primary" onClick={()=>onSave(label)} style={{ flex:1 }}>Place Marker</Btn>
+        {isEdit
+          ? <Btn variant="primary" onClick={()=>onEdit(form.marker,label,description)} style={{ flex:1 }}>Save</Btn>
+          : <Btn variant="primary" onClick={()=>onSave(label,description)} style={{ flex:1 }}>Place Marker</Btn>
+        }
         <Btn onClick={onCancel}>Cancel</Btn>
       </div>
     </Modal>
