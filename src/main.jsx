@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 const SUPA_URL = "https://iqmaumupuftguhurnsdt.supabase.co";
 const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlxbWF1bXVwdWZ0Z3VodXJuc2R0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyNTQ5MjEsImV4cCI6MjA4OTgzMDkyMX0.m7lg88RD_3M3OAqt0g17voz_jbZ0f02w-LocREn5Ffg";
 
-// ── Supabase helpers ──────────────────────────────────────────────────────────
+// ── DB helpers ────────────────────────────────────────────────────────────────
 function hdrs(token) {
   return { "apikey": SUPA_KEY, "Authorization": `Bearer ${token || SUPA_KEY}`, "Content-Type": "application/json", "Prefer": "return=representation" };
 }
@@ -27,6 +27,26 @@ async function dbDelete(token, table, id) {
   const r = await fetch(`${SUPA_URL}/rest/v1/${table}?id=eq.${id}`, { method: "DELETE", headers: hdrs(token) });
   if (!r.ok) throw new Error(await r.text());
 }
+async function dbUpsert(token, table, body, onConflict) {
+  const r = await fetch(`${SUPA_URL}/rest/v1/${table}?on_conflict=${onConflict}`, {
+    method: "POST", headers: { ...hdrs(token), "Prefer": "return=representation,resolution=merge-duplicates" }, body: JSON.stringify(body)
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+async function uploadToStorage(token, file) {
+  const ext = file.name.split(".").pop() || "png";
+  const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+  const r = await fetch(`${SUPA_URL}/storage/v1/object/poi-icons/${path}`, {
+    method: "POST",
+    headers: { "apikey": SUPA_KEY, "Authorization": `Bearer ${token}`, "Content-Type": file.type || "image/png" },
+    body: file
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return `${SUPA_URL}/storage/v1/object/public/poi-icons/${path}`;
+}
+
+// ── Auth helpers ──────────────────────────────────────────────────────────────
 async function getUser(token) {
   const r = await fetch(`${SUPA_URL}/auth/v1/user`, { headers: hdrs(token) });
   if (!r.ok) return null;
@@ -59,7 +79,7 @@ async function signOut(token) {
   localStorage.removeItem("sb_session");
 }
 
-// ── Realtime via Supabase WebSocket ───────────────────────────────────────────
+// ── Realtime ──────────────────────────────────────────────────────────────────
 function createRealtimeChannel(token, campaignId, handlers) {
   const wsUrl = `${SUPA_URL.replace("https://", "wss://")}/realtime/v1/websocket?apikey=${SUPA_KEY}&vsn=1.0.0`;
   let ws, heartbeatTimer, reconnectTimer;
@@ -68,29 +88,19 @@ function createRealtimeChannel(token, campaignId, handlers) {
   function connect() {
     if (closed) return;
     ws = new WebSocket(wsUrl);
-
     ws.onopen = () => {
-      const tables = ["pois", "markers", "annotations"];
-      tables.forEach((table, i) => {
+      ["pois", "markers", "annotations"].forEach((table, i) => {
         ws.send(JSON.stringify({
           topic: `realtime:public:${table}:campaign_id=eq.${campaignId}`,
           event: "phx_join",
-          payload: {
-            config: {
-              postgres_changes: [{ event: "*", schema: "public", table, filter: `campaign_id=eq.${campaignId}` }]
-            },
-            user_token: token
-          },
+          payload: { config: { postgres_changes: [{ event: "*", schema: "public", table, filter: `campaign_id=eq.${campaignId}` }] }, user_token: token },
           ref: String(i + 1)
         }));
       });
       heartbeatTimer = setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ topic: "phoenix", event: "heartbeat", payload: {}, ref: "hb" }));
-        }
+        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ topic: "phoenix", event: "heartbeat", payload: {}, ref: "hb" }));
       }, 20000);
     };
-
     ws.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data);
@@ -103,39 +113,14 @@ function createRealtimeChannel(token, campaignId, handlers) {
         if (table === "annotations") handlers.onAnnotation(mapped);
       } catch {}
     };
-
-    ws.onclose = () => {
-      clearInterval(heartbeatTimer);
-      if (!closed) reconnectTimer = setTimeout(connect, 3000);
-    };
-
+    ws.onclose = () => { clearInterval(heartbeatTimer); if (!closed) reconnectTimer = setTimeout(connect, 3000); };
     ws.onerror = () => ws.close();
   }
-
   connect();
-
-  return {
-    unsubscribe() {
-      closed = true;
-      clearInterval(heartbeatTimer);
-      clearTimeout(reconnectTimer);
-      if (ws) ws.close();
-    }
-  };
+  return { unsubscribe() { closed = true; clearInterval(heartbeatTimer); clearTimeout(reconnectTimer); if (ws) ws.close(); } };
 }
 
-// ── Supabase Storage upload ───────────────────────────────────────────────────
-async function uploadToStorage(token, file) {
-  const ext = file.name.split(".").pop() || "png";
-  const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-  const r = await fetch(`${SUPA_URL}/storage/v1/object/poi-icons/${path}`, {
-    method: "POST",
-    headers: { "apikey": SUPA_KEY, "Authorization": `Bearer ${token}`, "Content-Type": file.type || "image/png" },
-    body: file
-  });
-  if (!r.ok) throw new Error(await r.text());
-  return `${SUPA_URL}/storage/v1/object/public/poi-icons/${path}`;
-}
+// ── Constants ─────────────────────────────────────────────────────────────────
 const CATEGORIES = [
   { id: "merchant",   label: "Merchants",         color: "#FFD700" },
   { id: "entertain",  label: "Entertainment",     color: "#9B59B6" },
@@ -166,7 +151,6 @@ function Btn({ style, variant, size, onClick, children, disabled }) {
           : variant === "danger"  ? { background: "#A32D2D", color: "#fff", border: "none" } : {};
   return <button onClick={onClick} disabled={disabled} style={{ ...base, ...v, ...style, opacity: disabled ? 0.4 : 1 }}>{children}</button>;
 }
-
 function Modal({ title, onClose, children, width = 420 }) {
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
@@ -180,11 +164,9 @@ function Modal({ title, onClose, children, width = 420 }) {
     </div>
   );
 }
-
 function Field({ label, children }) {
   return <div style={{ marginBottom: 12 }}><label style={{ fontSize: 12, color: "#666", display: "block", marginBottom: 4 }}>{label}</label>{children}</div>;
 }
-
 function FilePicker({ onFile, label = "Upload" }) {
   const ref = useRef(null);
   return (
@@ -195,25 +177,29 @@ function FilePicker({ onFile, label = "Upload" }) {
     </>
   );
 }
-
 function readFile(file) {
   return new Promise(res => { const r = new FileReader(); r.onload = e => res(e.target.result); r.readAsDataURL(file); });
 }
 
-function POIPin({ poi, scale, isGM, onTap, onDragStart }) {
+// ── POI Pin ───────────────────────────────────────────────────────────────────
+function POIPin({ poi, scale, isGM, onTap, onDragStart, resolvedIconUrl }) {
   const ss = getSizeScale(poi.size);
   const size = Math.max(28 * ss, (36 / scale) * ss);
   const bw = Math.max(1.5, 3 / scale);
   const cc = getCatColor(poi.category);
+  // Dashed border = hidden, solid = revealed
+  const borderStyle = (isGM && !poi.revealed) ? "dashed" : "solid";
+  const iconUrl = poi.icon_url || resolvedIconUrl || "";
+
   return (
     <div
       onMouseDown={e => { if (isGM) { e.stopPropagation(); onDragStart(e, poi); } }}
       onTouchStart={e => { if (isGM) { e.stopPropagation(); onDragStart(e, poi); } }}
       onClick={e => { e.stopPropagation(); onTap(poi); }}
-      style={{ position: "absolute", left: poi.x - size/2, top: poi.y - size, width: size, height: size, cursor: isGM ? "grab" : "pointer", zIndex: 20, borderRadius: "50%", border: `${bw}px solid ${cc}`, boxSizing: "border-box", overflow: "hidden", background: cc + "59" }}
+      style={{ position: "absolute", left: poi.x - size/2, top: poi.y - size, width: size, height: size, cursor: isGM ? "grab" : "pointer", zIndex: 20, borderRadius: "50%", border: `${bw}px ${borderStyle} ${cc}`, boxSizing: "border-box", overflow: "hidden", background: cc + "59" }}
     >
-      {poi.icon_url
-        ? <img src={poi.icon_url} alt={poi.name} draggable={false} onDragStart={e => e.preventDefault()} style={{ width: "100%", height: "100%", objectFit: "contain", display: "block", pointerEvents: "none" }} />
+      {iconUrl
+        ? <img src={iconUrl} alt={poi.name} draggable={false} onDragStart={e => e.preventDefault()} style={{ width: "100%", height: "100%", objectFit: "contain", display: "block", pointerEvents: "none" }} />
         : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <span style={{ color: "white", fontWeight: 700, fontSize: Math.max(8, 14 * ss / scale), lineHeight: 1 }}>?</span>
           </div>
@@ -222,7 +208,7 @@ function POIPin({ poi, scale, isGM, onTap, onDragStart }) {
   );
 }
 
-// ── Main App ──────────────────────────────────────────────────────────────────
+// ── App ───────────────────────────────────────────────────────────────────────
 function App() {
   const [session, setSession] = useState(null);
   const [user, setUser] = useState(null);
@@ -236,7 +222,9 @@ function App() {
   const [pois, setPois] = useState([]);
   const [markers, setMarkers] = useState([]);
   const [annotations, setAnnotations] = useState([]);
+  const [categoryIcons, setCategoryIcons] = useState({}); // { category_id: icon_url }
   const [tab, setTab] = useState("map");
+  const [libSubTab, setLibSubTab] = useState("maps"); // "maps" | "pois" | "categories"
   const [placingMode, setPlacingMode] = useState(null);
   const [poiForm, setPoiForm] = useState(null);
   const [markerForm, setMarkerForm] = useState(null);
@@ -261,80 +249,64 @@ function App() {
   const scrollSensRef = useRef(scrollSens);
   const poiDragState = useRef(null);
   const realtimeRef = useRef(null);
-  const sessionRef = useRef(session);
 
   useEffect(() => { placingRef.current = placingMode; }, [placingMode]);
   useEffect(() => { transformRef.current = transform; }, [transform]);
   useEffect(() => { imgSizeRef.current = imgSize; }, [imgSize]);
   useEffect(() => { scrollSensRef.current = scrollSens; }, [scrollSens]);
-  useEffect(() => { sessionRef.current = session; }, [session]);
 
-  // ── Auth init + token refresh ──
+  // ── Auth init ──
   useEffect(() => {
     async function init() {
       let sess = parseHashSession();
+      if (sess) { localStorage.setItem("sb_session", JSON.stringify(sess)); window.history.replaceState(null, "", window.location.pathname); }
+      else sess = getStoredSession();
       if (sess) {
-        localStorage.setItem("sb_session", JSON.stringify(sess));
-        window.history.replaceState(null, "", window.location.pathname);
-      } else {
-        sess = getStoredSession();
-      }
-      if (sess) {
-        // Try refreshing token immediately
         const refreshed = await refreshSession(sess.refresh_token);
         if (refreshed?.access_token) {
           sess = { access_token: refreshed.access_token, refresh_token: refreshed.refresh_token || sess.refresh_token };
           localStorage.setItem("sb_session", JSON.stringify(sess));
         }
         const u = await getUser(sess.access_token);
-        if (u) { setSession(sess); setUser(u); }
-        else { localStorage.removeItem("sb_session"); }
+        if (u) { setSession(sess); setUser(u); } else { localStorage.removeItem("sb_session"); }
       }
       setLoading(false);
     }
     init();
-
-    // Refresh token every 50 minutes
-    const refreshTimer = setInterval(async () => {
-      const stored = getStoredSession();
-      if (!stored?.refresh_token) return;
-      const refreshed = await refreshSession(stored.refresh_token);
+    const t = setInterval(async () => {
+      const s = getStoredSession(); if (!s?.refresh_token) return;
+      const refreshed = await refreshSession(s.refresh_token);
       if (refreshed?.access_token) {
-        const newSess = { access_token: refreshed.access_token, refresh_token: refreshed.refresh_token || stored.refresh_token };
-        localStorage.setItem("sb_session", JSON.stringify(newSess));
-        setSession(newSess);
+        const ns = { access_token: refreshed.access_token, refresh_token: refreshed.refresh_token || s.refresh_token };
+        localStorage.setItem("sb_session", JSON.stringify(ns)); setSession(ns);
       }
     }, 50 * 60 * 1000);
-
-    return () => clearInterval(refreshTimer);
+    return () => clearInterval(t);
   }, []);
 
   useEffect(() => { if (user && session) loadCampaigns(); }, [user]);
 
-  // ── Realtime subscriptions ──
+  // ── Realtime ──
   useEffect(() => {
     if (!activeCampaign || !session) return;
-
     if (realtimeRef.current) realtimeRef.current.unsubscribe();
-
     realtimeRef.current = createRealtimeChannel(session.access_token, activeCampaign.id, {
       onPOI: (payload) => {
-        if (payload.eventType === "INSERT") setPois(p => { if (p.find(x => x.id === payload.new.id)) return p; return [...p, payload.new]; });
+        if (payload.eventType === "INSERT") setPois(p => p.find(x => x.id === payload.new.id) ? p : [...p, payload.new]);
         if (payload.eventType === "UPDATE") setPois(p => p.map(x => x.id === payload.new.id ? payload.new : x));
         if (payload.eventType === "DELETE") setPois(p => p.filter(x => x.id !== (payload.old?.id || payload.old_record?.id)));
       },
       onMarker: (payload) => {
-        if (payload.eventType === "INSERT") setMarkers(m => { if (m.find(x => x.id === payload.new.id)) return m; return [...m, payload.new]; });
+        if (payload.eventType === "INSERT") setMarkers(m => m.find(x => x.id === payload.new.id) ? m : [...m, payload.new]);
         if (payload.eventType === "UPDATE") setMarkers(m => m.map(x => x.id === payload.new.id ? payload.new : x));
         if (payload.eventType === "DELETE") setMarkers(m => m.filter(x => x.id !== (payload.old?.id || payload.old_record?.id)));
       },
       onAnnotation: (payload) => {
-        if (payload.eventType === "INSERT") setAnnotations(a => { if (a.find(x => x.id === payload.new.id)) return a; return [...a, payload.new]; });
+        if (payload.eventType === "INSERT") setAnnotations(a => a.find(x => x.id === payload.new.id) ? a : [...a, payload.new]);
         if (payload.eventType === "UPDATE") setAnnotations(a => a.map(x => x.id === payload.new.id ? payload.new : x));
         if (payload.eventType === "DELETE") setAnnotations(a => a.filter(x => x.id !== (payload.old?.id || payload.old_record?.id)));
       },
     });
-
     return () => { if (realtimeRef.current) realtimeRef.current.unsubscribe(); };
   }, [activeCampaign?.id, session?.access_token]);
 
@@ -351,13 +323,17 @@ function App() {
   async function loadCampaignData(camp, role) {
     setActiveCampaign(camp); setMemberRole(role);
     try {
-      const [mapsData, poisData, markersData, annsData] = await Promise.all([
+      const [mapsData, poisData, markersData, annsData, catIconsData] = await Promise.all([
         dbSelect(session.access_token, "maps", `campaign_id=eq.${camp.id}&order=created_at`),
         dbSelect(session.access_token, "pois", `campaign_id=eq.${camp.id}`),
         dbSelect(session.access_token, "markers", `campaign_id=eq.${camp.id}`),
         dbSelect(session.access_token, "annotations", `campaign_id=eq.${camp.id}`),
+        dbSelect(session.access_token, "category_icons", `campaign_id=eq.${camp.id}`),
       ]);
       setMaps(mapsData); setPois(poisData); setMarkers(markersData); setAnnotations(annsData);
+      const catMap = {};
+      catIconsData.forEach(ci => { catMap[ci.category_id] = ci.icon_url; });
+      setCategoryIcons(catMap);
       const main = mapsData.find(m => m.is_main) || mapsData[0];
       if (main) setActiveMapId(main.id);
     } catch(e) { setError(e.message); }
@@ -414,7 +390,6 @@ function App() {
     return { x: (cx - rect.left - t.x) / t.scale, y: (cy - rect.top - t.y) / t.scale };
   }
 
-  // POI drag
   function startPOIDrag(e, poi) {
     e.stopPropagation();
     const startCx = e.touches ? e.touches[0].clientX : e.clientX;
@@ -450,7 +425,6 @@ function App() {
     window.addEventListener("touchmove", onMove, { passive: true }); window.addEventListener("touchend", onUp);
   }
 
-  // Map pan
   function onPointerDown(e) {
     if (poiDragState.current) return;
     if (e.touches && e.touches.length === 2) return;
@@ -489,20 +463,14 @@ function App() {
     window.addEventListener("touchmove", onMove, { passive: true }); window.addEventListener("touchend", onUp);
   }
 
-  // ── Attach wheel + pinch once map is ready ──
+  // Attach wheel + pinch once map is ready
   useEffect(() => {
     if (tab !== "map") return;
     let wheelCleanup = null, pinchCleanup = null;
     let attempts = 0;
-
     function attachAll() {
       const el = mapRef.current;
-      if (!el) {
-        if (attempts++ < 30) { setTimeout(attachAll, 100); return; }
-        return;
-      }
-
-      // Wheel zoom — uses ref so sensitivity changes work without re-attaching
+      if (!el) { if (attempts++ < 30) { setTimeout(attachAll, 100); return; } return; }
       function onWheel(e) {
         e.preventDefault();
         const sens = scrollSensRef.current / 10;
@@ -512,57 +480,36 @@ function App() {
         setTransform(t => {
           const ns = Math.min(8, Math.max(0.1, t.scale * factor));
           const sr = ns / t.scale;
-          const next = { scale: ns, x: mx - sr * (mx - t.x), y: my - sr * (my - t.y) };
-          return clamp(next, rect.width, rect.height, imgSizeRef.current.w, imgSizeRef.current.h);
+          return clamp({ scale: ns, x: mx - sr * (mx - t.x), y: my - sr * (my - t.y) }, rect.width, rect.height, imgSizeRef.current.w, imgSizeRef.current.h);
         });
       }
       el.addEventListener("wheel", onWheel, { passive: false });
       wheelCleanup = () => el.removeEventListener("wheel", onWheel);
-
-      // Pinch zoom
       let lastDist = null, isPinching = false;
-      function getDist(t) { const dx = t[0].clientX - t[1].clientX, dy = t[0].clientY - t[1].clientY; return Math.sqrt(dx*dx+dy*dy); }
-      function getMid(t) { return { x: (t[0].clientX+t[1].clientX)/2, y: (t[0].clientY+t[1].clientY)/2 }; }
-      function onTS(e) { if (e.touches.length === 2) { isPinching = true; lastDist = getDist(e.touches); dragRef.current.active = false; setIsDragging(false); } }
+      function getDist(t) { const dx=t[0].clientX-t[1].clientX,dy=t[0].clientY-t[1].clientY; return Math.sqrt(dx*dx+dy*dy); }
+      function getMid(t) { return { x:(t[0].clientX+t[1].clientX)/2,y:(t[0].clientY+t[1].clientY)/2 }; }
+      function onTS(e) { if(e.touches.length===2){isPinching=true;lastDist=getDist(e.touches);dragRef.current.active=false;setIsDragging(false);} }
       function onTM(e) {
-        if (e.touches.length !== 2 || !isPinching) return;
-        e.preventDefault();
-        const dist = getDist(e.touches); if (!lastDist) { lastDist = dist; return; }
-        const factor = Math.min(Math.max(dist / lastDist, 0.5), 2); lastDist = dist;
-        const mid = getMid(e.touches); const rect = el.getBoundingClientRect();
-        const mx = mid.x - rect.left, my = mid.y - rect.top;
-        setTransform(t => {
-          const ns = Math.min(8, Math.max(0.1, t.scale * factor));
-          const sr = ns / t.scale;
-          const next = { scale: ns, x: mx - sr * (mx - t.x), y: my - sr * (my - t.y) };
-          return clamp(next, rect.width, rect.height, imgSizeRef.current.w, imgSizeRef.current.h);
-        });
+        if(e.touches.length!==2||!isPinching)return; e.preventDefault();
+        const dist=getDist(e.touches); if(!lastDist){lastDist=dist;return;}
+        const factor=Math.min(Math.max(dist/lastDist,0.5),2); lastDist=dist;
+        const mid=getMid(e.touches); const rect=el.getBoundingClientRect();
+        setTransform(t=>{const ns=Math.min(8,Math.max(0.1,t.scale*factor));const sr=ns/t.scale;const mx=mid.x-rect.left,my=mid.y-rect.top;return clamp({scale:ns,x:mx-sr*(mx-t.x),y:my-sr*(my-t.y)},rect.width,rect.height,imgSizeRef.current.w,imgSizeRef.current.h);});
       }
-      function onTE(e) { if (e.touches.length < 2) { isPinching = false; lastDist = null; } }
-      el.addEventListener("touchstart", onTS, { passive: true });
-      el.addEventListener("touchmove", onTM, { passive: false });
-      el.addEventListener("touchend", onTE, { passive: true });
-      pinchCleanup = () => { el.removeEventListener("touchstart", onTS); el.removeEventListener("touchmove", onTM); el.removeEventListener("touchend", onTE); };
+      function onTE(e){if(e.touches.length<2){isPinching=false;lastDist=null;}}
+      el.addEventListener("touchstart",onTS,{passive:true}); el.addEventListener("touchmove",onTM,{passive:false}); el.addEventListener("touchend",onTE,{passive:true});
+      pinchCleanup=()=>{el.removeEventListener("touchstart",onTS);el.removeEventListener("touchmove",onTM);el.removeEventListener("touchend",onTE);};
     }
-
     const t = setTimeout(attachAll, 80);
-    return () => {
-      clearTimeout(t);
-      wheelCleanup && wheelCleanup();
-      pinchCleanup && pinchCleanup();
-    };
+    return () => { clearTimeout(t); wheelCleanup && wheelCleanup(); pinchCleanup && pinchCleanup(); };
   }, [tab, activeCampaign]);
 
   // CRUD
   async function savePOI(form, iconFile) {
     let icon_url = form.clearIcon ? "" : (form.poi?.icon_url || "");
     if (iconFile) {
-      try {
-        icon_url = await uploadToStorage(session.access_token, iconFile);
-      } catch(e) {
-        // Fallback to base64 if storage upload fails
-        icon_url = await readFile(iconFile);
-      }
+      try { icon_url = await uploadToStorage(session.access_token, iconFile); }
+      catch { icon_url = await readFile(iconFile); }
     }
     const body = { name: form.name||"Unnamed POI", description: form.description||"", revealed: form.revealed, category: form.category||"other", size: form.size||"large", icon_url };
     try {
@@ -580,24 +527,31 @@ function App() {
     try { await dbDelete(session.access_token, "pois", id); setPois(prev=>prev.filter(p=>p.id!==id)); setPoiForm(null); setOpenPOICard(null); } catch(e) { setError(e.message); }
   }
   function duplicatePOI(poi) {
-    dbInsert(session.access_token, "pois", {
-      name: poi.name+" (copy)", description: poi.description, revealed: false,
-      category: poi.category, size: poi.size, icon_url: poi.icon_url,
-      campaign_id: poi.campaign_id, map_id: poi.map_id, x: poi.x+30, y: poi.y+30
-    }).then(([np]) => {
-      // Add locally immediately — realtime will handle other clients
-      setPois(prev => prev.find(x => x.id === np.id) ? prev : [...prev, np]);
-    }).catch(e => setError(e.message));
+    dbInsert(session.access_token, "pois", { name: poi.name+" (copy)", description: poi.description, revealed: false, category: poi.category, size: poi.size, icon_url: poi.icon_url, campaign_id: poi.campaign_id, map_id: poi.map_id, x: poi.x+30, y: poi.y+30 })
+      .then(([np]) => setPois(prev => prev.find(x=>x.id===np.id)?prev:[...prev,np])).catch(e=>setError(e.message));
     setPoiForm(null);
   }
   async function togglePOIReveal(id, current) {
     try { await dbUpdate(session.access_token, "pois", id, { revealed: !current }); setPois(prev=>prev.map(p=>p.id===id?{...p,revealed:!current}:p)); } catch(e) { setError(e.message); }
   }
+  async function saveCategoryIcon(catId, file) {
+    try {
+      const url = await uploadToStorage(session.access_token, file);
+      await dbUpsert(session.access_token, "category_icons", { campaign_id: activeCampaign.id, category_id: catId, icon_url: url }, "campaign_id,category_id");
+      setCategoryIcons(prev => ({ ...prev, [catId]: url }));
+    } catch(e) { setError(e.message); }
+  }
+  async function removeCategoryIcon(catId) {
+    try {
+      await fetch(`${SUPA_URL}/rest/v1/category_icons?campaign_id=eq.${activeCampaign.id}&category_id=eq.${catId}`, { method: "DELETE", headers: hdrs(session.access_token) });
+      setCategoryIcons(prev => { const n = {...prev}; delete n[catId]; return n; });
+    } catch(e) { setError(e.message); }
+  }
   async function saveMarker(label) {
     if (!markerForm) return;
     try {
       const [nm] = await dbInsert(session.access_token, "markers", { campaign_id: activeCampaign.id, map_id: activeMapId, user_id: user.id, user_name: user.user_metadata?.full_name||user.email, label, x: markerForm.x, y: markerForm.y });
-      setMarkers(prev => [...prev, nm]); setMarkerForm(null);
+      setMarkers(prev=>[...prev,nm]); setMarkerForm(null);
     } catch(e) { setError(e.message); }
   }
   async function deleteMarker(id) {
@@ -659,7 +613,10 @@ function App() {
   const sortedLibPOIs = [...pois].sort((a,b)=>libSort==="name"?(a.name||"").localeCompare(b.name||""):(a.category||"").localeCompare(b.category||""));
   const tabs = ["map",...(isGM?["library","overlays"]:[])];
 
-  // ── Render ──
+  // Build version — injected by vite
+  const buildVersion = (typeof __BUILD_DATE__ !== "undefined" && typeof __COMMIT__ !== "undefined")
+    ? `v${__BUILD_DATE__}-${__COMMIT__}` : "vdev";
+
   if (loading) return <div style={{ display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",fontFamily:"sans-serif",color:"#888",fontSize:16 }}>Loading...</div>;
 
   if (!user) return (
@@ -710,21 +667,26 @@ function App() {
 
   return (
     <div style={{ fontFamily:"sans-serif",fontSize:14,color:"#111",display:"flex",flexDirection:"column",height:"100vh",background:"#fff" }}>
+      {/* Header */}
       <div style={{ display:"flex",alignItems:"center",gap:8,padding:"8px 14px",borderBottom:"0.5px solid #ddd",flexWrap:"wrap",background:"#fff" }}>
         <button onClick={()=>{setActiveCampaign(null);if(realtimeRef.current)realtimeRef.current.unsubscribe();}} style={{ background:"none",border:"none",cursor:"pointer",fontSize:18,padding:0,color:"#555" }}>←</button>
         <span style={{ fontWeight:500,fontSize:14,flex:1 }}>{activeCampaign.name}</span>
         {mapStack.length>0 && <Btn size="sm" onClick={goBack}>↩ Back</Btn>}
         <span style={{ fontSize:11,padding:"2px 8px",borderRadius:20,background:isGM?"#EAF3DE":"#E6F1FB",color:isGM?"#3B6D11":"#185FA5",fontWeight:500 }}>{isGM?"GM":"Player"}</span>
         <span style={{ fontSize:11,color:"#888",maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{user.user_metadata?.full_name||user.email}</span>
+        <span style={{ fontSize:10,color:"#bbb",whiteSpace:"nowrap" }}>{buildVersion}</span>
       </div>
       {error && <div style={{ background:"#fee",color:"#A32D2D",padding:"5px 14px",fontSize:12 }}>{error}<button onClick={()=>setError("")} style={{ marginLeft:8,border:"none",background:"none",cursor:"pointer" }}>✕</button></div>}
       {isGM && <div style={{ padding:"3px 14px",background:"#f0f0ff",fontSize:11,color:"#555",borderBottom:"0.5px solid #ddd" }}>Campaign ID for players: <strong>{activeCampaign.id}</strong></div>}
+
+      {/* Tabs */}
       <div style={{ display:"flex",borderBottom:"0.5px solid #ddd",padding:"0 14px" }}>
         {tabs.map(t=>(
           <button key={t} onClick={()=>setTab(t)} style={{ padding:"7px 12px",border:"none",borderBottom:tab===t?"2px solid #3C3489":"2px solid transparent",background:"transparent",cursor:"pointer",fontSize:12,fontWeight:tab===t?500:400,color:tab===t?"#3C3489":"#888",textTransform:"capitalize" }}>{t}</button>
         ))}
       </div>
 
+      {/* MAP TAB */}
       {tab==="map" && (
         <div style={{ flex:1,display:"flex",flexDirection:"column",minHeight:0 }}>
           <div style={{ display:"flex",gap:6,padding:"7px 14px",borderBottom:"0.5px solid #ddd",flexWrap:"wrap",alignItems:"center" }}>
@@ -755,6 +717,7 @@ function App() {
                   <img src={currentMap.src} alt="map" style={{ display:"block",maxWidth:"none" }} draggable={false} onLoad={onImgLoad} />
                   {mapPOIs.map(p=>(
                     <POIPin key={p.id} poi={p} scale={transform.scale} isGM={isGM}
+                      resolvedIconUrl={categoryIcons[p.category] || ""}
                       onTap={poi=>{ if(!isGM) setOpenPOICard(openPOICard===poi.id?null:poi.id); }}
                       onDragStart={startPOIDrag} />
                   ))}
@@ -777,12 +740,15 @@ function App() {
                 </div>
               )}
             </div>
+            {/* POI popup */}
             {openPOI && poiCardPos && (
               <div onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
                 style={{ position:"absolute",left:poiCardPos.left,top:poiCardPos.top,width:poiCardPos.cardW,background:"white",borderRadius:10,border:`2px solid ${getCatColor(openPOI.category)}`,zIndex:100,overflow:"hidden",boxSizing:"border-box" }}>
                 <div style={{ display:"flex",alignItems:"center",gap:8,padding:"8px 10px 6px",borderBottom:"0.5px solid #eee" }}>
                   <div style={{ width:32,height:32,borderRadius:"50%",border:`2px solid ${getCatColor(openPOI.category)}`,overflow:"hidden",flexShrink:0,background:getCatColor(openPOI.category)+"33",display:"flex",alignItems:"center",justifyContent:"center" }}>
-                    {openPOI.icon_url?<img src={openPOI.icon_url} alt="" style={{ width:"100%",height:"100%",objectFit:"contain" }} />:<span style={{ fontSize:14,fontWeight:700,color:getCatColor(openPOI.category) }}>?</span>}
+                    {(openPOI.icon_url||categoryIcons[openPOI.category])
+                      ? <img src={openPOI.icon_url||categoryIcons[openPOI.category]} alt="" draggable={false} style={{ width:"100%",height:"100%",objectFit:"contain" }} />
+                      : <span style={{ fontSize:14,fontWeight:700,color:getCatColor(openPOI.category) }}>?</span>}
                   </div>
                   <div style={{ flex:1,overflow:"hidden" }}>
                     <div style={{ fontWeight:500,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{openPOI.name}</div>
@@ -801,60 +767,100 @@ function App() {
           </div>
           <div style={{ padding:"4px 14px",borderTop:"0.5px solid #ddd",display:"flex",gap:12,fontSize:10,color:"#888",flexWrap:"wrap" }}>
             <span>Tap POI to view</span>
-            {isGM && <span style={{ color:"#185FA5" }}>GM: drag pin to move, tap to edit</span>}
+            {isGM && <span style={{ color:"#185FA5" }}>GM: drag to move, tap to edit</span>}
+            {isGM && <span>— — dashed = hidden from players</span>}
             <span><span style={{ display:"inline-block",width:7,height:7,background:"#378ADD",borderRadius:"50%",marginRight:3,verticalAlign:"middle" }} />Your markers</span>
             <span><span style={{ display:"inline-block",width:7,height:7,background:"#E67E22",borderRadius:"50%",marginRight:3,verticalAlign:"middle" }} />Others</span>
           </div>
         </div>
       )}
 
+      {/* LIBRARY TAB */}
       {tab==="library" && isGM && (
-        <div style={{ padding:14,overflowY:"auto",flex:1 }}>
-          <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:12 }}>
-            <span style={{ fontWeight:500 }}>Maps</span>
-            <FilePicker label="+ Upload" onFile={uploadMap} />
-          </div>
-          {maps.length===0 && <p style={{ color:"#888",fontSize:13 }}>No maps yet.</p>}
-          <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:10,marginBottom:20 }}>
-            {maps.map(m=>(
-              <div key={m.id} style={{ border:m.is_main?"2px solid #3C3489":"0.5px solid #ccc",borderRadius:10,overflow:"hidden",background:"#fafafa" }}>
-                <img src={m.src} alt={m.name} style={{ width:"100%",height:75,objectFit:"cover",display:"block" }} />
-                <div style={{ padding:"6px 8px" }}>
-                  <div style={{ fontSize:12,fontWeight:500,marginBottom:5,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{m.name}</div>
-                  <div style={{ display:"flex",gap:4 }}>
-                    {m.is_main?<span style={{ fontSize:10,color:"#3C3489",fontWeight:500 }}>Main</span>:<Btn size="sm" variant="primary" onClick={()=>setMainMap(m.id)}>Set Main</Btn>}
-                    <Btn size="sm" variant="danger" onClick={()=>deleteMap(m.id)}>Del</Btn>
-                  </div>
-                </div>
-              </div>
+        <div style={{ display:"flex",flexDirection:"column",flex:1,minHeight:0 }}>
+          {/* Sub-tabs */}
+          <div style={{ display:"flex",borderBottom:"0.5px solid #ddd",padding:"0 14px",background:"#fafafa" }}>
+            {["maps","pois","categories"].map(st=>(
+              <button key={st} onClick={()=>setLibSubTab(st)} style={{ padding:"6px 12px",border:"none",borderBottom:libSubTab===st?"2px solid #3C3489":"2px solid transparent",background:"transparent",cursor:"pointer",fontSize:12,fontWeight:libSubTab===st?500:400,color:libSubTab===st?"#3C3489":"#888",textTransform:"capitalize" }}>{st}</button>
             ))}
           </div>
-          <div style={{ borderTop:"0.5px solid #ddd",paddingTop:12 }}>
-            <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:10,flexWrap:"wrap" }}>
-              <span style={{ fontWeight:500 }}>POIs</span>
-              <button onClick={()=>setLibSort("name")} style={{ fontSize:11,padding:"2px 8px",borderRadius:20,border:"0.5px solid #aaa",background:libSort==="name"?"#3C3489":"transparent",color:libSort==="name"?"white":"#333",cursor:"pointer" }}>Name</button>
-              <button onClick={()=>setLibSort("type")} style={{ fontSize:11,padding:"2px 8px",borderRadius:20,border:"0.5px solid #aaa",background:libSort==="type"?"#3C3489":"transparent",color:libSort==="type"?"white":"#333",cursor:"pointer" }}>Type</button>
-            </div>
-            {sortedLibPOIs.length===0 && <p style={{ color:"#888",fontSize:12 }}>No POIs yet.</p>}
-            {sortedLibPOIs.map(p=>{
-              const cc=getCatColor(p.category);
-              return (
-                <div key={p.id} style={{ display:"flex",alignItems:"center",gap:8,padding:"7px 10px",background:"#f5f5f5",borderRadius:8,marginBottom:6 }}>
-                  <div style={{ width:30,height:30,borderRadius:"50%",border:`2px solid ${cc}`,overflow:"hidden",flexShrink:0,background:cc+"33",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer" }}
-                    onClick={()=>setPoiForm({poi:p,name:p.name,description:p.description,revealed:p.revealed,category:p.category||"other",size:p.size||"large"})}>
-                    {p.icon_url?<img src={p.icon_url} alt="" style={{ width:"100%",height:"100%",objectFit:"contain" }} />:<span style={{ fontSize:12,fontWeight:700,color:cc }}>?</span>}
+          <div style={{ flex:1,overflowY:"auto",padding:14 }}>
+
+            {/* Maps */}
+            {libSubTab==="maps" && <>
+              <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:12 }}>
+                <span style={{ fontWeight:500 }}>Maps</span>
+                <FilePicker label="+ Upload" onFile={uploadMap} />
+              </div>
+              {maps.length===0 && <p style={{ color:"#888",fontSize:13 }}>No maps yet.</p>}
+              <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:10 }}>
+                {maps.map(m=>(
+                  <div key={m.id} style={{ border:m.is_main?"2px solid #3C3489":"0.5px solid #ccc",borderRadius:10,overflow:"hidden",background:"#fafafa" }}>
+                    <img src={m.src} alt={m.name} style={{ width:"100%",height:75,objectFit:"cover",display:"block" }} />
+                    <div style={{ padding:"6px 8px" }}>
+                      <div style={{ fontSize:12,fontWeight:500,marginBottom:5,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{m.name}</div>
+                      <div style={{ display:"flex",gap:4 }}>
+                        {m.is_main?<span style={{ fontSize:10,color:"#3C3489",fontWeight:500 }}>Main</span>:<Btn size="sm" variant="primary" onClick={()=>setMainMap(m.id)}>Set Main</Btn>}
+                        <Btn size="sm" variant="danger" onClick={()=>deleteMap(m.id)}>Del</Btn>
+                      </div>
+                    </div>
                   </div>
-                  <div style={{ flex:1,overflow:"hidden",cursor:"pointer" }} onClick={()=>setPoiForm({poi:p,name:p.name,description:p.description,revealed:p.revealed,category:p.category||"other",size:p.size||"large"})}>
-                    <div style={{ fontSize:12,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{p.name}</div>
-                    <div style={{ fontSize:10,color:cc,fontWeight:500 }}>{getCatLabel(p.category)}</div>
+                ))}
+              </div>
+            </>}
+
+            {/* POIs */}
+            {libSubTab==="pois" && <>
+              <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:10,flexWrap:"wrap" }}>
+                <span style={{ fontWeight:500 }}>POIs</span>
+                <button onClick={()=>setLibSort("name")} style={{ fontSize:11,padding:"2px 8px",borderRadius:20,border:"0.5px solid #aaa",background:libSort==="name"?"#3C3489":"transparent",color:libSort==="name"?"white":"#333",cursor:"pointer" }}>Name</button>
+                <button onClick={()=>setLibSort("type")} style={{ fontSize:11,padding:"2px 8px",borderRadius:20,border:"0.5px solid #aaa",background:libSort==="type"?"#3C3489":"transparent",color:libSort==="type"?"white":"#333",cursor:"pointer" }}>Type</button>
+              </div>
+              {sortedLibPOIs.length===0 && <p style={{ color:"#888",fontSize:12 }}>No POIs yet.</p>}
+              {sortedLibPOIs.map(p=>{
+                const cc=getCatColor(p.category);
+                const iconUrl = p.icon_url || categoryIcons[p.category] || "";
+                return (
+                  <div key={p.id} style={{ display:"flex",alignItems:"center",gap:8,padding:"7px 10px",background:"#f5f5f5",borderRadius:8,marginBottom:6 }}>
+                    <div style={{ width:30,height:30,borderRadius:"50%",border:`2px ${p.revealed?"solid":"dashed"} ${cc}`,overflow:"hidden",flexShrink:0,background:cc+"33",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer" }}
+                      onClick={()=>setPoiForm({poi:p,name:p.name,description:p.description,revealed:p.revealed,category:p.category||"other",size:p.size||"large"})}>
+                      {iconUrl?<img src={iconUrl} alt="" draggable={false} style={{ width:"100%",height:"100%",objectFit:"contain" }} />:<span style={{ fontSize:12,fontWeight:700,color:cc }}>?</span>}
+                    </div>
+                    <div style={{ flex:1,overflow:"hidden",cursor:"pointer" }} onClick={()=>setPoiForm({poi:p,name:p.name,description:p.description,revealed:p.revealed,category:p.category||"other",size:p.size||"large"})}>
+                      <div style={{ fontSize:12,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{p.name}</div>
+                      <div style={{ fontSize:10,color:cc,fontWeight:500 }}>{getCatLabel(p.category)}</div>
+                    </div>
+                    <button onClick={()=>togglePOIReveal(p.id,p.revealed)}
+                      style={{ padding:"3px 8px",borderRadius:10,border:"none",background:p.revealed?"#EAF3DE":"#FEF3E2",color:p.revealed?"#3B6D11":"#854F0B",fontSize:11,fontWeight:500,cursor:"pointer",flexShrink:0 }}>
+                      {p.revealed?"Shown":"Hidden"}
+                    </button>
                   </div>
-                  <button onClick={()=>togglePOIReveal(p.id,p.revealed)}
-                    style={{ padding:"3px 8px",borderRadius:10,border:"none",background:p.revealed?"#EAF3DE":"#FEF3E2",color:p.revealed?"#3B6D11":"#854F0B",fontSize:11,fontWeight:500,cursor:"pointer",flexShrink:0 }}>
-                    {p.revealed?"Shown":"Hidden"}
-                  </button>
-                </div>
-              );
-            })}
+                );
+              })}
+            </>}
+
+            {/* Category Icons */}
+            {libSubTab==="categories" && <>
+              <div style={{ marginBottom:12 }}>
+                <span style={{ fontWeight:500 }}>Category Icons</span>
+                <p style={{ fontSize:12,color:"#888",marginTop:4 }}>Assign a default icon to each POI category. Any POI without a custom icon will use this automatically.</p>
+              </div>
+              {CATEGORIES.map(cat=>{
+                const iconUrl = categoryIcons[cat.id];
+                return (
+                  <div key={cat.id} style={{ display:"flex",alignItems:"center",gap:10,padding:"8px 10px",background:"#f5f5f5",borderRadius:8,marginBottom:8 }}>
+                    <div style={{ width:36,height:36,borderRadius:"50%",border:`2px solid ${cat.color}`,overflow:"hidden",flexShrink:0,background:cat.color+"33",display:"flex",alignItems:"center",justifyContent:"center" }}>
+                      {iconUrl?<img src={iconUrl} alt="" draggable={false} style={{ width:"100%",height:"100%",objectFit:"contain" }} />:<span style={{ fontSize:13,fontWeight:700,color:cat.color==="#EEEEEE"?"#aaa":cat.color }}>?</span>}
+                    </div>
+                    <span style={{ flex:1,fontSize:13,fontWeight:500 }}>{cat.label}</span>
+                    <div style={{ display:"flex",gap:6 }}>
+                      <FilePicker label={iconUrl?"Replace":"Upload"} onFile={f=>saveCategoryIcon(cat.id,f)} />
+                      {iconUrl && <Btn size="sm" variant="danger" onClick={()=>removeCategoryIcon(cat.id)}>Clear</Btn>}
+                    </div>
+                  </div>
+                );
+              })}
+            </>}
           </div>
         </div>
       )}
@@ -866,14 +872,14 @@ function App() {
         </div>
       )}
 
-      {poiForm && <POIFormModal form={poiForm} onSave={savePOI} onDelete={deletePOI} onDuplicate={duplicatePOI} onClose={()=>setPoiForm(null)} />}
+      {poiForm && <POIFormModal form={poiForm} categoryIcons={categoryIcons} onSave={savePOI} onDelete={deletePOI} onDuplicate={duplicatePOI} onClose={()=>setPoiForm(null)} />}
       {markerForm && <MarkerModal onSave={saveMarker} onCancel={()=>setMarkerForm(null)} />}
       {annotationForm && <AnnotationModal form={annotationForm} onSave={saveAnnotation} onDelete={deleteAnnotation} onCancel={()=>setAnnotationForm(null)} />}
     </div>
   );
 }
 
-function POIFormModal({ form, onSave, onDelete, onDuplicate, onClose }) {
+function POIFormModal({ form, categoryIcons, onSave, onDelete, onDuplicate, onClose }) {
   const [name, setName] = useState(form.poi?.name||"");
   const [description, setDescription] = useState(form.poi?.description||"");
   const [revealed, setRevealed] = useState(form.poi?.revealed||false);
@@ -883,7 +889,11 @@ function POIFormModal({ form, onSave, onDelete, onDuplicate, onClose }) {
   const [iconPreview, setIconPreview] = useState(form.poi?.icon_url||"");
   const [clearIcon, setClearIcon] = useState(false);
   const cc = getCatColor(category);
+  const catIconUrl = categoryIcons[category] || "";
+  const displayIcon = clearIcon ? "" : (iconPreview || catIconUrl);
+
   async function handleIcon(f) { setIconFile(f); setClearIcon(false); setIconPreview(await readFile(f)); }
+
   return (
     <Modal title={form.poi?"Edit POI":"New POI"} onClose={onClose} width={420}>
       <Field label="Name"><input value={name} onChange={e=>setName(e.target.value)} style={IS} placeholder="e.g. The Rusty Flagon" /></Field>
@@ -910,11 +920,14 @@ function POIFormModal({ form, onSave, onDelete, onDuplicate, onClose }) {
       <Field label="Icon">
         <div style={{ display:"flex",alignItems:"center",gap:10 }}>
           <div style={{ width:48,height:48,borderRadius:"50%",border:`2px solid ${cc}`,overflow:"hidden",background:cc+"33",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0 }}>
-            {iconPreview&&!clearIcon?<img src={iconPreview} alt="" style={{ width:"100%",height:"100%",objectFit:"contain" }} />:<span style={{ fontSize:16,fontWeight:700,color:cc }}>?</span>}
+            {displayIcon?<img src={displayIcon} alt="" draggable={false} style={{ width:"100%",height:"100%",objectFit:"contain" }} />:<span style={{ fontSize:16,fontWeight:700,color:cc }}>?</span>}
           </div>
-          <div style={{ display:"flex",gap:6,flexWrap:"wrap" }}>
-            <FilePicker label="Upload" onFile={handleIcon} />
-            {iconPreview&&!clearIcon&&<Btn size="sm" variant="danger" onClick={()=>{setClearIcon(true);setIconPreview("");setIconFile(null);}}>Remove</Btn>}
+          <div style={{ flex:1 }}>
+            <div style={{ display:"flex",gap:6,flexWrap:"wrap",marginBottom:4 }}>
+              <FilePicker label="Custom upload" onFile={handleIcon} />
+              {iconPreview&&!clearIcon&&<Btn size="sm" variant="danger" onClick={()=>{setClearIcon(true);setIconPreview("");setIconFile(null);}}>Remove custom</Btn>}
+            </div>
+            {catIconUrl && !iconPreview && <div style={{ fontSize:11,color:"#888" }}>Using category default icon</div>}
           </div>
         </div>
       </Field>
