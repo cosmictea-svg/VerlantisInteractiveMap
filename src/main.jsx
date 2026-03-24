@@ -160,6 +160,23 @@ const PLAYER_COLORS = [
   "#8BC34A","#FF9800","#607D8B","#795548","#FFFFFF",
 ];
 
+// ── Parchment & Ink Theme ─────────────────────────────────────────────────────
+const T = {
+  bg:       "#F5EDDA",   // parchment — main background
+  surface:  "#EDE0C4",   // aged vellum — card / panel surfaces
+  border:   "#B8A88A",   // warm brown border
+  ink:      "#1C1208",   // ink black
+  muted:    "#6B5B45",   // secondary text (warm brown)
+  header:   "#1A1035",   // dark stone header
+  headerFg: "#F0E6C8",   // bone white — text on dark header
+  gold:     "#C9A84C",   // antique gold (active / accent)
+  goldDim:  "#7A5C10",   // darker gold for text on light bg
+  purple:   "#2D1B69",   // deep arcane purple (primary action)
+  danger:   "#8B1A1A",   // blood red
+  fHead:    "'Cinzel', 'Georgia', serif",
+  fBody:    "'Lora', 'Georgia', serif",
+};
+
 function getCatColor(id) { return CATEGORIES.find(c => c.id === id)?.color || "#95A5A6"; }
 function getZoneBBox(points) {
   if (!points?.length) return { x: 0, y: 0, w: 100, h: 100 };
@@ -170,20 +187,20 @@ function getZoneBBox(points) {
 function getCatLabel(id) { return CATEGORIES.find(c => c.id === id)?.label || "Others"; }
 function getSizeScale(id) { return POI_SIZES.find(s => s.id === id)?.scale ?? 1.0; }
 
-const IS = { width: "100%", padding: "6px 10px", borderRadius: 8, border: "0.5px solid #aaa", fontSize: 13, background: "#f5f5f5", color: "#111", boxSizing: "border-box" };
+const IS = { width: "100%", padding: "6px 10px", borderRadius: 6, border: `1px solid ${T.border}`, fontSize: 13, background: "#fffbf2", color: T.ink, boxSizing: "border-box", fontFamily: T.fBody };
 
 function Btn({ style, variant, size, onClick, children, disabled }) {
-  const base = { padding: size === "sm" ? "4px 10px" : "6px 14px", fontSize: size === "sm" ? 12 : 13, borderRadius: 8, border: "0.5px solid #aaa", background: "transparent", cursor: "pointer", fontWeight: 500, color: "#111" };
-  const v = variant === "primary" ? { background: "#3C3489", color: "#fff", border: "none" }
-          : variant === "danger"  ? { background: "#A32D2D", color: "#fff", border: "none" } : {};
+  const base = { padding: size === "sm" ? "4px 10px" : "6px 14px", fontSize: size === "sm" ? 12 : 13, borderRadius: 6, border: `1px solid ${T.border}`, background: T.bg, cursor: "pointer", fontWeight: 500, color: T.ink, fontFamily: T.fBody };
+  const v = variant === "primary" ? { background: T.purple, color: T.headerFg, border: "none" }
+          : variant === "danger"  ? { background: T.danger, color: "#fff", border: "none" } : {};
   return <button onClick={onClick} disabled={disabled} style={{ ...base, ...v, ...style, opacity: disabled ? 0.4 : 1 }}>{children}</button>;
 }
 function Modal({ title, onClose, children, width = 420 }) {
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-      <div style={{ background: "#fff", borderRadius: 12, border: "0.5px solid #ccc", width, maxWidth: "96%", maxHeight: "90vh", overflow: "auto", padding: 20 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <span style={{ fontWeight: 500, fontSize: 15 }}>{title}</span>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(26,16,53,0.6)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div style={{ background: T.bg, borderRadius: 10, border: `1.5px solid ${T.border}`, boxShadow: "0 8px 32px rgba(26,16,53,0.3)", width, maxWidth: "96%", maxHeight: "90vh", overflow: "auto", padding: 20 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, paddingBottom: 10, borderBottom: `1px solid ${T.border}` }}>
+          <span style={{ fontWeight: 600, fontSize: 15, fontFamily: T.fHead, color: T.ink, letterSpacing: "0.04em" }}>{title}</span>
           {onClose && <Btn size="sm" onClick={onClose}>Close</Btn>}
         </div>
         {children}
@@ -192,7 +209,7 @@ function Modal({ title, onClose, children, width = 420 }) {
   );
 }
 function Field({ label, children }) {
-  return <div style={{ marginBottom: 12 }}><label style={{ fontSize: 12, color: "#666", display: "block", marginBottom: 4 }}>{label}</label>{children}</div>;
+  return <div style={{ marginBottom: 12 }}><label style={{ fontSize: 12, color: T.muted, display: "block", marginBottom: 4, fontFamily: T.fBody }}>{label}</label>{children}</div>;
 }
 function FilePicker({ onFile, label = "Upload" }) {
   const ref = useRef(null);
@@ -350,6 +367,8 @@ function App() {
   const [showCampaignModal, setShowCampaignModal] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [newCampaignName, setNewCampaignName] = useState("");
+  const [newCampaignSubHeader, setNewCampaignSubHeader] = useState("");
+  const [newCampaignDescription, setNewCampaignDescription] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [markerLimit, setMarkerLimit] = useState(10);
   const [error, setError] = useState("");
@@ -486,13 +505,26 @@ function App() {
             ? { ...x, player_color: payload.new.player_color, display_name: payload.new.display_name }
             : x
           ));
-          // If it's the current user, sync their colour state too
           setUser(u => {
             if (u && payload.new.user_id === u.id) setMyColor(payload.new.player_color);
             return u;
           });
         }
         if (payload.eventType === "INSERT") setMembers(m => m.find(x => x.user_id === payload.new.user_id) ? m : [...m, payload.new]);
+        if (payload.eventType === "DELETE") {
+          const kickedId = payload.old?.user_id;
+          setMembers(m => m.filter(x => x.user_id !== kickedId));
+          // If current user was kicked, return them to the campaign list
+          setUser(u => {
+            if (u && kickedId === u.id) {
+              setActiveCampaign(null);
+              setCampaigns(prev => prev.filter(c => c.id !== payload.old?.campaign_id));
+              if (realtimeRef.current) realtimeRef.current.unsubscribe();
+              localStorage.removeItem("sb_last_campaign");
+            }
+            return u;
+          });
+        }
       },
     });
     return () => { if (realtimeRef.current) realtimeRef.current.unsubscribe(); };
@@ -559,6 +591,16 @@ function App() {
       setMembers(prev => prev.map(m => m.user_id === user.id ? { ...m, player_color: color } : m));
       setShowColorPicker(false);
       setError("");
+    } catch(e) { setError(e.message); }
+  }
+
+  async function kickPlayer(userId) {
+    if (userId === user.id) return;
+    try {
+      await fetch(`${SUPA_URL}/rest/v1/campaign_members?campaign_id=eq.${activeCampaign.id}&user_id=eq.${userId}`, {
+        method: "DELETE", headers: hdrs(session.access_token)
+      });
+      setMembers(prev => prev.filter(m => m.user_id !== userId));
     } catch(e) { setError(e.message); }
   }
 
@@ -699,9 +741,16 @@ function App() {
   async function createCampaign() {
     if (!newCampaignName.trim()) return;
     try {
-      const [camp] = await dbInsert(session.access_token, "campaigns", { name: newCampaignName.trim(), gm_id: user.id });
+      const payload = {
+        name: newCampaignName.trim(),
+        gm_id: user.id,
+        sub_header: newCampaignSubHeader.trim() || null,
+        description: newCampaignDescription.trim() || null,
+      };
+      const [camp] = await dbInsert(session.access_token, "campaigns", payload);
       await dbInsert(session.access_token, "campaign_members", { campaign_id: camp.id, user_id: user.id, role: "gm" });
-      setNewCampaignName(""); setShowCampaignModal(false);
+      setNewCampaignName(""); setNewCampaignSubHeader(""); setNewCampaignDescription("");
+      setShowCampaignModal(false);
       await loadCampaigns(); loadCampaignData(camp, "gm");
     } catch(e) { setError(e.message); }
   }
@@ -1032,14 +1081,14 @@ function App() {
   const tabs = ["map", "info", ...(isGM ? ["library", "overlays"] : []), "profile"];
   const buildVersion = (typeof __BUILD_DATE__ !== "undefined" && typeof __COMMIT__ !== "undefined") ? `v${__BUILD_DATE__}-${__COMMIT__}` : "vdev";
 
-  if (loading) return <div style={{ display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",fontFamily:"sans-serif",color:"#888",fontSize:16 }}>Loading...</div>;
+  if (loading) return <div style={{ display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",fontFamily:T.fHead,color:T.muted,fontSize:16,background:T.bg,letterSpacing:"0.1em" }}>Loading...</div>;
 
   if (!user) return (
-    <div style={{ fontFamily:"sans-serif",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"100vh",gap:16,padding:32,background:"#f5f5f5" }}>
-      <div style={{ fontSize:52 }}>🗺</div>
-      <div style={{ fontWeight:600,fontSize:22 }}>Verlantis Interactive Map</div>
-      <div style={{ color:"#666",fontSize:14,textAlign:"center",maxWidth:320 }}>Sign in with your Google account to access your campaigns.</div>
-      <button onClick={signInWithGoogle} style={{ display:"flex",alignItems:"center",gap:10,padding:"12px 24px",fontSize:15,borderRadius:10,border:"1px solid #ddd",background:"#fff",cursor:"pointer",fontWeight:500 }}>
+    <div style={{ fontFamily:T.fBody,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"100vh",gap:18,padding:32,background:T.bg }}>
+      <div style={{ fontSize:52, filter:"drop-shadow(0 2px 8px rgba(201,168,76,0.4))" }}>🗺</div>
+      <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:26,color:T.ink,letterSpacing:"0.08em",textAlign:"center" }}>Verlantis Interactive Map</div>
+      <div style={{ color:T.muted,fontSize:14,textAlign:"center",maxWidth:320,fontStyle:"italic" }}>Sign in with your Google account to access your campaigns.</div>
+      <button onClick={signInWithGoogle} style={{ display:"flex",alignItems:"center",gap:10,padding:"11px 24px",fontSize:14,borderRadius:8,border:`1.5px solid ${T.border}`,background:T.surface,cursor:"pointer",fontWeight:500,color:T.ink,fontFamily:T.fBody,boxShadow:"0 2px 8px rgba(26,16,53,0.1)" }}>
         <img src="https://www.google.com/favicon.ico" width={18} height={18} alt="" />
         Sign in with Google
       </button>
@@ -1047,18 +1096,19 @@ function App() {
   );
 
   if (!activeCampaign) return (
-    <div style={{ fontFamily:"sans-serif",padding:24,maxWidth:520,margin:"0 auto",minHeight:"100vh" }}>
-      <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:24 }}>
-        <span style={{ fontWeight:600,fontSize:18,flex:1 }}>Your Campaigns</span>
-        <span style={{ fontSize:12,color:"#888" }}>{user.user_metadata?.full_name||user.email}</span>
+    <div style={{ fontFamily:T.fBody,padding:24,maxWidth:520,margin:"0 auto",minHeight:"100vh",background:T.bg }}>
+      <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:24,paddingBottom:16,borderBottom:`1px solid ${T.border}` }}>
+        <span style={{ fontFamily:T.fHead,fontWeight:700,fontSize:18,flex:1,color:T.ink,letterSpacing:"0.05em" }}>Your Campaigns</span>
+        <span style={{ fontSize:12,color:T.muted }}>{user.user_metadata?.full_name||user.email}</span>
         <Btn size="sm" onClick={async()=>{await signOut(session.access_token);setUser(null);setSession(null);}}>Sign out</Btn>
       </div>
-      {error && <div style={{ background:"#fee",color:"#A32D2D",padding:"8px 12px",borderRadius:8,marginBottom:12,fontSize:13 }}>{error}<button onClick={()=>setError("")} style={{ marginLeft:8,border:"none",background:"none",cursor:"pointer" }}>✕</button></div>}
-      {campaigns.length===0 && <p style={{ color:"#888",fontSize:13,marginBottom:16 }}>No campaigns yet. Create one or join with a campaign ID.</p>}
+      {error && <div style={{ background:"#f5d5d5",color:T.danger,padding:"8px 12px",borderRadius:8,marginBottom:12,fontSize:13,border:`1px solid ${T.danger}44` }}>{error}<button onClick={()=>setError("")} style={{ marginLeft:8,border:"none",background:"none",cursor:"pointer",color:T.danger }}>✕</button></div>}
+      {campaigns.length===0 && <p style={{ color:T.muted,fontSize:13,marginBottom:16,fontStyle:"italic" }}>No campaigns yet. Create one or join with a campaign ID.</p>}
       {campaigns.map(c=>(
-        <div key={c.id} onClick={()=>loadCampaignData(c,c.myRole)} style={{ padding:"14px 16px",background:"#f5f5f5",borderRadius:10,marginBottom:8,cursor:"pointer",border:"0.5px solid #ddd" }}>
-          <div style={{ fontWeight:500,fontSize:15 }}>{c.name}</div>
-          <div style={{ fontSize:11,color:"#888",marginTop:3 }}>{c.myRole==="gm"?"Game Master":"Player"} · ID: {c.id.slice(0,8)}...</div>
+        <div key={c.id} onClick={()=>loadCampaignData(c,c.myRole)} style={{ padding:"14px 16px",background:T.surface,borderRadius:10,marginBottom:8,cursor:"pointer",border:`1px solid ${T.border}`,boxShadow:"0 1px 4px rgba(26,16,53,0.08)" }}>
+          <div style={{ fontFamily:T.fHead,fontWeight:600,fontSize:15,color:T.ink,letterSpacing:"0.03em" }}>{c.name}</div>
+          {c.sub_header && <div style={{ fontSize:12,color:T.muted,fontStyle:"italic",marginTop:2 }}>{c.sub_header}</div>}
+          <div style={{ fontSize:11,color:T.muted,marginTop:4 }}>{c.myRole==="gm"?"Game Master":"Player"} · ID: {c.id.slice(0,8)}...</div>
         </div>
       ))}
       <div style={{ display:"flex",gap:8,marginTop:16 }}>
@@ -1066,9 +1116,19 @@ function App() {
         <Btn onClick={()=>setShowJoinModal(true)} style={{ flex:1 }}>Join Campaign</Btn>
       </div>
       {showCampaignModal && (
-        <Modal title="Create Campaign" onClose={()=>setShowCampaignModal(false)} width={340}>
-          <Field label="Campaign Name"><input value={newCampaignName} onChange={e=>setNewCampaignName(e.target.value)} style={IS} placeholder="e.g. Verlantis Saga" autoFocus onKeyDown={e=>{if(e.key==="Enter")createCampaign();}} /></Field>
-          <Btn variant="primary" onClick={createCampaign} style={{ width:"100%" }}>Create</Btn>
+        <Modal title="Create Campaign" onClose={()=>{ setShowCampaignModal(false); setNewCampaignName(""); setNewCampaignSubHeader(""); setNewCampaignDescription(""); }} width={400}>
+          <Field label="Campaign Name">
+            <input value={newCampaignName} onChange={e=>setNewCampaignName(e.target.value)} style={IS} placeholder="e.g. The Verlantis Saga" autoFocus onKeyDown={e=>{if(e.key==="Enter")createCampaign();}} />
+          </Field>
+          <Field label="Sub Header (optional)">
+            <input value={newCampaignSubHeader} onChange={e=>setNewCampaignSubHeader(e.target.value)} style={IS} placeholder="e.g. A tale of shadows and ancient power..." />
+          </Field>
+          <Field label="Description (optional)">
+            <textarea value={newCampaignDescription} onChange={e=>setNewCampaignDescription(e.target.value)} rows={4}
+              placeholder="Describe your campaign setting, the world, or any notes for your players..."
+              style={{ ...IS, resize:"vertical", lineHeight:1.6 }} />
+          </Field>
+          <Btn variant="primary" onClick={createCampaign} style={{ width:"100%" }}>Create Campaign</Btn>
         </Modal>
       )}
       {showJoinModal && (
@@ -1081,24 +1141,24 @@ function App() {
   );
 
   return (
-    <div style={{ fontFamily:"sans-serif",fontSize:14,color:"#111",display:"flex",flexDirection:"column",height:"100vh",background:"#fff" }}>
+    <div style={{ fontFamily:T.fBody,fontSize:14,color:T.ink,display:"flex",flexDirection:"column",height:"100vh",background:T.bg }}>
       {/* Header */}
-      <div style={{ display:"flex",alignItems:"center",gap:8,padding:"8px 14px",borderBottom:"0.5px solid #ddd",background:"#fff",flexWrap:"wrap" }}>
-        <button onClick={()=>{setActiveCampaign(null);localStorage.removeItem("sb_last_campaign");if(realtimeRef.current)realtimeRef.current.unsubscribe();}} style={{ background:"none",border:"none",cursor:"pointer",fontSize:18,padding:0,color:"#555" }}>←</button>
-        <span style={{ fontWeight:500,fontSize:14,flex:1 }}>{activeCampaign.name}</span>
-        {mapStack.length>0 && <Btn size="sm" onClick={goBack}>↩ Back</Btn>}
-        <span style={{ fontSize:11,padding:"2px 8px",borderRadius:20,background:isGM?"#EAF3DE":"#E6F1FB",color:isGM?"#3B6D11":"#185FA5",fontWeight:500 }}>{isGM?"GM":"Player"}</span>
+      <div style={{ display:"flex",alignItems:"center",gap:8,padding:"8px 14px",borderBottom:`1px solid ${T.border}`,background:T.header,flexWrap:"wrap" }}>
+        <button onClick={()=>{setActiveCampaign(null);localStorage.removeItem("sb_last_campaign");if(realtimeRef.current)realtimeRef.current.unsubscribe();}} style={{ background:"none",border:"none",cursor:"pointer",fontSize:18,padding:0,color:T.headerFg }}>←</button>
+        <span style={{ fontFamily:T.fHead,fontWeight:600,fontSize:14,flex:1,color:T.headerFg,letterSpacing:"0.06em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{activeCampaign.name}</span>
+        {mapStack.length>0 && <Btn size="sm" onClick={goBack} style={{ background:"transparent",color:T.headerFg,borderColor:T.headerFg+"66" }}>↩ Back</Btn>}
+        <span style={{ fontSize:11,padding:"2px 9px",borderRadius:20,background:isGM?`${T.gold}33`:`${T.headerFg}22`,color:isGM?T.gold:T.headerFg,fontWeight:600,border:`1px solid ${isGM?T.gold:T.headerFg+"44"}`,fontFamily:T.fBody }}>{isGM?"GM":"Player"}</span>
         {!isGM && (
           <div onClick={()=>setTab("profile")} title="Edit your profile"
-            style={{ width:18,height:18,borderRadius:"50%",background:myColor||"#ccc",border:"2px solid #aaa",cursor:"pointer",flexShrink:0 }} />
+            style={{ width:18,height:18,borderRadius:"50%",background:myColor||"#ccc",border:`2px solid ${T.gold}`,cursor:"pointer",flexShrink:0 }} />
         )}
-        <span style={{ fontSize:11,color:"#888",maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{user.user_metadata?.full_name||user.email}</span>
-        <span style={{ fontSize:10,color:"#bbb",whiteSpace:"nowrap" }}>{buildVersion}</span>
+        <span style={{ fontSize:11,color:T.headerFg+"99",maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{user.user_metadata?.full_name||user.email}</span>
+        <span style={{ fontSize:10,color:T.headerFg+"55",whiteSpace:"nowrap" }}>{buildVersion}</span>
       </div>
 
-      {error && <div style={{ background:"#fee",color:"#A32D2D",padding:"5px 14px",fontSize:12 }}>{error}<button onClick={()=>setError("")} style={{ marginLeft:8,border:"none",background:"none",cursor:"pointer" }}>✕</button></div>}
+      {error && <div style={{ background:"#f5d5d5",color:T.danger,padding:"5px 14px",fontSize:12,borderBottom:`1px solid ${T.danger}44` }}>{error}<button onClick={()=>setError("")} style={{ marginLeft:8,border:"none",background:"none",cursor:"pointer",color:T.danger }}>✕</button></div>}
       {isGM && (
-        <div style={{ display:"flex",alignItems:"center",gap:8,padding:"3px 14px",background:"#f0f0ff",fontSize:11,color:"#555",borderBottom:"0.5px solid #ddd" }}>
+        <div style={{ display:"flex",alignItems:"center",gap:8,padding:"3px 14px",background:`${T.gold}18`,fontSize:11,color:T.goldDim,borderBottom:`1px solid ${T.border}` }}>
           <span>Campaign ID for players: <strong>{activeCampaign.id}</strong></span>
           <button onClick={()=>{
             const copy = () => { navigator.clipboard.writeText(activeCampaign.id).catch(()=>{}); };
@@ -1108,35 +1168,34 @@ function App() {
               el.select(); document.execCommand("copy"); document.body.removeChild(el);
             }
             setCopiedCode(true); setTimeout(()=>setCopiedCode(false), 2000);
-          }} style={{ padding:"1px 8px",borderRadius:6,border:"0.5px solid #aaa",background:copiedCode?"#EAF3DE":"#fff",color:copiedCode?"#3B6D11":"#555",fontSize:11,cursor:"pointer",flexShrink:0,fontWeight:copiedCode?500:400 }}>
+          }} style={{ padding:"1px 8px",borderRadius:6,border:`1px solid ${T.border}`,background:copiedCode?`${T.gold}22`:T.bg,color:copiedCode?T.goldDim:T.muted,fontSize:11,cursor:"pointer",flexShrink:0,fontWeight:copiedCode?600:400,fontFamily:T.fBody }}>
             {copiedCode ? "Copied ✓" : "Copy"}
           </button>
         </div>
       )}
 
       {/* Tabs */}
-      <div style={{ display:"flex",borderBottom:"0.5px solid #ddd",padding:"0 14px" }}>
+      <div style={{ display:"flex",borderBottom:`1px solid ${T.border}`,padding:"0 14px",background:T.surface }}>
         {tabs.map(t=>(
-          <button key={t} onClick={()=>setTab(t)} style={{ padding:"7px 12px",border:"none",borderBottom:tab===t?"2px solid #3C3489":"2px solid transparent",background:"transparent",cursor:"pointer",fontSize:12,fontWeight:tab===t?500:400,color:tab===t?"#3C3489":"#888",textTransform:"capitalize" }}>{t}</button>
+          <button key={t} onClick={()=>setTab(t)} style={{ padding:"7px 12px",border:"none",borderBottom:tab===t?`2px solid ${T.gold}`:"2px solid transparent",background:"transparent",cursor:"pointer",fontSize:12,fontWeight:tab===t?600:400,color:tab===t?T.goldDim:T.muted,textTransform:"capitalize",fontFamily:T.fBody,letterSpacing:"0.02em" }}>{t}</button>
         ))}
       </div>
 
       {/* MAP TAB */}
       {tab==="map" && (
         <div style={{ flex:1,display:"flex",flexDirection:"column",minHeight:0,position:"relative" }}>
-          <div style={{ display:"flex",gap:6,padding:"7px 14px",borderBottom:"0.5px solid #ddd",flexWrap:"wrap",alignItems:"center" }}>
+          <div style={{ display:"flex",gap:6,padding:"7px 14px",borderBottom:`1px solid ${T.border}`,background:T.surface,flexWrap:"wrap",alignItems:"center" }}>
             {isGM && <>
-              <Btn size="sm" onClick={()=>setPlacingMode(p=>p==="poi"?null:"poi")} style={{ background:placingMode==="poi"?"#EAF3DE":undefined }}>+ POI</Btn>
-              <Btn size="sm" onClick={()=>setPlacingMode(p=>p==="annotation"?null:"annotation")} style={{ background:placingMode==="annotation"?"#EAF3DE":undefined }}>+ Note</Btn>
+              <Btn size="sm" onClick={()=>setPlacingMode(p=>p==="poi"?null:"poi")} style={{ background:placingMode==="poi"?`${T.gold}33`:undefined,borderColor:placingMode==="poi"?T.gold:undefined }}>+ POI</Btn>
             </>}
             <Btn size="sm" onClick={()=>{
               if (!myColor && !isGM) { setShowColorPicker(true); return; }
               setPlacingMode(p=>p==="marker"?null:"marker");
-            }} style={{ background:placingMode==="marker"?"#dce8fa":undefined }}>
+            }} style={{ background:placingMode==="marker"?`${T.gold}33`:undefined,borderColor:placingMode==="marker"?T.gold:undefined }}>
               + Marker {!isGM && myMarkers.length >= markerLimit ? `(${myMarkers.length}/${markerLimit} full)` : !isGM ? `(${myMarkers.length}/${markerLimit})` : ""}
             </Btn>
             <Btn size="sm" onClick={resetView}>Fit</Btn>
-            {placingMode && placingMode !== "zone" && placingMode !== "addpoint" && <span style={{ fontSize:11,color:"#185FA5",padding:"2px 8px",background:"#E6F1FB",borderRadius:20 }}>Tap map to place {placingMode}</span>}
+            {placingMode && placingMode !== "zone" && placingMode !== "addpoint" && <span style={{ fontSize:11,color:T.purple,padding:"2px 8px",background:`${T.purple}15`,borderRadius:20,border:`1px solid ${T.purple}44` }}>Tap map to place {placingMode}</span>}
             {placingMode === "zone" && (
               <span style={{ display:"flex",alignItems:"center",gap:6,flexWrap:"wrap" }}>
                 <span style={{ fontSize:11,color:"#185FA5",padding:"2px 8px",background:"#E6F1FB",borderRadius:20 }}>Zone: {placingZonePoints?.length || 0} points</span>
@@ -1160,11 +1219,11 @@ function App() {
               </span>
             )}
           </div>
-          <div style={{ display:"flex",alignItems:"center",gap:8,padding:"4px 14px",borderBottom:"0.5px solid #ddd",background:"#f9f9f9" }}>
-            <span style={{ fontSize:11,color:"#888",whiteSpace:"nowrap" }}>Zoom speed</span>
+          <div style={{ display:"flex",alignItems:"center",gap:8,padding:"4px 14px",borderBottom:`1px solid ${T.border}`,background:T.bg }}>
+            <span style={{ fontSize:11,color:T.muted,whiteSpace:"nowrap" }}>Zoom speed</span>
             <input type="range" min={0.1} max={2} step={0.1} value={scrollSens} onChange={e=>setScrollSens(Number(e.target.value))} style={{ flex:1,maxWidth:120 }} />
-            <span style={{ fontSize:11,color:"#888",minWidth:24 }}>{scrollSens.toFixed(1)}</span>
-            <button onClick={()=>setShowFilter(f=>!f)} style={{ marginLeft:"auto",padding:"2px 10px",borderRadius:6,border:`1px solid ${showFilter?"#3C3489":"#ccc"}`,background:showFilter?"#3C3489":"#fff",color:showFilter?"#fff":"#555",fontSize:11,cursor:"pointer",flexShrink:0 }}>
+            <span style={{ fontSize:11,color:T.muted,minWidth:24 }}>{scrollSens.toFixed(1)}</span>
+            <button onClick={()=>setShowFilter(f=>!f)} style={{ marginLeft:"auto",padding:"2px 10px",borderRadius:6,border:`1px solid ${showFilter?T.gold:T.border}`,background:showFilter?T.purple:T.bg,color:showFilter?T.headerFg:T.muted,fontSize:11,cursor:"pointer",flexShrink:0,fontFamily:T.fBody }}>
               ☰ Filter
             </button>
           </div>
@@ -1534,9 +1593,9 @@ function App() {
       {/* LIBRARY TAB */}
       {tab==="library" && isGM && (
         <div style={{ display:"flex",flexDirection:"column",flex:1,minHeight:0 }}>
-          <div style={{ display:"flex",borderBottom:"0.5px solid #ddd",padding:"0 14px",background:"#fafafa" }}>
+          <div style={{ display:"flex",borderBottom:`1px solid ${T.border}`,padding:"0 14px",background:T.surface }}>
             {["maps","pois","categories","players"].map(st=>(
-              <button key={st} onClick={()=>setLibSubTab(st)} style={{ padding:"6px 12px",border:"none",borderBottom:libSubTab===st?"2px solid #3C3489":"2px solid transparent",background:"transparent",cursor:"pointer",fontSize:12,fontWeight:libSubTab===st?500:400,color:libSubTab===st?"#3C3489":"#888",textTransform:"capitalize" }}>{st}</button>
+              <button key={st} onClick={()=>setLibSubTab(st)} style={{ padding:"6px 12px",border:"none",borderBottom:libSubTab===st?`2px solid ${T.gold}`:"2px solid transparent",background:"transparent",cursor:"pointer",fontSize:12,fontWeight:libSubTab===st?600:400,color:libSubTab===st?T.goldDim:T.muted,textTransform:"capitalize",fontFamily:T.fBody }}>{st}</button>
             ))}
           </div>
           <div style={{ flex:1,overflowY:"auto",padding:14 }}>
@@ -1545,15 +1604,15 @@ function App() {
                 <span style={{ fontWeight:500 }}>Maps</span>
                 <FilePicker label="+ Upload" onFile={uploadMap} />
               </div>
-              {maps.length===0 && <p style={{ color:"#888",fontSize:13 }}>No maps yet.</p>}
+              {maps.length===0 && <p style={{ color:T.muted,fontSize:13 }}>No maps yet.</p>}
               <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:10 }}>
                 {maps.map(m=>(
-                  <div key={m.id} style={{ border:m.is_main?"2px solid #3C3489":"0.5px solid #ccc",borderRadius:10,overflow:"hidden",background:"#fafafa" }}>
+                  <div key={m.id} style={{ border:m.is_main?`2px solid ${T.gold}`:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden",background:T.surface }}>
                     <img src={m.src} alt={m.name} style={{ width:"100%",height:75,objectFit:"cover",display:"block" }} />
                     <div style={{ padding:"6px 8px" }}>
                       <div style={{ fontSize:12,fontWeight:500,marginBottom:5,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{m.name}</div>
                       <div style={{ display:"flex",gap:4 }}>
-                        {m.is_main?<span style={{ fontSize:10,color:"#3C3489",fontWeight:500 }}>Main</span>:<Btn size="sm" variant="primary" onClick={()=>setMainMap(m.id)}>Set Main</Btn>}
+                        {m.is_main?<span style={{ fontSize:10,color:T.goldDim,fontWeight:600,fontFamily:T.fHead }}>Main</span>:<Btn size="sm" variant="primary" onClick={()=>setMainMap(m.id)}>Set Main</Btn>}
                         <Btn size="sm" variant="danger" onClick={()=>deleteMap(m.id)}>Del</Btn>
                       </div>
                     </div>
@@ -1565,15 +1624,15 @@ function App() {
             {libSubTab==="pois" && <>
               <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:10,flexWrap:"wrap" }}>
                 <span style={{ fontWeight:500 }}>POIs</span>
-                <button onClick={()=>setLibSort("name")} style={{ fontSize:11,padding:"2px 8px",borderRadius:20,border:"0.5px solid #aaa",background:libSort==="name"?"#3C3489":"transparent",color:libSort==="name"?"white":"#333",cursor:"pointer" }}>Name</button>
-                <button onClick={()=>setLibSort("type")} style={{ fontSize:11,padding:"2px 8px",borderRadius:20,border:"0.5px solid #aaa",background:libSort==="type"?"#3C3489":"transparent",color:libSort==="type"?"white":"#333",cursor:"pointer" }}>Type</button>
+                <button onClick={()=>setLibSort("name")} style={{ fontSize:11,padding:"2px 8px",borderRadius:20,border:`1px solid ${T.border}`,background:libSort==="name"?T.purple:T.bg,color:libSort==="name"?T.headerFg:T.muted,cursor:"pointer",fontFamily:T.fBody }}>Name</button>
+                <button onClick={()=>setLibSort("type")} style={{ fontSize:11,padding:"2px 8px",borderRadius:20,border:`1px solid ${T.border}`,background:libSort==="type"?T.purple:T.bg,color:libSort==="type"?T.headerFg:T.muted,cursor:"pointer",fontFamily:T.fBody }}>Type</button>
               </div>
               {sortedLibPOIs.length===0 && <p style={{ color:"#888",fontSize:12 }}>No POIs yet.</p>}
               {sortedLibPOIs.map(p=>{
                 const cc=getCatColor(p.category);
                 const iconUrl = p.icon_url || categoryIcons[p.category] || "";
                 return (
-                  <div key={p.id} style={{ display:"flex",alignItems:"center",gap:8,padding:"7px 10px",background:"#f5f5f5",borderRadius:8,marginBottom:6 }}>
+                  <div key={p.id} style={{ display:"flex",alignItems:"center",gap:8,padding:"7px 10px",background:T.surface,borderRadius:8,marginBottom:6 }}>
                     <div style={{ width:30,height:30,borderRadius:"50%",border:`2px ${p.revealed?"solid":"dashed"} ${cc}`,overflow:"hidden",flexShrink:0,background:cc+"33",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer" }}
                       onClick={()=>setPoiForm({poi:p,name:p.name,description:p.description,revealed:p.revealed,category:p.category||"other",size:p.size||"large"})}>
                       {iconUrl?<img src={iconUrl} alt="" draggable={false} style={{ width:"100%",height:"100%",objectFit:"contain" }} />:<span style={{ fontSize:12,fontWeight:700,color:cc }}>?</span>}
@@ -1599,7 +1658,7 @@ function App() {
               {CATEGORIES.map(cat=>{
                 const iconUrl = categoryIcons[cat.id];
                 return (
-                  <div key={cat.id} style={{ display:"flex",alignItems:"center",gap:10,padding:"8px 10px",background:"#f5f5f5",borderRadius:8,marginBottom:8 }}>
+                  <div key={cat.id} style={{ display:"flex",alignItems:"center",gap:10,padding:"8px 10px",background:T.surface,borderRadius:8,marginBottom:8 }}>
                     <div style={{ width:36,height:36,borderRadius:"50%",border:`2px solid ${cat.color}`,overflow:"hidden",flexShrink:0,background:cat.color+"33",display:"flex",alignItems:"center",justifyContent:"center" }}>
                       {iconUrl?<img src={iconUrl} alt="" draggable={false} style={{ width:"100%",height:"100%",objectFit:"contain" }} />:<span style={{ fontSize:13,fontWeight:700,color:cat.color==="#EEEEEE"?"#aaa":cat.color }}>?</span>}
                     </div>
@@ -1624,17 +1683,21 @@ function App() {
                     style={{ ...IS,width:60 }} />
                 </div>
               </div>
-              {members.length===0 && <p style={{ color:"#888",fontSize:13 }}>No members yet.</p>}
+              {members.length===0 && <p style={{ color:T.muted,fontSize:13 }}>No members yet.</p>}
               {members.map(m=>(
-                <div key={m.user_id} style={{ display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:"#f5f5f5",borderRadius:8,marginBottom:6 }}>
-                  <div style={{ width:24,height:24,borderRadius:"50%",background:m.player_color||"#ddd",border:"2px solid #ccc",flexShrink:0 }} />
+                <div key={m.user_id} style={{ display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:T.surface,borderRadius:8,marginBottom:6,border:`1px solid ${T.border}` }}>
+                  <div style={{ width:24,height:24,borderRadius:"50%",background:m.player_color||"#ddd",border:`2px solid ${T.border}`,flexShrink:0 }} />
                   <div style={{ flex:1 }}>
-                    <div style={{ fontSize:13,fontWeight:500 }}>
+                    <div style={{ fontSize:13,fontWeight:500,color:T.ink }}>
                       {m.display_name || (m.role==="gm" ? "Game Master" : m.user_id===user.id ? "You" : "Unknown Player")}
+                      {m.user_id===user.id && <span style={{ marginLeft:6,fontSize:10,color:T.muted,fontStyle:"italic" }}>(you)</span>}
                     </div>
-                    <div style={{ fontSize:11,color:"#888" }}>{m.role} · {markers.filter(mk=>mk.user_id===m.user_id&&mk.map_id===activeMapId).length} markers placed</div>
+                    <div style={{ fontSize:11,color:T.muted }}>{m.role==="gm"?"Game Master":"Player"} · {markers.filter(mk=>mk.user_id===m.user_id&&mk.map_id===activeMapId).length} markers placed</div>
                   </div>
                   {m.player_color && <div style={{ fontSize:11,padding:"2px 8px",borderRadius:10,background:m.player_color+"22",color:m.player_color==="#FFFFFF"?"#aaa":m.player_color,border:`1px solid ${m.player_color}`,fontWeight:500 }}>{m.player_color}</div>}
+                  {isGM && m.role!=="gm" && m.user_id!==user.id && (
+                    <Btn size="sm" variant="danger" onClick={()=>{ if(window.confirm(`Remove ${m.display_name||"this player"} from the campaign?`)) kickPlayer(m.user_id); }}>Kick</Btn>
+                  )}
                 </div>
               ))}
             </>}
@@ -1645,9 +1708,9 @@ function App() {
       {/* OVERLAYS TAB — visible to all; GM gets Zones sub-tab too */}
       {tab==="overlays" && (
         <div style={{ display:"flex",flexDirection:"column",flex:1,minHeight:0 }}>
-          <div style={{ display:"flex",borderBottom:"0.5px solid #ddd",padding:"0 14px",background:"#fafafa" }}>
+          <div style={{ display:"flex",borderBottom:`1px solid ${T.border}`,padding:"0 14px",background:T.surface }}>
             {["layers",...(isGM?["zones"]:[])].map(st=>(
-              <button key={st} onClick={()=>setOvSubTab(st)} style={{ padding:"6px 12px",border:"none",borderBottom:ovSubTab===st?"2px solid #3C3489":"2px solid transparent",background:"transparent",cursor:"pointer",fontSize:12,fontWeight:ovSubTab===st?500:400,color:ovSubTab===st?"#3C3489":"#888",textTransform:"capitalize" }}>{st}</button>
+              <button key={st} onClick={()=>setOvSubTab(st)} style={{ padding:"6px 12px",border:"none",borderBottom:ovSubTab===st?`2px solid ${T.gold}`:"2px solid transparent",background:"transparent",cursor:"pointer",fontSize:12,fontWeight:ovSubTab===st?600:400,color:ovSubTab===st?T.goldDim:T.muted,textTransform:"capitalize",fontFamily:T.fBody }}>{st}</button>
             ))}
           </div>
           <div style={{ flex:1,overflowY:"auto",padding:14 }}>
@@ -1661,7 +1724,7 @@ function App() {
               <p style={{ fontSize:12,color:"#888",marginBottom:12 }}>Opacity and visibility controls are on the Map tab (Layers &amp; Zones strip).</p>
               {mapOverlays.length===0 && <p style={{ color:"#888",fontSize:13 }}>No layers yet. Upload an image to overlay it above the map.</p>}
               {mapOverlays.map(ov=>(
-                <div key={ov.id} style={{ display:"flex",alignItems:"center",gap:10,padding:"8px 10px",background:"#f5f5f5",borderRadius:8,marginBottom:8 }}>
+                <div key={ov.id} style={{ display:"flex",alignItems:"center",gap:10,padding:"8px 10px",background:T.surface,borderRadius:8,marginBottom:8 }}>
                   <img src={ov.src} alt={ov.name} style={{ width:40,height:40,objectFit:"cover",borderRadius:4,flexShrink:0,border:"0.5px solid #ddd" }} />
                   {renamingOverlay?.id === ov.id ? <>
                     <input autoFocus value={renamingOverlay.name}
@@ -1687,7 +1750,7 @@ function App() {
               </div>
               {mapZones.length===0 && <p style={{ color:"#888",fontSize:13 }}>No zones yet. Click "+ New Zone" then tap waypoints on the map (min 3), then click "Close Zone ✓".</p>}
               {mapZones.map(z=>(
-                <div key={z.id} style={{ display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:"#f5f5f5",borderRadius:8,marginBottom:6 }}>
+                <div key={z.id} style={{ display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:T.surface,borderRadius:8,marginBottom:6 }}>
                   <div style={{ width:28,height:28,borderRadius:6,background:z.fill_color,opacity:z.opacity/100,flexShrink:0,border:"1px solid #ccc" }} />
                   <div style={{ flex:1,minWidth:0 }}>
                     <div style={{ fontSize:13,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{z.name||"Unnamed Zone"}</div>
