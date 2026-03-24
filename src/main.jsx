@@ -355,6 +355,7 @@ function App() {
   const [zoneForm, setZoneForm] = useState(null);
   const [masterZoneOpacity, setMasterZoneOpacity] = useState(100);
   const [showLayerControls, setShowLayerControls] = useState(false);
+  const [editingZonePoints, setEditingZonePoints] = useState(null); // { zoneId, points, originalPoints }
 
   const mapRef = useRef(null);
   const dragRef = useRef({ active: false, startX: 0, startY: 0, lastX: 0, lastY: 0, moved: false });
@@ -369,6 +370,7 @@ function App() {
   const sessionRef = useRef(session);
   const zonesRef = useRef(zones);
   const addPointZoneRef = useRef(null);
+  const zonePointDragRef = useRef(null);
 
   useEffect(() => { placingRef.current = placingMode; }, [placingMode]);
   useEffect(() => { transformRef.current = transform; }, [transform]);
@@ -600,6 +602,30 @@ function App() {
 
   async function toggleZoneReveal(id, current) {
     try { await dbUpdate(session.access_token, "zones", id, { revealed: !current }); setZones(prev => prev.map(z => z.id === id ? { ...z, revealed: !current } : z)); } catch(e) { setError(e.message); }
+  }
+
+  // ── Zone waypoint drag-to-move ─────────────────────────────────────────────
+  function startZonePointEdit(zone) {
+    setZoneForm(null);
+    setEditingZonePoints({ zoneId: zone.id, points: zone.points.map(p=>({...p})), originalPoints: zone.points.map(p=>({...p})) });
+    setTab("map");
+  }
+  async function saveZonePoints() {
+    if (!editingZonePoints) return;
+    try {
+      await dbUpdate(session.access_token, "zones", editingZonePoints.zoneId, { points: editingZonePoints.points });
+      setZones(prev => prev.map(z => z.id === editingZonePoints.zoneId ? { ...z, points: editingZonePoints.points } : z));
+      const z = zonesRef.current.find(z => z.id === editingZonePoints.zoneId);
+      const updated = { ...z, points: editingZonePoints.points };
+      setEditingZonePoints(null);
+      setTimeout(() => setZoneForm({ zone: updated, name: updated.name, fill_color: updated.fill_color, opacity: updated.opacity, revealed: updated.revealed, points: updated.points }), 50);
+    } catch(e) { setError(e.message); }
+  }
+  function cancelZonePointEdit() {
+    const zId = editingZonePoints?.zoneId;
+    setEditingZonePoints(null);
+    const z = zonesRef.current.find(z => z.id === zId);
+    if (z) setTimeout(() => setZoneForm({ zone: z, name: z.name, fill_color: z.fill_color, opacity: z.opacity, revealed: z.revealed, points: z.points.map(p=>({...p})) }), 50);
   }
 
   async function updateMarkerLimit(limit) {
@@ -1051,6 +1077,13 @@ function App() {
                 <Btn size="sm" onClick={()=>{ setPlacingMode(null); addPointZoneRef.current = null; }}>Cancel</Btn>
               </span>
             )}
+            {editingZonePoints && (
+              <span style={{ display:"flex",alignItems:"center",gap:6 }}>
+                <span style={{ fontSize:11,color:"#9B59B6",padding:"2px 8px",background:"#F5EEF8",borderRadius:20 }}>Drag waypoints to reposition</span>
+                <Btn size="sm" variant="primary" onClick={saveZonePoints}>Save</Btn>
+                <Btn size="sm" onClick={cancelZonePointEdit}>Cancel</Btn>
+              </span>
+            )}
           </div>
           <div style={{ display:"flex",alignItems:"center",gap:8,padding:"4px 14px",borderBottom:"0.5px solid #ddd",background:"#f9f9f9" }}>
             <span style={{ fontSize:11,color:"#888",whiteSpace:"nowrap" }}>Zoom speed</span>
@@ -1131,6 +1164,7 @@ function App() {
                       </defs>
                       {mapZones.map(z => {
                         if (!isGM && !z.revealed) return null;
+                        if (editingZonePoints && z.id === editingZonePoints.zoneId) return null; // rendered separately below
                         const pts = z.points.map(p=>`${p.x},${p.y}`).join(" ");
                         const sw = Math.max(1, 2/transform.scale);
                         return (
@@ -1145,6 +1179,52 @@ function App() {
                           </g>
                         );
                       })}
+                      {/* Waypoint drag-to-move editor */}
+                      {editingZonePoints && (() => {
+                        const { points } = editingZonePoints;
+                        const sw = Math.max(1, 2/transform.scale);
+                        const r = Math.max(5, 9/transform.scale);
+                        const pts = points.map(p=>`${p.x},${p.y}`).join(" ");
+                        function startPointDrag(e, i) {
+                          e.stopPropagation();
+                          const cx = e.touches ? e.touches[0].clientX : e.clientX;
+                          const cy = e.touches ? e.touches[0].clientY : e.clientY;
+                          zonePointDragRef.current = { index: i, startCx: cx, startCy: cy, startX: points[i].x, startY: points[i].y };
+                          function onMove(ev) {
+                            if (!zonePointDragRef.current) return;
+                            const mx = ev.touches ? ev.touches[0].clientX : ev.clientX;
+                            const my = ev.touches ? ev.touches[0].clientY : ev.clientY;
+                            const nx = zonePointDragRef.current.startX + (mx - zonePointDragRef.current.startCx) / transformRef.current.scale;
+                            const ny = zonePointDragRef.current.startY + (my - zonePointDragRef.current.startCy) / transformRef.current.scale;
+                            setEditingZonePoints(prev => {
+                              const np = [...prev.points]; np[zonePointDragRef.current.index] = { x: nx, y: ny };
+                              return { ...prev, points: np };
+                            });
+                          }
+                          function onUp() {
+                            zonePointDragRef.current = null;
+                            window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp);
+                            window.removeEventListener("touchmove", onMove); window.removeEventListener("touchend", onUp);
+                          }
+                          window.addEventListener("mousemove", onMove); window.addEventListener("mouseup", onUp);
+                          window.addEventListener("touchmove", onMove, { passive: true }); window.addEventListener("touchend", onUp);
+                        }
+                        return <g>
+                          <polygon points={pts} fill="#9B59B6" opacity={0.15} />
+                          <polyline points={pts + ` ${points[0].x},${points[0].y}`} fill="none" stroke="#9B59B6" strokeWidth={sw} />
+                          {points.map((p, i) => (
+                            <g key={i}>
+                              <circle cx={p.x} cy={p.y} r={r} fill="#9B59B6" stroke="#ffffff" strokeWidth={sw}
+                                style={{ cursor:"move", pointerEvents:"all" }}
+                                onMouseDown={e => startPointDrag(e, i)}
+                                onTouchStart={e => startPointDrag(e, i)} />
+                              <text x={p.x} y={p.y - r - 3/transform.scale} textAnchor="middle"
+                                fill="#ffffff" fontSize={Math.max(8, 10/transform.scale)}
+                                style={{ pointerEvents:"none", userSelect:"none" }}>{i+1}</text>
+                            </g>
+                          ))}
+                        </g>;
+                      })()}
                       {/* Live waypoint preview while placing a new zone */}
                       {placingZonePoints && placingZonePoints.length > 0 && (() => {
                         const sw = Math.max(1, 2/transform.scale);
@@ -1434,6 +1514,7 @@ function App() {
       {zoneForm && <ZoneFormModal form={zoneForm}
         onSave={saveZone} onDelete={deleteZone}
         onAddPoint={zId=>{ setZoneForm(null); addPointZoneRef.current=zId; setPlacingMode("addpoint"); setTab("map"); }}
+        onMovePoints={zone=>startZonePointEdit(zone)}
         onClose={()=>setZoneForm(null)} />}
       {poiForm && <POIFormModal form={poiForm} categoryIcons={categoryIcons} onSave={savePOI} onDelete={deletePOI} onDuplicate={duplicatePOI} onClose={()=>setPoiForm(null)} />}
       {markerForm && <MarkerFormModal form={markerForm} onSave={saveMarker} onEdit={editMarker} onCancel={()=>setMarkerForm(null)} />}
@@ -1466,7 +1547,7 @@ function App() {
 
 const ZONE_COLORS = ["#E74C3C","#E67E22","#F1C40F","#2ECC71","#1ABC9C","#3498DB","#9B59B6","#E91E63","#FFFFFF","#222222"];
 
-function ZoneFormModal({ form, onSave, onDelete, onAddPoint, onClose }) {
+function ZoneFormModal({ form, onSave, onDelete, onAddPoint, onMovePoints, onClose }) {
   const isEdit = !!form.zone;
   const [name, setName] = useState(form.name || "");
   const [fillColor, setFillColor] = useState(form.fill_color || "#3498DB");
@@ -1522,7 +1603,12 @@ function ZoneFormModal({ form, onSave, onDelete, onAddPoint, onClose }) {
             </div>
           ))}
         </div>
-        {isEdit && <Btn size="sm" onClick={()=>onAddPoint(form.zone.id)}>+ Add Point on Map</Btn>}
+        {isEdit && (
+          <div style={{ display:"flex",gap:6,flexWrap:"wrap" }}>
+            <Btn size="sm" onClick={()=>onAddPoint(form.zone.id)}>+ Add Point</Btn>
+            <Btn size="sm" onClick={()=>onMovePoints(form.zone)}>✥ Move Points</Btn>
+          </div>
+        )}
       </Field>
       <div style={{ display:"flex",gap:8,flexWrap:"wrap",marginTop:8 }}>
         <Btn variant="primary" onClick={()=>onSave({...form,name,fill_color:fillColor,opacity,revealed,points,clearImage},imageFile)} style={{ flex:1 }}>Save</Btn>
