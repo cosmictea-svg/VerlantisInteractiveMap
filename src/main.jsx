@@ -97,6 +97,8 @@ function createRealtimeChannel(token, campaignId, handlers) {
         { table: "annotations",      filter: `campaign_id=eq.${campaignId}` },
         { table: "campaign_members", filter: `campaign_id=eq.${campaignId}` },
         { table: "campaigns",        filter: `id=eq.${campaignId}` },
+        { table: "overlays",         filter: `campaign_id=eq.${campaignId}` },
+        { table: "zones",            filter: `campaign_id=eq.${campaignId}` },
       ];
       tableConfigs.forEach(({ table, filter }, i) => {
         ws.send(JSON.stringify({
@@ -122,6 +124,8 @@ function createRealtimeChannel(token, campaignId, handlers) {
         if (table === "annotations") handlers.onAnnotation(mapped);
         if (table === "campaign_members") handlers.onMember?.(mapped);
         if (table === "campaigns") handlers.onCampaign?.(mapped);
+        if (table === "overlays") handlers.onOverlay?.(mapped);
+        if (table === "zones") handlers.onZone?.(mapped);
       } catch {}
     };
     ws.onclose = () => { clearInterval(heartbeatTimer); if (!closed) reconnectTimer = setTimeout(connect, 3000); };
@@ -343,6 +347,12 @@ function App() {
   const [joinCode, setJoinCode] = useState("");
   const [markerLimit, setMarkerLimit] = useState(10);
   const [error, setError] = useState("");
+  const [overlays, setOverlays] = useState([]);
+  const [zones, setZones] = useState([]);
+  const [overlaySettings, setOverlaySettings] = useState({});
+  const [ovSubTab, setOvSubTab] = useState("layers");
+  const [placingZonePoints, setPlacingZonePoints] = useState(null);
+  const [zoneForm, setZoneForm] = useState(null);
 
   const mapRef = useRef(null);
   const dragRef = useRef({ active: false, startX: 0, startY: 0, lastX: 0, lastY: 0, moved: false });
@@ -355,12 +365,20 @@ function App() {
   const realtimeRef = useRef(null);
   // Hold a ref to session so async callbacks always read the latest token
   const sessionRef = useRef(session);
+  const zonesRef = useRef(zones);
+  const addPointZoneRef = useRef(null);
 
   useEffect(() => { placingRef.current = placingMode; }, [placingMode]);
   useEffect(() => { transformRef.current = transform; }, [transform]);
   useEffect(() => { imgSizeRef.current = imgSize; }, [imgSize]);
   useEffect(() => { scrollSensRef.current = scrollSens; }, [scrollSens]);
   useEffect(() => { sessionRef.current = session; }, [session]);
+  useEffect(() => { zonesRef.current = zones; }, [zones]);
+  // Restore per-user overlay opacity/visibility from localStorage when campaign loads
+  useEffect(() => {
+    if (!activeCampaign) return;
+    try { const s = localStorage.getItem(`ov_settings_${activeCampaign.id}`); if (s) setOverlaySettings(JSON.parse(s)); } catch {}
+  }, [activeCampaign?.id]);
 
   // ── Auth ──
   useEffect(() => {
@@ -421,6 +439,20 @@ function App() {
         }
       },
       // Real-time colour + display name sync: when any player updates their profile, all clients see it immediately
+      onOverlay: (payload) => {
+        if (payload.eventType === "INSERT") setOverlays(p => p.find(x => x.id === payload.new.id) ? p : [...p, payload.new]);
+        if (payload.eventType === "UPDATE") setOverlays(p => p.map(x => x.id === payload.new.id ? payload.new : x));
+        if (payload.eventType === "DELETE") setOverlays(p => p.filter(x => x.id !== payload.old?.id));
+      },
+      onZone: (payload) => {
+        if (payload.eventType === "INSERT") setZones(p => p.find(x => x.id === payload.new.id) ? p : [...p, payload.new]);
+        // UPDATE: if zone not in state (was hidden, now revealed) treat as insert
+        if (payload.eventType === "UPDATE") setZones(p => {
+          const exists = p.find(x => x.id === payload.new.id);
+          return exists ? p.map(x => x.id === payload.new.id ? payload.new : x) : [...p, payload.new];
+        });
+        if (payload.eventType === "DELETE") setZones(p => p.filter(x => x.id !== payload.old?.id));
+      },
       onMember: (payload) => {
         if (payload.eventType === "UPDATE") {
           setMembers(m => m.map(x => x.user_id === payload.new.user_id
@@ -465,16 +497,18 @@ function App() {
     setActiveCampaign(camp); setMemberRole(role);
     setMarkerLimit(camp.marker_limit || 10);
     try {
-      const [mapsData, poisData, markersData, annsData, catIconsData, membersData] = await Promise.all([
+      const [mapsData, poisData, markersData, annsData, catIconsData, membersData, overlaysData, zonesData] = await Promise.all([
         dbSelect(session.access_token, "maps", `campaign_id=eq.${camp.id}&order=created_at`),
         dbSelect(session.access_token, "pois", `campaign_id=eq.${camp.id}`),
         dbSelect(session.access_token, "markers", `campaign_id=eq.${camp.id}`),
         dbSelect(session.access_token, "annotations", `campaign_id=eq.${camp.id}`),
         dbSelect(session.access_token, "category_icons", `campaign_id=eq.${camp.id}`),
         dbSelect(session.access_token, "campaign_members", `campaign_id=eq.${camp.id}&select=user_id,role,player_color,joined_at,display_name`),
+        dbSelect(session.access_token, "overlays", `campaign_id=eq.${camp.id}&order=z_order`),
+        dbSelect(session.access_token, "zones", `campaign_id=eq.${camp.id}`),
       ]);
       setMaps(mapsData); setPois(poisData); setMarkers(markersData); setAnnotations(annsData);
-      setMembers(membersData);
+      setMembers(membersData); setOverlays(overlaysData); setZones(zonesData);
       const catMap = {};
       catIconsData.forEach(ci => { catMap[ci.category_id] = ci.icon_url; });
       setCategoryIcons(catMap);
@@ -508,6 +542,57 @@ function App() {
       });
       setMembers(prev => prev.map(m => m.user_id === user.id ? { ...m, display_name: name.trim() } : m));
     } catch(e) { setError(e.message); }
+  }
+
+  // ── Overlay settings (per-user, stored in localStorage) ──────────────────────
+  function setOverlaySetting(id, key, value) {
+    setOverlaySettings(prev => {
+      const cur = prev[id] || { opacity: 80, visible: true };
+      const next = { ...prev, [id]: { ...cur, [key]: value } };
+      if (activeCampaign) localStorage.setItem(`ov_settings_${activeCampaign.id}`, JSON.stringify(next));
+      return next;
+    });
+  }
+
+  async function uploadOverlay(file) {
+    let src;
+    try { src = await uploadToStorage(session.access_token, file); } catch { src = await readFile(file); }
+    try {
+      const [ov] = await dbInsert(session.access_token, "overlays", {
+        campaign_id: activeCampaign.id, map_id: activeMapId,
+        name: file.name.replace(/\.[^.]+$/, ""), src,
+        z_order: overlays.filter(o => o.campaign_id === activeCampaign.id && o.map_id === activeMapId).length
+      });
+      setOverlays(prev => [...prev, ov]);
+    } catch(e) { setError(e.message); }
+  }
+
+  async function deleteOverlay(id) {
+    try { await dbDelete(session.access_token, "overlays", id); setOverlays(prev => prev.filter(o => o.id !== id)); } catch(e) { setError(e.message); }
+  }
+
+  async function saveZone(form, imageFile) {
+    let image_url = form.clearImage ? null : (form.zone?.image_url || null);
+    if (imageFile) { try { image_url = await uploadToStorage(session.access_token, imageFile); } catch { image_url = await readFile(imageFile); } }
+    const body = { name: form.name || "Zone", points: form.points, fill_color: form.fill_color || "#3498DB", image_url, opacity: form.opacity ?? 80, revealed: form.revealed || false };
+    try {
+      if (form.zone) {
+        await dbUpdate(session.access_token, "zones", form.zone.id, body);
+        setZones(prev => prev.map(z => z.id === form.zone.id ? { ...z, ...body } : z));
+      } else {
+        const [nz] = await dbInsert(session.access_token, "zones", { ...body, campaign_id: activeCampaign.id, map_id: activeMapId });
+        setZones(prev => [...prev, nz]);
+      }
+      setZoneForm(null);
+    } catch(e) { setError(e.message); }
+  }
+
+  async function deleteZone(id) {
+    try { await dbDelete(session.access_token, "zones", id); setZones(prev => prev.filter(z => z.id !== id)); setZoneForm(null); } catch(e) { setError(e.message); }
+  }
+
+  async function toggleZoneReveal(id, current) {
+    try { await dbUpdate(session.access_token, "zones", id, { revealed: !current }); setZones(prev => prev.map(z => z.id === id ? { ...z, revealed: !current } : z)); } catch(e) { setError(e.message); }
   }
 
   async function updateMarkerLimit(limit) {
@@ -547,6 +632,8 @@ function App() {
   const mapAnnotations = annotations.filter(a => a.map_id === activeMapId && (isGM || a.visible));
   const myMarkers = markers.filter(m => m.map_id === activeMapId && m.user_id === user?.id);
   const takenColors = members.filter(m => m.user_id !== user?.id && m.player_color).map(m => m.player_color);
+  const mapOverlays = overlays.filter(o => o.map_id === activeMapId);
+  const mapZones = zones.filter(z => z.map_id === activeMapId);
 
   function fitToContainer(iw, ih) {
     const rect = mapRef.current?.getBoundingClientRect();
@@ -670,11 +757,29 @@ function App() {
       dragRef.current.active = false; setIsDragging(false);
       window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp);
       window.removeEventListener("touchmove", onMove); window.removeEventListener("touchend", onUp);
-      if (!dragRef.current.moved && placingRef.current) {
+      if (!dragRef.current.moved && (placingRef.current || addPointZoneRef.current)) {
         const cx2 = ev.changedTouches ? ev.changedTouches[0].clientX : (ev.clientX ?? dragRef.current.startX);
         const cy2 = ev.changedTouches ? ev.changedTouches[0].clientY : (ev.clientY ?? dragRef.current.startY);
         const coords = toMapCoords(cx2, cy2);
-        const mode = placingRef.current; setPlacingMode(null);
+        const mode = placingRef.current;
+        // Add point to an existing zone
+        if (addPointZoneRef.current) {
+          const zId = addPointZoneRef.current; addPointZoneRef.current = null; setPlacingMode(null);
+          const z = zonesRef.current.find(z => z.id === zId);
+          if (z) {
+            const newPoints = [...z.points, coords];
+            dbUpdate(sessionRef.current.access_token, "zones", zId, { points: newPoints }).catch(console.error);
+            setZones(prev => prev.map(z2 => z2.id === zId ? { ...z2, points: newPoints } : z2));
+            setTimeout(() => setZoneForm({ zone: { ...z, points: newPoints }, name: z.name, fill_color: z.fill_color, opacity: z.opacity, revealed: z.revealed, points: newPoints }), 50);
+          }
+          return;
+        }
+        // New zone — append waypoint, keep mode active
+        if (mode === "zone") {
+          setPlacingZonePoints(prev => [...(prev || []), coords]);
+          return;
+        }
+        setPlacingMode(null);
         if (mode === "poi") setPoiForm({ poi: null, x: coords.x, y: coords.y, name: "", description: "", revealed: false, category: "other", size: "large" });
         if (mode === "marker") {
           if (!myColor && !isGM) { setShowColorPicker(true); setPlacingMode(null); return; }
@@ -831,7 +936,7 @@ function App() {
   const markerCardPos = openMarker ? getCardPos(openMarker.x, openMarker.y) : null;
   const sortedLibPOIs = [...pois].sort((a,b)=>libSort==="name"?(a.name||"").localeCompare(b.name||""):(a.category||"").localeCompare(b.category||""));
   // Profile tab is available to everyone; library and overlays are GM-only
-  const tabs = ["map", ...(isGM ? ["library", "overlays"] : []), "profile"];
+  const tabs = ["map", ...(isGM ? ["library"] : []), "overlays", "profile"];
   const buildVersion = (typeof __BUILD_DATE__ !== "undefined" && typeof __COMMIT__ !== "undefined") ? `v${__BUILD_DATE__}-${__COMMIT__}` : "vdev";
 
   if (loading) return <div style={{ display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",fontFamily:"sans-serif",color:"#888",fontSize:16 }}>Loading...</div>;
@@ -923,7 +1028,22 @@ function App() {
               + Marker {!isGM && myMarkers.length >= markerLimit ? `(${myMarkers.length}/${markerLimit} full)` : !isGM ? `(${myMarkers.length}/${markerLimit})` : ""}
             </Btn>
             <Btn size="sm" onClick={resetView}>Fit</Btn>
-            {placingMode && <span style={{ fontSize:11,color:"#185FA5",padding:"2px 8px",background:"#E6F1FB",borderRadius:20 }}>Tap map to place {placingMode}</span>}
+            {placingMode && placingMode !== "zone" && placingMode !== "addpoint" && <span style={{ fontSize:11,color:"#185FA5",padding:"2px 8px",background:"#E6F1FB",borderRadius:20 }}>Tap map to place {placingMode}</span>}
+            {placingMode === "zone" && (
+              <span style={{ display:"flex",alignItems:"center",gap:6,flexWrap:"wrap" }}>
+                <span style={{ fontSize:11,color:"#185FA5",padding:"2px 8px",background:"#E6F1FB",borderRadius:20 }}>Zone: {placingZonePoints?.length || 0} points</span>
+                {(placingZonePoints?.length || 0) >= 3 && (
+                  <Btn size="sm" variant="primary" onClick={()=>{ setPlacingMode(null); setZoneForm({ zone:null, name:"", fill_color:"#3498DB", opacity:80, revealed:false, points:placingZonePoints }); setPlacingZonePoints(null); }}>Close Zone ✓</Btn>
+                )}
+                <Btn size="sm" onClick={()=>{ setPlacingMode(null); setPlacingZonePoints(null); }}>Cancel</Btn>
+              </span>
+            )}
+            {placingMode === "addpoint" && (
+              <span style={{ display:"flex",alignItems:"center",gap:6 }}>
+                <span style={{ fontSize:11,color:"#E67E22",padding:"2px 8px",background:"#FEF3E2",borderRadius:20 }}>Click map to add point</span>
+                <Btn size="sm" onClick={()=>{ setPlacingMode(null); addPointZoneRef.current = null; }}>Cancel</Btn>
+              </span>
+            )}
           </div>
           <div style={{ display:"flex",alignItems:"center",gap:8,padding:"4px 14px",borderBottom:"0.5px solid #ddd",background:"#f9f9f9" }}>
             <span style={{ fontSize:11,color:"#888",whiteSpace:"nowrap" }}>Zoom speed</span>
@@ -943,6 +1063,54 @@ function App() {
               ) : (
                 <div style={{ position:"absolute",transform:`translate(${transform.x}px,${transform.y}px) scale(${transform.scale})`,transformOrigin:"0 0" }}>
                   <img src={currentMap.src} alt="map" style={{ display:"block",maxWidth:"none" }} draggable={false} onLoad={onImgLoad} />
+                  {/* Overlay image layers — per-user opacity/visibility */}
+                  {mapOverlays.map(ov => {
+                    const s = overlaySettings[ov.id] || { opacity: 80, visible: true };
+                    if (!s.visible) return null;
+                    return <img key={ov.id} src={ov.src} alt={ov.name} draggable={false}
+                      style={{ position:"absolute",left:0,top:0,width:imgSize.w,height:imgSize.h,opacity:s.opacity/100,pointerEvents:"none",display:"block",objectFit:"fill" }} />;
+                  })}
+                  {/* Zone polygon layer — SVG scales with map transform */}
+                  {(mapZones.length > 0 || (placingZonePoints && placingZonePoints.length > 0)) && imgSize.w > 0 && (
+                    <svg style={{ position:"absolute",left:0,top:0,width:imgSize.w,height:imgSize.h,overflow:"visible",pointerEvents:"none" }}>
+                      <defs>
+                        {mapZones.map(z => z.image_url && (
+                          <clipPath key={z.id} id={`zclip-${z.id}`}>
+                            <polygon points={z.points.map(p=>`${p.x},${p.y}`).join(" ")} />
+                          </clipPath>
+                        ))}
+                      </defs>
+                      {mapZones.map(z => {
+                        if (!isGM && !z.revealed) return null;
+                        const pts = z.points.map(p=>`${p.x},${p.y}`).join(" ");
+                        const sw = Math.max(1, 2/transform.scale);
+                        return (
+                          <g key={z.id} opacity={z.opacity/100}
+                            onClick={e=>{ e.stopPropagation(); if(isGM && placingMode !== "zone" && placingMode !== "addpoint") setZoneForm({zone:z,name:z.name,fill_color:z.fill_color,opacity:z.opacity,revealed:z.revealed,points:[...z.points]}); }}
+                            style={{ pointerEvents: isGM && placingMode !== "zone" && placingMode !== "addpoint" ? "all" : "none", cursor: isGM ? "pointer" : "default" }}>
+                            <polygon points={pts} fill={z.fill_color} />
+                            {z.image_url && <image href={z.image_url} x={0} y={0} width={imgSize.w} height={imgSize.h} clipPath={`url(#zclip-${z.id})`} preserveAspectRatio="xMidYMid slice" />}
+                            {/* Border: dashed when hidden from players */}
+                            <polygon points={pts} fill="none" stroke={z.revealed ? z.fill_color : "#ffffff"} strokeWidth={sw}
+                              strokeDasharray={z.revealed ? undefined : `${6/transform.scale},${3/transform.scale}`} style={{ pointerEvents:"none" }} />
+                          </g>
+                        );
+                      })}
+                      {/* Live waypoint preview while placing a new zone */}
+                      {placingZonePoints && placingZonePoints.length > 0 && (() => {
+                        const sw = Math.max(1, 2/transform.scale);
+                        const r = Math.max(3, 5/transform.scale);
+                        const pts = placingZonePoints.map(p=>`${p.x},${p.y}`).join(" ");
+                        return <g>
+                          {placingZonePoints.length >= 3 && <polygon points={pts} fill="#3498DB" opacity={0.25} />}
+                          <polyline points={pts} fill="none" stroke="#ffffff" strokeWidth={sw} strokeDasharray={`${4/transform.scale},${2/transform.scale}`} />
+                          {placingZonePoints.map((p,i) => (
+                            <circle key={i} cx={p.x} cy={p.y} r={r} fill="#3C3489" stroke="#ffffff" strokeWidth={Math.max(1,1.5/transform.scale)} />
+                          ))}
+                        </g>;
+                      })()}
+                    </svg>
+                  )}
                   {mapPOIs.map(p=>(
                     <POIPin key={p.id} poi={p} scale={transform.scale} isGM={isGM}
                       resolvedIconUrl={categoryIcons[p.category]||""}
@@ -1145,11 +1313,70 @@ function App() {
         </div>
       )}
 
-      {/* OVERLAYS TAB */}
-      {tab==="overlays" && isGM && (
-        <div style={{ padding:14,flex:1 }}>
-          <div style={{ fontWeight:500,marginBottom:8 }}>Overlays</div>
-          <p style={{ color:"#888",fontSize:13 }}>Faction overlays, fog of war and road types coming soon.</p>
+      {/* OVERLAYS TAB — visible to all; GM gets Zones sub-tab too */}
+      {tab==="overlays" && (
+        <div style={{ display:"flex",flexDirection:"column",flex:1,minHeight:0 }}>
+          <div style={{ display:"flex",borderBottom:"0.5px solid #ddd",padding:"0 14px",background:"#fafafa" }}>
+            {["layers",...(isGM?["zones"]:[])].map(st=>(
+              <button key={st} onClick={()=>setOvSubTab(st)} style={{ padding:"6px 12px",border:"none",borderBottom:ovSubTab===st?"2px solid #3C3489":"2px solid transparent",background:"transparent",cursor:"pointer",fontSize:12,fontWeight:ovSubTab===st?500:400,color:ovSubTab===st?"#3C3489":"#888",textTransform:"capitalize" }}>{st}</button>
+            ))}
+          </div>
+          <div style={{ flex:1,overflowY:"auto",padding:14 }}>
+
+            {/* LAYERS */}
+            {ovSubTab==="layers" && <>
+              <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:12 }}>
+                <span style={{ fontWeight:500 }}>Image Layers</span>
+                {isGM && <FilePicker label="+ Upload Layer" onFile={uploadOverlay} />}
+              </div>
+              {mapOverlays.length===0 && <p style={{ color:"#888",fontSize:13 }}>{isGM?"No layers yet. Upload an image to overlay it on the map.":"No overlay layers have been added yet."}</p>}
+              {mapOverlays.map(ov=>{
+                const s = overlaySettings[ov.id] || { opacity:80, visible:true };
+                return (
+                  <div key={ov.id} style={{ display:"flex",alignItems:"center",gap:10,padding:"8px 10px",background:"#f5f5f5",borderRadius:8,marginBottom:8 }}>
+                    <img src={ov.src} alt={ov.name} style={{ width:40,height:40,objectFit:"cover",borderRadius:4,flexShrink:0,border:"0.5px solid #ddd" }} />
+                    <div style={{ flex:1,minWidth:0 }}>
+                      <div style={{ fontSize:13,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:4 }}>{ov.name}</div>
+                      <div style={{ display:"flex",alignItems:"center",gap:8 }}>
+                        <span style={{ fontSize:11,color:"#888",whiteSpace:"nowrap" }}>Opacity</span>
+                        <input type="range" min={1} max={100} value={s.opacity}
+                          onChange={e=>setOverlaySetting(ov.id,"opacity",Number(e.target.value))} style={{ flex:1,maxWidth:120 }} />
+                        <span style={{ fontSize:11,color:"#888",minWidth:30 }}>{s.opacity}%</span>
+                      </div>
+                    </div>
+                    <button onClick={()=>setOverlaySetting(ov.id,"visible",!s.visible)}
+                      style={{ padding:"3px 8px",borderRadius:8,border:"none",background:s.visible?"#EAF3DE":"#f0f0f0",color:s.visible?"#3B6D11":"#888",fontSize:11,fontWeight:500,cursor:"pointer",flexShrink:0 }}>
+                      {s.visible?"Visible":"Hidden"}
+                    </button>
+                    {isGM && <Btn size="sm" variant="danger" onClick={()=>deleteOverlay(ov.id)}>✕</Btn>}
+                  </div>
+                );
+              })}
+            </>}
+
+            {/* ZONES — GM only */}
+            {ovSubTab==="zones" && isGM && <>
+              <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:12 }}>
+                <span style={{ fontWeight:500 }}>Zones</span>
+                <Btn size="sm" variant="primary" onClick={()=>{ setPlacingMode("zone"); setPlacingZonePoints([]); setTab("map"); }}>+ New Zone</Btn>
+              </div>
+              {mapZones.length===0 && <p style={{ color:"#888",fontSize:13 }}>No zones yet. Click "+ New Zone" then tap waypoints on the map (min 3), then click "Close Zone ✓".</p>}
+              {mapZones.map(z=>(
+                <div key={z.id} style={{ display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:"#f5f5f5",borderRadius:8,marginBottom:6 }}>
+                  <div style={{ width:28,height:28,borderRadius:6,background:z.fill_color,opacity:z.opacity/100,flexShrink:0,border:"1px solid #ccc" }} />
+                  <div style={{ flex:1,minWidth:0 }}>
+                    <div style={{ fontSize:13,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{z.name||"Unnamed Zone"}</div>
+                    <div style={{ fontSize:11,color:"#888" }}>{z.points.length} points · opacity {z.opacity}%</div>
+                  </div>
+                  <button onClick={()=>toggleZoneReveal(z.id,z.revealed)}
+                    style={{ padding:"3px 8px",borderRadius:10,border:"none",background:z.revealed?"#EAF3DE":"#FEF3E2",color:z.revealed?"#3B6D11":"#854F0B",fontSize:11,fontWeight:500,cursor:"pointer",flexShrink:0 }}>
+                    {z.revealed?"Shown":"Hidden"}
+                  </button>
+                  <Btn size="sm" onClick={()=>setZoneForm({zone:z,name:z.name,fill_color:z.fill_color,opacity:z.opacity,revealed:z.revealed,points:[...z.points]})}>Edit</Btn>
+                </div>
+              ))}
+            </>}
+          </div>
         </div>
       )}
 
@@ -1169,6 +1396,10 @@ function App() {
       )}
 
       {/* Modals */}
+      {zoneForm && <ZoneFormModal form={zoneForm}
+        onSave={saveZone} onDelete={deleteZone}
+        onAddPoint={zId=>{ setZoneForm(null); addPointZoneRef.current=zId; setPlacingMode("addpoint"); setTab("map"); }}
+        onClose={()=>setZoneForm(null)} />}
       {poiForm && <POIFormModal form={poiForm} categoryIcons={categoryIcons} onSave={savePOI} onDelete={deletePOI} onDuplicate={duplicatePOI} onClose={()=>setPoiForm(null)} />}
       {markerForm && <MarkerFormModal form={markerForm} onSave={saveMarker} onEdit={editMarker} onCancel={()=>setMarkerForm(null)} />}
       {annotationForm && <AnnotationModal form={annotationForm} onSave={saveAnnotation} onDelete={deleteAnnotation} onCancel={()=>setAnnotationForm(null)} />}
@@ -1195,6 +1426,74 @@ function App() {
         </Modal>
       )}
     </div>
+  );
+}
+
+const ZONE_COLORS = ["#E74C3C","#E67E22","#F1C40F","#2ECC71","#1ABC9C","#3498DB","#9B59B6","#E91E63","#FFFFFF","#222222"];
+
+function ZoneFormModal({ form, onSave, onDelete, onAddPoint, onClose }) {
+  const isEdit = !!form.zone;
+  const [name, setName] = useState(form.name || "");
+  const [fillColor, setFillColor] = useState(form.fill_color || "#3498DB");
+  const [opacity, setOpacity] = useState(form.opacity ?? 80);
+  const [revealed, setRevealed] = useState(form.revealed || false);
+  const [points, setPoints] = useState(form.points || []);
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(form.zone?.image_url || "");
+  const [clearImage, setClearImage] = useState(false);
+  async function handleImage(f) { setImageFile(f); setClearImage(false); setImagePreview(await readFile(f)); }
+  function removePoint(i) { if (points.length <= 3) return; setPoints(prev => prev.filter((_,idx) => idx !== i)); }
+  return (
+    <Modal title={isEdit ? "Edit Zone" : "New Zone"} onClose={onClose} width={440}>
+      <Field label="Name">
+        <input value={name} onChange={e=>setName(e.target.value)} style={IS} placeholder="e.g. Merchant Quarter" autoFocus />
+      </Field>
+      <Field label="Fill Colour">
+        <div style={{ display:"flex",flexWrap:"wrap",gap:8,marginTop:4,alignItems:"center" }}>
+          {ZONE_COLORS.map(c=>(
+            <div key={c} onClick={()=>setFillColor(c)}
+              style={{ width:28,height:28,borderRadius:6,background:c,border:fillColor===c?"3px solid #3C3489":"2px solid #ddd",cursor:"pointer",boxSizing:"border-box",flexShrink:0 }} />
+          ))}
+          <input type="color" value={fillColor} onChange={e=>setFillColor(e.target.value)}
+            title="Custom colour" style={{ width:28,height:28,padding:2,border:"2px solid #ddd",borderRadius:6,cursor:"pointer",background:"none" }} />
+        </div>
+      </Field>
+      <Field label={`Opacity: ${opacity}%`}>
+        <input type="range" min={1} max={100} value={opacity} onChange={e=>setOpacity(Number(e.target.value))} style={{ width:"100%" }} />
+        <div style={{ fontSize:11,color:"#888",marginTop:3 }}>Applies to both the fill colour and any assigned image.</div>
+      </Field>
+      <Field label="Zone Image (optional)">
+        <div style={{ display:"flex",alignItems:"center",gap:10 }}>
+          {imagePreview && !clearImage && <img src={imagePreview} alt="" style={{ width:48,height:48,objectFit:"cover",borderRadius:6,border:"0.5px solid #ddd",flexShrink:0 }} />}
+          <div style={{ display:"flex",gap:6,flexWrap:"wrap" }}>
+            <FilePicker label={imagePreview && !clearImage ? "Replace" : "Upload"} onFile={handleImage} />
+            {imagePreview && !clearImage && <Btn size="sm" variant="danger" onClick={()=>{setClearImage(true);setImagePreview("");setImageFile(null);}}>Remove</Btn>}
+          </div>
+        </div>
+      </Field>
+      <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:14 }}>
+        <input type="checkbox" checked={revealed} onChange={e=>setRevealed(e.target.checked)} id="zrev" />
+        <label htmlFor="zrev" style={{ fontSize:13 }}>Visible to players</label>
+      </div>
+      <Field label={`Waypoints (${points.length} — minimum 3)`}>
+        <div style={{ maxHeight:150,overflowY:"auto",border:"0.5px solid #eee",borderRadius:8,marginBottom:6 }}>
+          {points.map((p,i)=>(
+            <div key={i} style={{ display:"flex",alignItems:"center",gap:8,padding:"5px 10px",borderBottom:i<points.length-1?"0.5px solid #f0f0f0":undefined }}>
+              <span style={{ fontSize:12,color:"#666",flex:1 }}>Point {i+1} — ({Math.round(p.x)}, {Math.round(p.y)})</span>
+              <button onClick={()=>removePoint(i)} disabled={points.length<=3}
+                style={{ padding:"2px 8px",fontSize:11,borderRadius:6,border:"none",background:points.length<=3?"#f5f5f5":"#fee",color:points.length<=3?"#bbb":"#A32D2D",cursor:points.length<=3?"not-allowed":"pointer" }}>
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+        {isEdit && <Btn size="sm" onClick={()=>onAddPoint(form.zone.id)}>+ Add Point on Map</Btn>}
+      </Field>
+      <div style={{ display:"flex",gap:8,flexWrap:"wrap",marginTop:8 }}>
+        <Btn variant="primary" onClick={()=>onSave({...form,name,fill_color:fillColor,opacity,revealed,points,clearImage},imageFile)} style={{ flex:1 }}>Save</Btn>
+        {isEdit && <Btn variant="danger" onClick={()=>onDelete(form.zone.id)}>Delete Zone</Btn>}
+      </div>
+    </Modal>
   );
 }
 
