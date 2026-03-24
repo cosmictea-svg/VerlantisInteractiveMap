@@ -90,11 +90,19 @@ function createRealtimeChannel(token, campaignId, handlers) {
     if (closed) return;
     ws = new WebSocket(wsUrl);
     ws.onopen = () => {
-      ["pois", "markers", "annotations", "campaign_members"].forEach((table, i) => {
+      // campaigns uses id= filter; all others use campaign_id=
+      const tableConfigs = [
+        { table: "pois",             filter: `campaign_id=eq.${campaignId}` },
+        { table: "markers",          filter: `campaign_id=eq.${campaignId}` },
+        { table: "annotations",      filter: `campaign_id=eq.${campaignId}` },
+        { table: "campaign_members", filter: `campaign_id=eq.${campaignId}` },
+        { table: "campaigns",        filter: `id=eq.${campaignId}` },
+      ];
+      tableConfigs.forEach(({ table, filter }, i) => {
         ws.send(JSON.stringify({
-          topic: `realtime:public:${table}:campaign_id=eq.${campaignId}`,
+          topic: `realtime:public:${table}:${filter}`,
           event: "phx_join",
-          payload: { config: { postgres_changes: [{ event: "*", schema: "public", table, filter: `campaign_id=eq.${campaignId}` }] }, user_token: token },
+          payload: { config: { postgres_changes: [{ event: "*", schema: "public", table, filter }] }, user_token: token },
           ref: String(i + 1)
         }));
       });
@@ -113,6 +121,7 @@ function createRealtimeChannel(token, campaignId, handlers) {
         if (table === "markers") handlers.onMarker(mapped);
         if (table === "annotations") handlers.onAnnotation(mapped);
         if (table === "campaign_members") handlers.onMember?.(mapped);
+        if (table === "campaigns") handlers.onCampaign?.(mapped);
       } catch {}
     };
     ws.onclose = () => { clearInterval(heartbeatTimer); if (!closed) reconnectTimer = setTimeout(connect, 3000); };
@@ -191,8 +200,9 @@ function readFile(file) {
 
 // ── Marker Pin ────────────────────────────────────────────────────────────────
 // displayName: first letter is shown inside the pin (falls back to user_name then "?")
-function MarkerPin({ marker, scale, isOwner, isGM, onTap, onDragStart, displayName }) {
-  const color = marker.player_color || "#378ADD";
+function MarkerPin({ marker, scale, isOwner, isGM, onTap, onDragStart, displayName, memberColor }) {
+  // memberColor comes from live members state so colour changes sync instantly without a refresh
+  const color = memberColor || marker.player_color || "#378ADD";
   const initial = (displayName || marker.user_name || "?")[0].toUpperCase();
   const size = Math.max(20, 24 / scale);
   const fontSize = Math.max(8, 11 / scale);
@@ -402,6 +412,13 @@ function App() {
         if (payload.eventType === "INSERT") setAnnotations(a => a.find(x => x.id === payload.new.id) ? a : [...a, payload.new]);
         if (payload.eventType === "UPDATE") setAnnotations(a => a.map(x => x.id === payload.new.id ? payload.new : x));
         if (payload.eventType === "DELETE") setAnnotations(a => a.filter(x => x.id !== (payload.old?.id || payload.old_record?.id)));
+      },
+      // Real-time campaign changes: GM updating marker_limit propagates instantly to all players
+      onCampaign: (payload) => {
+        if (payload.eventType === "UPDATE") {
+          setMarkerLimit(payload.new.marker_limit ?? 10);
+          setActiveCampaign(prev => prev ? { ...prev, marker_limit: payload.new.marker_limit } : prev);
+        }
       },
       // Real-time colour + display name sync: when any player updates their profile, all clients see it immediately
       onMember: (payload) => {
@@ -945,6 +962,7 @@ function App() {
                     return (
                       <MarkerPin key={m.id} marker={m} scale={transform.scale} isOwner={isOwner} isGM={isGM}
                         displayName={memberInfo?.display_name}
+                        memberColor={memberInfo?.player_color}
                         onTap={marker => { setOpenMarkerCard(openMarkerCard === marker.id ? null : marker.id); }}
                         onDragStart={isOwner ? startMarkerDrag : () => {}} />
                     );
@@ -977,11 +995,13 @@ function App() {
             )}
 
             {/* Marker popup */}
-            {openMarker && markerCardPos && (
+            {openMarker && markerCardPos && (() => {
+              const openMarkerColor = openMarkerMember?.player_color || openMarker.player_color || "#378ADD";
+              return (
               <div onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
-                style={{ position:"absolute",left:markerCardPos.left,top:markerCardPos.top,width:markerCardPos.cardW,background:"white",borderRadius:10,border:`2px solid ${openMarker.player_color||"#378ADD"}`,zIndex:100,overflow:"hidden",boxSizing:"border-box" }}>
+                style={{ position:"absolute",left:markerCardPos.left,top:markerCardPos.top,width:markerCardPos.cardW,background:"white",borderRadius:10,border:`2px solid ${openMarkerColor}`,zIndex:100,overflow:"hidden",boxSizing:"border-box" }}>
                 <div style={{ display:"flex",alignItems:"center",gap:8,padding:"8px 10px 6px",borderBottom:"0.5px solid #eee" }}>
-                  <div style={{ width:28,height:28,borderRadius:"50% 50% 50% 0",transform:"rotate(-45deg)",background:openMarker.player_color||"#378ADD",border:"2px solid #eee",flexShrink:0 }} />
+                  <div style={{ width:28,height:28,borderRadius:"50% 50% 50% 0",transform:"rotate(-45deg)",background:openMarkerColor,border:"2px solid #eee",flexShrink:0 }} />
                   <div style={{ flex:1,overflow:"hidden" }}>
                     <div style={{ fontWeight:500,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{openMarker.label||"Marker"}</div>
                     <div style={{ fontSize:10,color:"#888" }}>{openMarkerMember?.display_name || openMarker.user_name?.split(" ")[0] || "Player"}</div>
@@ -1002,7 +1022,8 @@ function App() {
                   <Btn size="sm" onClick={()=>setOpenMarkerCard(null)}>Close</Btn>
                 </div>
               </div>
-            )}
+              );
+            })()}
           </div>
 
           <div style={{ padding:"4px 14px",borderTop:"0.5px solid #ddd",display:"flex",gap:12,fontSize:10,color:"#888",flexWrap:"wrap" }}>
