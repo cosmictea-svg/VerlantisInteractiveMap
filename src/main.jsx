@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 
 const SUPA_URL = "https://iqmaumupuftguhurnsdt.supabase.co";
@@ -77,9 +77,11 @@ function signInWithGoogle() {
 async function signOut(token) {
   await fetch(`${SUPA_URL}/auth/v1/logout`, { method: "POST", headers: hdrs(token) });
   localStorage.removeItem("sb_session");
+  localStorage.removeItem("sb_last_campaign"); // clear persisted campaign on sign-out
 }
 
 // ── Realtime ──────────────────────────────────────────────────────────────────
+// campaign_members is now included so colour changes block in real-time for other players
 function createRealtimeChannel(token, campaignId, handlers) {
   const wsUrl = `${SUPA_URL.replace("https://", "wss://")}/realtime/v1/websocket?apikey=${SUPA_KEY}&vsn=1.0.0`;
   let ws, heartbeatTimer, reconnectTimer;
@@ -88,7 +90,7 @@ function createRealtimeChannel(token, campaignId, handlers) {
     if (closed) return;
     ws = new WebSocket(wsUrl);
     ws.onopen = () => {
-      ["pois","markers","annotations"].forEach((table, i) => {
+      ["pois", "markers", "annotations", "campaign_members"].forEach((table, i) => {
         ws.send(JSON.stringify({
           topic: `realtime:public:${table}:campaign_id=eq.${campaignId}`,
           event: "phx_join",
@@ -110,6 +112,7 @@ function createRealtimeChannel(token, campaignId, handlers) {
         if (table === "pois") handlers.onPOI(mapped);
         if (table === "markers") handlers.onMarker(mapped);
         if (table === "annotations") handlers.onAnnotation(mapped);
+        if (table === "campaign_members") handlers.onMember?.(mapped);
       } catch {}
     };
     ws.onclose = () => { clearInterval(heartbeatTimer); if (!closed) reconnectTimer = setTimeout(connect, 3000); };
@@ -138,8 +141,6 @@ const POI_SIZES = [
   { id: "medium", label: "M", scale: 0.66 },
   { id: "small",  label: "S", scale: 0.45 },
 ];
-
-// Preset colours players can choose from
 const PLAYER_COLORS = [
   "#E74C3C","#E67E22","#F1C40F","#2ECC71","#1ABC9C",
   "#3498DB","#9B59B6","#E91E63","#FF5722","#00BCD4",
@@ -189,9 +190,10 @@ function readFile(file) {
 }
 
 // ── Marker Pin ────────────────────────────────────────────────────────────────
-function MarkerPin({ marker, scale, isOwner, isGM, onTap, onDragStart }) {
+// displayName: first letter is shown inside the pin (falls back to user_name then "?")
+function MarkerPin({ marker, scale, isOwner, isGM, onTap, onDragStart, displayName }) {
   const color = marker.player_color || "#378ADD";
-  const initial = (marker.user_name || "?")[0].toUpperCase();
+  const initial = (displayName || marker.user_name || "?")[0].toUpperCase();
   const size = Math.max(20, 24 / scale);
   const fontSize = Math.max(8, 11 / scale);
 
@@ -202,7 +204,6 @@ function MarkerPin({ marker, scale, isOwner, isGM, onTap, onDragStart }) {
       onClick={e => { e.stopPropagation(); onTap(marker); }}
       style={{ position: "absolute", left: marker.x - size/2, top: marker.y - size, width: size, height: size, cursor: isOwner ? "grab" : "pointer", zIndex: 25 }}
     >
-      {/* Teardrop shape */}
       <div style={{ width: size, height: size, borderRadius: "50% 50% 50% 0", transform: "rotate(-45deg)", background: color, border: `${Math.max(1.5, 2/scale)}px solid white`, boxSizing: "border-box", display: "flex", alignItems: "center", justifyContent: "center" }}>
         <span style={{ transform: "rotate(45deg)", color: "white", fontWeight: 700, fontSize, lineHeight: 1, textShadow: "0 0 2px rgba(0,0,0,0.5)" }}>{initial}</span>
       </div>
@@ -235,6 +236,66 @@ function POIPin({ poi, scale, isGM, onTap, onDragStart, resolvedIconUrl }) {
   );
 }
 
+// ── Profile Tab ───────────────────────────────────────────────────────────────
+function ProfileTab({ user, members, myColor, takenColors, isGM, onColorChange, onSaveDisplayName }) {
+  const me = members.find(m => m.user_id === user.id);
+  const [displayName, setDisplayName] = useState(me?.display_name || "");
+  const [saved, setSaved] = useState(false);
+
+  async function handleSave() {
+    await onSaveDisplayName(displayName);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  }
+
+  return (
+    <div style={{ maxWidth: 460 }}>
+      <div style={{ fontWeight: 500, fontSize: 15, marginBottom: 16 }}>Your Profile</div>
+
+      <Field label="Display Name">
+        <div style={{ display: "flex", gap: 8 }}>
+          <input
+            value={displayName}
+            onChange={e => { setDisplayName(e.target.value); setSaved(false); }}
+            style={{ ...IS, flex: 1 }}
+            placeholder={user.user_metadata?.full_name || user.email}
+            onKeyDown={e => { if (e.key === "Enter") handleSave(); }}
+          />
+          <Btn variant="primary" onClick={handleSave}>{saved ? "Saved ✓" : "Save"}</Btn>
+        </div>
+        <div style={{ fontSize: 11, color: "#888", marginTop: 4 }}>Shown on your map markers and in the players list.</div>
+      </Field>
+
+      {!isGM && (
+        <Field label="Your Colour">
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 4 }}>
+            {PLAYER_COLORS.map(c => {
+              const isTaken = takenColors.includes(c);
+              const isSelected = myColor === c;
+              return (
+                <div key={c} onClick={() => !isTaken && onColorChange(c)}
+                  title={isTaken ? "Taken by another player" : c}
+                  style={{ width: 34, height: 34, borderRadius: "50%", background: c, border: isSelected ? "3px solid #3C3489" : isTaken ? "2px dashed #ccc" : "2px solid #ddd", cursor: isTaken ? "not-allowed" : "pointer", opacity: isTaken ? 0.35 : 1, boxSizing: "border-box", position: "relative" }}>
+                  {isTaken && <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: "rgba(0,0,0,0.4)" }}>✕</div>}
+                  {isSelected && <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: "white", textShadow: "0 0 3px rgba(0,0,0,0.6)" }}>✓</div>}
+                </div>
+              );
+            })}
+          </div>
+          {myColor && <div style={{ fontSize: 11, color: "#888", marginTop: 6 }}>Current colour: <span style={{ fontWeight: 600, color: myColor === "#FFFFFF" ? "#aaa" : myColor }}>{myColor}</span></div>}
+        </Field>
+      )}
+
+      <div style={{ marginTop: 20, padding: "12px 14px", background: "#f5f5f5", borderRadius: 10, fontSize: 12, color: "#666" }}>
+        <div style={{ fontWeight: 500, marginBottom: 4 }}>Account</div>
+        <div>{user.user_metadata?.full_name || "—"}</div>
+        <div style={{ color: "#999" }}>{user.email}</div>
+        <div style={{ fontSize: 11, color: "#bbb", marginTop: 4 }}>{isGM ? "Game Master" : "Player"}</div>
+      </div>
+    </div>
+  );
+}
+
 // ── App ───────────────────────────────────────────────────────────────────────
 function App() {
   const [session, setSession] = useState(null);
@@ -244,7 +305,7 @@ function App() {
   const [activeCampaign, setActiveCampaign] = useState(null);
   const [memberRole, setMemberRole] = useState(null);
   const [myColor, setMyColor] = useState(null);
-  const [members, setMembers] = useState([]); // all campaign members with colors
+  const [members, setMembers] = useState([]);
   const [maps, setMaps] = useState([]);
   const [activeMapId, setActiveMapId] = useState(null);
   const [mapStack, setMapStack] = useState([]);
@@ -256,7 +317,7 @@ function App() {
   const [libSubTab, setLibSubTab] = useState("maps");
   const [placingMode, setPlacingMode] = useState(null);
   const [poiForm, setPoiForm] = useState(null);
-  const [markerForm, setMarkerForm] = useState(null); // { x, y } | { marker } for edit
+  const [markerForm, setMarkerForm] = useState(null);
   const [annotationForm, setAnnotationForm] = useState(null);
   const [openPOICard, setOpenPOICard] = useState(null);
   const [openMarkerCard, setOpenMarkerCard] = useState(null);
@@ -282,11 +343,14 @@ function App() {
   const poiDragState = useRef(null);
   const markerDragState = useRef(null);
   const realtimeRef = useRef(null);
+  // Hold a ref to session so async callbacks always read the latest token
+  const sessionRef = useRef(session);
 
   useEffect(() => { placingRef.current = placingMode; }, [placingMode]);
   useEffect(() => { transformRef.current = transform; }, [transform]);
   useEffect(() => { imgSizeRef.current = imgSize; }, [imgSize]);
   useEffect(() => { scrollSensRef.current = scrollSens; }, [scrollSens]);
+  useEffect(() => { sessionRef.current = session; }, [session]);
 
   // ── Auth ──
   useEffect(() => {
@@ -339,6 +403,21 @@ function App() {
         if (payload.eventType === "UPDATE") setAnnotations(a => a.map(x => x.id === payload.new.id ? payload.new : x));
         if (payload.eventType === "DELETE") setAnnotations(a => a.filter(x => x.id !== (payload.old?.id || payload.old_record?.id)));
       },
+      // Real-time colour + display name sync: when any player updates their profile, all clients see it immediately
+      onMember: (payload) => {
+        if (payload.eventType === "UPDATE") {
+          setMembers(m => m.map(x => x.user_id === payload.new.user_id
+            ? { ...x, player_color: payload.new.player_color, display_name: payload.new.display_name }
+            : x
+          ));
+          // If it's the current user, sync their colour state too
+          setUser(u => {
+            if (u && payload.new.user_id === u.id) setMyColor(payload.new.player_color);
+            return u;
+          });
+        }
+        if (payload.eventType === "INSERT") setMembers(m => m.find(x => x.user_id === payload.new.user_id) ? m : [...m, payload.new]);
+      },
     });
     return () => { if (realtimeRef.current) realtimeRef.current.unsubscribe(); };
   }, [activeCampaign?.id, session?.access_token]);
@@ -349,11 +428,23 @@ function App() {
       if (!memberData.length) { setCampaigns([]); return; }
       const ids = memberData.map(m => m.campaign_id).join(",");
       const camps = await dbSelect(session.access_token, "campaigns", `id=in.(${ids})`);
-      setCampaigns(camps.map(c => ({ ...c, myRole: memberData.find(m => m.campaign_id === c.id)?.role, myColor: memberData.find(m => m.campaign_id === c.id)?.player_color })));
+      const loaded = camps.map(c => ({
+        ...c,
+        myRole: memberData.find(m => m.campaign_id === c.id)?.role,
+        myColor: memberData.find(m => m.campaign_id === c.id)?.player_color
+      }));
+      setCampaigns(loaded);
+      // Auto-load last campaign so players land straight back in after a page refresh
+      const lastId = localStorage.getItem("sb_last_campaign");
+      if (lastId) {
+        const last = loaded.find(c => c.id === lastId);
+        if (last) loadCampaignData(last, last.myRole);
+      }
     } catch(e) { setError(e.message); }
   }
 
   async function loadCampaignData(camp, role) {
+    localStorage.setItem("sb_last_campaign", camp.id); // persist so refresh auto-returns here
     setActiveCampaign(camp); setMemberRole(role);
     setMarkerLimit(camp.marker_limit || 10);
     try {
@@ -363,7 +454,7 @@ function App() {
         dbSelect(session.access_token, "markers", `campaign_id=eq.${camp.id}`),
         dbSelect(session.access_token, "annotations", `campaign_id=eq.${camp.id}`),
         dbSelect(session.access_token, "category_icons", `campaign_id=eq.${camp.id}`),
-        dbSelect(session.access_token, "campaign_members", `campaign_id=eq.${camp.id}&select=user_id,role,player_color,joined_at`),
+        dbSelect(session.access_token, "campaign_members", `campaign_id=eq.${camp.id}&select=user_id,role,player_color,joined_at,display_name`),
       ]);
       setMaps(mapsData); setPois(poisData); setMarkers(markersData); setAnnotations(annsData);
       setMembers(membersData);
@@ -374,13 +465,12 @@ function App() {
       setMyColor(me?.player_color || null);
       const main = mapsData.find(m => m.is_main) || mapsData[0];
       if (main) setActiveMapId(main.id);
-      // Show color picker if player has no color yet
+      // Only show colour picker if player has genuinely never chosen one
       if (!me?.player_color && role !== "gm") setShowColorPicker(true);
     } catch(e) { setError(e.message); }
   }
 
   async function chooseColor(color) {
-    // Check if color is taken
     const taken = members.find(m => m.player_color === color && m.user_id !== user.id);
     if (taken) { setError("That colour is already taken by another player. Please choose a different one."); return; }
     try {
@@ -391,6 +481,15 @@ function App() {
       setMembers(prev => prev.map(m => m.user_id === user.id ? { ...m, player_color: color } : m));
       setShowColorPicker(false);
       setError("");
+    } catch(e) { setError(e.message); }
+  }
+
+  async function saveDisplayName(name) {
+    try {
+      await fetch(`${SUPA_URL}/rest/v1/campaign_members?campaign_id=eq.${activeCampaign.id}&user_id=eq.${user.id}`, {
+        method: "PATCH", headers: hdrs(session.access_token), body: JSON.stringify({ display_name: name.trim() })
+      });
+      setMembers(prev => prev.map(m => m.user_id === user.id ? { ...m, display_name: name.trim() } : m));
     } catch(e) { setError(e.message); }
   }
 
@@ -493,6 +592,7 @@ function App() {
   }
 
   // ── Marker drag (owner only) ──
+  // Fixed: uses distance threshold (>8px) so a clean tap reliably opens the card
   function startMarkerDrag(e, marker) {
     e.stopPropagation();
     const startCx = e.touches ? e.touches[0].clientX : e.clientX;
@@ -504,7 +604,8 @@ function App() {
       const cx = ev.touches ? ev.touches[0].clientX : ev.clientX;
       const cy = ev.touches ? ev.touches[0].clientY : ev.clientY;
       const dx = cx - markerDragState.current.startCx, dy = cy - markerDragState.current.startCy;
-      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) markerDragState.current.moved = true;
+      // Distance threshold (8px) rather than per-axis so diagonal micro-movements don't cancel taps
+      if (Math.sqrt(dx * dx + dy * dy) > 8) markerDragState.current.moved = true;
       const nx = markerDragState.current.originX + dx / markerDragState.current.scaleAtStart;
       const ny = markerDragState.current.originY + dy / markerDragState.current.scaleAtStart;
       markerDragState.current.mapX = nx; markerDragState.current.mapY = ny;
@@ -517,7 +618,6 @@ function App() {
       window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp);
       window.removeEventListener("touchmove", onMove); window.removeEventListener("touchend", onUp);
       if (!moved) {
-        // Tap — open card, don't delete
         setMarkers(prev => prev.map(m => m.id === markerId ? { ...m, x: originX, y: originY } : m));
         setOpenMarkerCard(openMarkerCard === markerId ? null : markerId);
       } else {
@@ -631,11 +731,12 @@ function App() {
   async function saveMarker(label, description) {
     if (!markerForm || !("x" in markerForm)) return;
     if (myMarkers.length >= markerLimit && !isGM) { setError(`Marker limit reached (${markerLimit}). Ask your GM to increase it.`); return; }
+    const me = members.find(m => m.user_id === user.id);
     try {
       const [nm] = await dbInsert(session.access_token, "markers", {
         campaign_id: activeCampaign.id, map_id: activeMapId, user_id: user.id,
-        user_name: user.user_metadata?.full_name||user.email,
-        player_color: myColor || "#378ADD", label, description: description||"",
+        user_name: user.user_metadata?.full_name || user.email,
+        player_color: myColor || "#378ADD", label, description: description || "",
         x: markerForm.x, y: markerForm.y
       });
       setMarkers(prev=>[...prev,nm]); setMarkerForm(null);
@@ -696,6 +797,7 @@ function App() {
   // Card positions
   const openPOI = mapPOIs.find(p=>p.id===openPOICard);
   const openMarker = mapMarkers.find(m=>m.id===openMarkerCard);
+  const openMarkerMember = openMarker ? members.find(m => m.user_id === openMarker.user_id) : null;
 
   function getCardPos(x, y) {
     const rect = getContainerRect();
@@ -711,7 +813,8 @@ function App() {
   const poiCardPos = openPOI ? getCardPos(openPOI.x, openPOI.y) : null;
   const markerCardPos = openMarker ? getCardPos(openMarker.x, openMarker.y) : null;
   const sortedLibPOIs = [...pois].sort((a,b)=>libSort==="name"?(a.name||"").localeCompare(b.name||""):(a.category||"").localeCompare(b.category||""));
-  const tabs = ["map",...(isGM?["library","overlays"]:[])];
+  // Profile tab is available to everyone; library and overlays are GM-only
+  const tabs = ["map", ...(isGM ? ["library", "overlays"] : []), "profile"];
   const buildVersion = (typeof __BUILD_DATE__ !== "undefined" && typeof __COMMIT__ !== "undefined") ? `v${__BUILD_DATE__}-${__COMMIT__}` : "vdev";
 
   if (loading) return <div style={{ display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",fontFamily:"sans-serif",color:"#888",fontSize:16 }}>Loading...</div>;
@@ -766,13 +869,12 @@ function App() {
     <div style={{ fontFamily:"sans-serif",fontSize:14,color:"#111",display:"flex",flexDirection:"column",height:"100vh",background:"#fff" }}>
       {/* Header */}
       <div style={{ display:"flex",alignItems:"center",gap:8,padding:"8px 14px",borderBottom:"0.5px solid #ddd",background:"#fff",flexWrap:"wrap" }}>
-        <button onClick={()=>{setActiveCampaign(null);if(realtimeRef.current)realtimeRef.current.unsubscribe();}} style={{ background:"none",border:"none",cursor:"pointer",fontSize:18,padding:0,color:"#555" }}>←</button>
+        <button onClick={()=>{setActiveCampaign(null);localStorage.removeItem("sb_last_campaign");if(realtimeRef.current)realtimeRef.current.unsubscribe();}} style={{ background:"none",border:"none",cursor:"pointer",fontSize:18,padding:0,color:"#555" }}>←</button>
         <span style={{ fontWeight:500,fontSize:14,flex:1 }}>{activeCampaign.name}</span>
         {mapStack.length>0 && <Btn size="sm" onClick={goBack}>↩ Back</Btn>}
         <span style={{ fontSize:11,padding:"2px 8px",borderRadius:20,background:isGM?"#EAF3DE":"#E6F1FB",color:isGM?"#3B6D11":"#185FA5",fontWeight:500 }}>{isGM?"GM":"Player"}</span>
-        {/* Player colour dot */}
         {!isGM && (
-          <div onClick={()=>setShowColorPicker(true)} title="Change your colour"
+          <div onClick={()=>setTab("profile")} title="Edit your profile"
             style={{ width:18,height:18,borderRadius:"50%",background:myColor||"#ccc",border:"2px solid #aaa",cursor:"pointer",flexShrink:0 }} />
         )}
         <span style={{ fontSize:11,color:"#888",maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{user.user_metadata?.full_name||user.email}</span>
@@ -837,12 +939,14 @@ function App() {
                       {isGM && <div style={{ fontSize:10,color:a.visible?"#0F6E56":"#854F0B",marginTop:3 }}>{a.visible?"Visible — tap to hide":"Hidden — tap to show"}</div>}
                     </div>
                   ))}
-                  {mapMarkers.map(m=>{
+                  {mapMarkers.map(m => {
                     const isOwner = m.user_id === user.id;
+                    const memberInfo = members.find(mb => mb.user_id === m.user_id);
                     return (
                       <MarkerPin key={m.id} marker={m} scale={transform.scale} isOwner={isOwner} isGM={isGM}
-                        onTap={marker=>{ setOpenMarkerCard(openMarkerCard===marker.id?null:marker.id); }}
-                        onDragStart={isOwner ? startMarkerDrag : ()=>{}} />
+                        displayName={memberInfo?.display_name}
+                        onTap={marker => { setOpenMarkerCard(openMarkerCard === marker.id ? null : marker.id); }}
+                        onDragStart={isOwner ? startMarkerDrag : () => {}} />
                     );
                   })}
                 </div>
@@ -880,7 +984,7 @@ function App() {
                   <div style={{ width:28,height:28,borderRadius:"50% 50% 50% 0",transform:"rotate(-45deg)",background:openMarker.player_color||"#378ADD",border:"2px solid #eee",flexShrink:0 }} />
                   <div style={{ flex:1,overflow:"hidden" }}>
                     <div style={{ fontWeight:500,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{openMarker.label||"Marker"}</div>
-                    <div style={{ fontSize:10,color:"#888" }}>{openMarker.user_name?.split(" ")[0]||"Player"}</div>
+                    <div style={{ fontSize:10,color:"#888" }}>{openMarkerMember?.display_name || openMarker.user_name?.split(" ")[0] || "Player"}</div>
                   </div>
                 </div>
                 {openMarker.description && (
@@ -1007,7 +1111,9 @@ function App() {
                 <div key={m.user_id} style={{ display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:"#f5f5f5",borderRadius:8,marginBottom:6 }}>
                   <div style={{ width:24,height:24,borderRadius:"50%",background:m.player_color||"#ddd",border:"2px solid #ccc",flexShrink:0 }} />
                   <div style={{ flex:1 }}>
-                    <div style={{ fontSize:13,fontWeight:500 }}>{m.role==="gm"?"Game Master":m.user_id===user.id?"You":m.user_id.slice(0,8)+"..."}</div>
+                    <div style={{ fontSize:13,fontWeight:500 }}>
+                      {m.display_name || (m.role==="gm" ? "Game Master" : m.user_id===user.id ? "You" : "Unknown Player")}
+                    </div>
                     <div style={{ fontSize:11,color:"#888" }}>{m.role} · {markers.filter(mk=>mk.user_id===m.user_id&&mk.map_id===activeMapId).length} markers placed</div>
                   </div>
                   {m.player_color && <div style={{ fontSize:11,padding:"2px 8px",borderRadius:10,background:m.player_color+"22",color:m.player_color==="#FFFFFF"?"#aaa":m.player_color,border:`1px solid ${m.player_color}`,fontWeight:500 }}>{m.player_color}</div>}
@@ -1018,10 +1124,26 @@ function App() {
         </div>
       )}
 
+      {/* OVERLAYS TAB */}
       {tab==="overlays" && isGM && (
         <div style={{ padding:14,flex:1 }}>
           <div style={{ fontWeight:500,marginBottom:8 }}>Overlays</div>
           <p style={{ color:"#888",fontSize:13 }}>Faction overlays, fog of war and road types coming soon.</p>
+        </div>
+      )}
+
+      {/* PROFILE TAB */}
+      {tab==="profile" && (
+        <div style={{ flex:1,overflowY:"auto",padding:14 }}>
+          <ProfileTab
+            user={user}
+            members={members}
+            myColor={myColor}
+            takenColors={takenColors}
+            isGM={isGM}
+            onColorChange={chooseColor}
+            onSaveDisplayName={saveDisplayName}
+          />
         </div>
       )}
 
@@ -1030,7 +1152,7 @@ function App() {
       {markerForm && <MarkerFormModal form={markerForm} onSave={saveMarker} onEdit={editMarker} onCancel={()=>setMarkerForm(null)} />}
       {annotationForm && <AnnotationModal form={annotationForm} onSave={saveAnnotation} onDelete={deleteAnnotation} onCancel={()=>setAnnotationForm(null)} />}
 
-      {/* Colour picker */}
+      {/* Colour picker modal (still shown on first join if no colour set) */}
       {showColorPicker && (
         <Modal title="Choose your colour" onClose={()=>myColor&&setShowColorPicker(false)} width={340}>
           <p style={{ fontSize:13,color:"#666",marginBottom:12 }}>Pick a colour to represent you on the map. Each player must have a unique colour.</p>
