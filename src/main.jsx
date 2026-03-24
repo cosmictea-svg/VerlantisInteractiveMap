@@ -580,8 +580,14 @@ function App() {
     try { await dbDelete(session.access_token, "pois", id); setPois(prev=>prev.filter(p=>p.id!==id)); setPoiForm(null); setOpenPOICard(null); } catch(e) { setError(e.message); }
   }
   function duplicatePOI(poi) {
-    dbInsert(session.access_token, "pois", { name: poi.name+" (copy)", description: poi.description, revealed: false, category: poi.category, size: poi.size, icon_url: poi.icon_url, campaign_id: poi.campaign_id, map_id: poi.map_id, x: poi.x+30, y: poi.y+30 })
-      .then(([np]) => setPois(prev => [...prev, np])).catch(e => setError(e.message));
+    dbInsert(session.access_token, "pois", {
+      name: poi.name+" (copy)", description: poi.description, revealed: false,
+      category: poi.category, size: poi.size, icon_url: poi.icon_url,
+      campaign_id: poi.campaign_id, map_id: poi.map_id, x: poi.x+30, y: poi.y+30
+    }).then(([np]) => {
+      // Add locally immediately — realtime will handle other clients
+      setPois(prev => prev.find(x => x.id === np.id) ? prev : [...prev, np]);
+    }).catch(e => setError(e.message));
     setPoiForm(null);
   }
   async function togglePOIReveal(id, current) {
