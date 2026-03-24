@@ -353,6 +353,8 @@ function App() {
   const [ovSubTab, setOvSubTab] = useState("layers");
   const [placingZonePoints, setPlacingZonePoints] = useState(null);
   const [zoneForm, setZoneForm] = useState(null);
+  const [masterZoneOpacity, setMasterZoneOpacity] = useState(100);
+  const [showLayerControls, setShowLayerControls] = useState(false);
 
   const mapRef = useRef(null);
   const dragRef = useRef({ active: false, startX: 0, startY: 0, lastX: 0, lastY: 0, moved: false });
@@ -374,10 +376,15 @@ function App() {
   useEffect(() => { scrollSensRef.current = scrollSens; }, [scrollSens]);
   useEffect(() => { sessionRef.current = session; }, [session]);
   useEffect(() => { zonesRef.current = zones; }, [zones]);
-  // Restore per-user overlay opacity/visibility from localStorage when campaign loads
+  // Restore per-user overlay opacity/visibility and master zone opacity from localStorage
   useEffect(() => {
     if (!activeCampaign) return;
-    try { const s = localStorage.getItem(`ov_settings_${activeCampaign.id}`); if (s) setOverlaySettings(JSON.parse(s)); } catch {}
+    try {
+      const s = localStorage.getItem(`ov_settings_${activeCampaign.id}`);
+      if (s) setOverlaySettings(JSON.parse(s));
+      const mzo = localStorage.getItem(`zone_master_${activeCampaign.id}`);
+      if (mzo !== null) setMasterZoneOpacity(Number(mzo));
+    } catch {}
   }, [activeCampaign?.id]);
 
   // ── Auth ──
@@ -936,7 +943,7 @@ function App() {
   const markerCardPos = openMarker ? getCardPos(openMarker.x, openMarker.y) : null;
   const sortedLibPOIs = [...pois].sort((a,b)=>libSort==="name"?(a.name||"").localeCompare(b.name||""):(a.category||"").localeCompare(b.category||""));
   // Profile tab is available to everyone; library and overlays are GM-only
-  const tabs = ["map", ...(isGM ? ["library"] : []), "overlays", "profile"];
+  const tabs = ["map", ...(isGM ? ["library", "overlays"] : []), "profile"];
   const buildVersion = (typeof __BUILD_DATE__ !== "undefined" && typeof __COMMIT__ !== "undefined") ? `v${__BUILD_DATE__}-${__COMMIT__}` : "vdev";
 
   if (loading) return <div style={{ display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",fontFamily:"sans-serif",color:"#888",fontSize:16 }}>Loading...</div>;
@@ -1051,6 +1058,48 @@ function App() {
             <span style={{ fontSize:11,color:"#888",minWidth:12 }}>{scrollSens}</span>
           </div>
 
+          {/* ── Layers & Zones quick controls — visible to everyone on the map page ── */}
+          {(mapOverlays.length > 0 || mapZones.filter(z => isGM || z.revealed).length > 0) && (
+            <div style={{ borderBottom:"0.5px solid #ddd",background:"#fafafa" }}>
+              <button onClick={()=>setShowLayerControls(p=>!p)}
+                style={{ display:"flex",alignItems:"center",gap:6,width:"100%",padding:"4px 14px",background:"none",border:"none",cursor:"pointer",fontSize:11,color:"#555",fontWeight:500,textAlign:"left" }}>
+                <span style={{ flex:1 }}>Layers &amp; Zones</span>
+                <span>{showLayerControls ? "▲" : "▼"}</span>
+              </button>
+              {showLayerControls && (
+                <div style={{ padding:"4px 14px 10px" }}>
+                  {/* Master zone opacity — affects ALL zones for this user only */}
+                  {mapZones.filter(z => isGM || z.revealed).length > 0 && (
+                    <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:8,paddingBottom:8,borderBottom:mapOverlays.length>0?"0.5px solid #eee":"none" }}>
+                      <span style={{ fontSize:11,color:"#555",minWidth:72,fontWeight:500,whiteSpace:"nowrap" }}>All Zones</span>
+                      <input type="range" min={0} max={100} value={masterZoneOpacity}
+                        onChange={e=>{ const v=Number(e.target.value); setMasterZoneOpacity(v); if(activeCampaign) localStorage.setItem(`zone_master_${activeCampaign.id}`,String(v)); }}
+                        style={{ flex:1,maxWidth:160 }} />
+                      <span style={{ fontSize:11,color:"#888",minWidth:32 }}>{masterZoneOpacity}%</span>
+                    </div>
+                  )}
+                  {/* Per-layer opacity + visibility */}
+                  {mapOverlays.map(ov=>{
+                    const s = overlaySettings[ov.id] || { opacity:80, visible:true };
+                    return (
+                      <div key={ov.id} style={{ display:"flex",alignItems:"center",gap:8,marginBottom:4 }}>
+                        <span style={{ fontSize:11,color:"#555",minWidth:72,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{ov.name}</span>
+                        <input type="range" min={1} max={100} value={s.opacity}
+                          onChange={e=>setOverlaySetting(ov.id,"opacity",Number(e.target.value))}
+                          style={{ flex:1,maxWidth:160 }} />
+                        <span style={{ fontSize:11,color:"#888",minWidth:32 }}>{s.opacity}%</span>
+                        <button onClick={()=>setOverlaySetting(ov.id,"visible",!s.visible)}
+                          style={{ fontSize:11,padding:"2px 8px",borderRadius:6,border:"none",background:s.visible?"#EAF3DE":"#f0f0f0",color:s.visible?"#3B6D11":"#888",cursor:"pointer",flexShrink:0 }}>
+                          {s.visible?"On":"Off"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           <div style={{ flex:1,minHeight:0,position:"relative" }}>
             <div ref={mapRef} style={{ position:"absolute",inset:0,overflow:"hidden",background:"#1a1a2e",cursor:placingMode?"crosshair":isDragging?"grabbing":"grab",touchAction:"none",userSelect:"none" }}
               onMouseDown={onPointerDown} onTouchStart={onPointerDown}
@@ -1085,7 +1134,7 @@ function App() {
                         const pts = z.points.map(p=>`${p.x},${p.y}`).join(" ");
                         const sw = Math.max(1, 2/transform.scale);
                         return (
-                          <g key={z.id} opacity={z.opacity/100}
+                          <g key={z.id} opacity={(z.opacity/100) * (masterZoneOpacity/100)}
                             onClick={e=>{ e.stopPropagation(); if(isGM && placingMode !== "zone" && placingMode !== "addpoint") setZoneForm({zone:z,name:z.name,fill_color:z.fill_color,opacity:z.opacity,revealed:z.revealed,points:[...z.points]}); }}
                             style={{ pointerEvents: isGM && placingMode !== "zone" && placingMode !== "addpoint" ? "all" : "none", cursor: isGM ? "pointer" : "default" }}>
                             <polygon points={pts} fill={z.fill_color} />
@@ -1323,35 +1372,21 @@ function App() {
           </div>
           <div style={{ flex:1,overflowY:"auto",padding:14 }}>
 
-            {/* LAYERS */}
+            {/* LAYERS — GM management only; opacity/visibility lives on the map page */}
             {ovSubTab==="layers" && <>
-              <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:12 }}>
+              <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:8 }}>
                 <span style={{ fontWeight:500 }}>Image Layers</span>
-                {isGM && <FilePicker label="+ Upload Layer" onFile={uploadOverlay} />}
+                <FilePicker label="+ Upload Layer" onFile={uploadOverlay} />
               </div>
-              {mapOverlays.length===0 && <p style={{ color:"#888",fontSize:13 }}>{isGM?"No layers yet. Upload an image to overlay it on the map.":"No overlay layers have been added yet."}</p>}
-              {mapOverlays.map(ov=>{
-                const s = overlaySettings[ov.id] || { opacity:80, visible:true };
-                return (
-                  <div key={ov.id} style={{ display:"flex",alignItems:"center",gap:10,padding:"8px 10px",background:"#f5f5f5",borderRadius:8,marginBottom:8 }}>
-                    <img src={ov.src} alt={ov.name} style={{ width:40,height:40,objectFit:"cover",borderRadius:4,flexShrink:0,border:"0.5px solid #ddd" }} />
-                    <div style={{ flex:1,minWidth:0 }}>
-                      <div style={{ fontSize:13,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:4 }}>{ov.name}</div>
-                      <div style={{ display:"flex",alignItems:"center",gap:8 }}>
-                        <span style={{ fontSize:11,color:"#888",whiteSpace:"nowrap" }}>Opacity</span>
-                        <input type="range" min={1} max={100} value={s.opacity}
-                          onChange={e=>setOverlaySetting(ov.id,"opacity",Number(e.target.value))} style={{ flex:1,maxWidth:120 }} />
-                        <span style={{ fontSize:11,color:"#888",minWidth:30 }}>{s.opacity}%</span>
-                      </div>
-                    </div>
-                    <button onClick={()=>setOverlaySetting(ov.id,"visible",!s.visible)}
-                      style={{ padding:"3px 8px",borderRadius:8,border:"none",background:s.visible?"#EAF3DE":"#f0f0f0",color:s.visible?"#3B6D11":"#888",fontSize:11,fontWeight:500,cursor:"pointer",flexShrink:0 }}>
-                      {s.visible?"Visible":"Hidden"}
-                    </button>
-                    {isGM && <Btn size="sm" variant="danger" onClick={()=>deleteOverlay(ov.id)}>✕</Btn>}
-                  </div>
-                );
-              })}
+              <p style={{ fontSize:12,color:"#888",marginBottom:12 }}>Opacity and visibility controls are on the Map tab (Layers &amp; Zones strip).</p>
+              {mapOverlays.length===0 && <p style={{ color:"#888",fontSize:13 }}>No layers yet. Upload an image to overlay it above the map.</p>}
+              {mapOverlays.map(ov=>(
+                <div key={ov.id} style={{ display:"flex",alignItems:"center",gap:10,padding:"8px 10px",background:"#f5f5f5",borderRadius:8,marginBottom:8 }}>
+                  <img src={ov.src} alt={ov.name} style={{ width:40,height:40,objectFit:"cover",borderRadius:4,flexShrink:0,border:"0.5px solid #ddd" }} />
+                  <div style={{ flex:1,fontSize:13,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{ov.name}</div>
+                  <Btn size="sm" variant="danger" onClick={()=>deleteOverlay(ov.id)}>✕ Delete</Btn>
+                </div>
+              ))}
             </>}
 
             {/* ZONES — GM only */}
