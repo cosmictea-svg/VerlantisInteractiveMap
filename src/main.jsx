@@ -692,6 +692,7 @@ function App() {
         {mapStack.length>0 && <Btn size="sm" onClick={goBack}>↩ Back</Btn>}
         <span style={{ fontSize:11,padding:"2px 8px",borderRadius:20,background:isGM?"#EAF3DE":"#E6F1FB",color:isGM?"#3B6D11":"#185FA5",fontWeight:500 }}>{isGM?"GM":"Player"}</span>
         <span style={{ fontSize:11,color:"#888",maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{user.user_metadata?.full_name||user.email}</span>
+        <span style={{ fontSize:10,color:"#bbb" }}>v{__BUILD_DATE__}-{__COMMIT__}</span>
       </div>
       {error && <div style={{ background:"#fee",color:"#A32D2D",padding:"5px 14px",fontSize:12 }}>{error}<button onClick={()=>setError("")} style={{ marginLeft:8,border:"none",background:"none",cursor:"pointer" }}>✕</button></div>}
       {isGM && <div style={{ padding:"3px 14px",background:"#f0f0ff",fontSize:11,color:"#555",borderBottom:"0.5px solid #ddd" }}>Campaign ID for players: <strong>{activeCampaign.id}</strong></div>}
