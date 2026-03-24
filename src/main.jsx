@@ -161,6 +161,12 @@ const PLAYER_COLORS = [
 ];
 
 function getCatColor(id) { return CATEGORIES.find(c => c.id === id)?.color || "#95A5A6"; }
+function getZoneBBox(points) {
+  if (!points?.length) return { x: 0, y: 0, w: 100, h: 100 };
+  const xs = points.map(p => p.x), ys = points.map(p => p.y);
+  const minX = Math.min(...xs), minY = Math.min(...ys);
+  return { x: minX, y: minY, w: Math.max(...xs) - minX || 1, h: Math.max(...ys) - minY || 1 };
+}
 function getCatLabel(id) { return CATEGORIES.find(c => c.id === id)?.label || "Others"; }
 function getSizeScale(id) { return POI_SIZES.find(s => s.id === id)?.scale ?? 1.0; }
 
@@ -226,7 +232,7 @@ function MarkerPin({ marker, scale, isOwner, isGM, onTap, onDragStart, displayNa
 }
 
 // ── POI Pin ───────────────────────────────────────────────────────────────────
-function POIPin({ poi, scale, isGM, onTap, onDragStart, resolvedIconUrl }) {
+function POIPin({ poi, scale, isGM, onTap, onDragStart, resolvedIconUrl, poiOpacity = 1 }) {
   const ss = getSizeScale(poi.size);
   const size = Math.max(28 * ss, (36 / scale) * ss);
   const bw = Math.max(1.5, 3 / scale);
@@ -238,7 +244,7 @@ function POIPin({ poi, scale, isGM, onTap, onDragStart, resolvedIconUrl }) {
       onMouseDown={e => { if (isGM) { e.stopPropagation(); onDragStart(e, poi); } }}
       onTouchStart={e => { if (isGM) { e.stopPropagation(); onDragStart(e, poi); } }}
       onClick={e => { e.stopPropagation(); onTap(poi); }}
-      style={{ position: "absolute", left: poi.x - size/2, top: poi.y - size, width: size, height: size, cursor: isGM ? "grab" : "pointer", zIndex: 20, borderRadius: "50%", border: `${bw}px ${borderStyle} ${cc}`, boxSizing: "border-box", overflow: "hidden", background: cc + "59" }}
+      style={{ position: "absolute", left: poi.x - size/2, top: poi.y - size, width: size, height: size, cursor: isGM ? "grab" : "pointer", zIndex: 20, borderRadius: "50%", border: `${bw}px ${borderStyle} ${cc}`, boxSizing: "border-box", overflow: "hidden", background: cc + "59", opacity: poiOpacity, transition: "opacity 0.15s ease" }}
     >
       {iconUrl
         ? <img src={iconUrl} alt={poi.name} draggable={false} onDragStart={e => e.preventDefault()} style={{ width: "100%", height: "100%", objectFit: "contain", display: "block", pointerEvents: "none" }} />
@@ -356,6 +362,8 @@ function App() {
   const [masterZoneOpacity, setMasterZoneOpacity] = useState(100);
   const [showLayerControls, setShowLayerControls] = useState(false);
   const [editingZonePoints, setEditingZonePoints] = useState(null); // { zoneId, points, originalPoints }
+  const [fitScale, setFitScale] = useState(1);
+  const [copiedCode, setCopiedCode] = useState(false);
 
   const mapRef = useRef(null);
   const dragRef = useRef({ active: false, startX: 0, startY: 0, lastX: 0, lastY: 0, moved: false });
@@ -583,7 +591,7 @@ function App() {
   async function saveZone(form, imageFile) {
     let image_url = form.clearImage ? null : (form.zone?.image_url || null);
     if (imageFile) { try { image_url = await uploadToStorage(session.access_token, imageFile); } catch { image_url = await readFile(imageFile); } }
-    const body = { name: form.name || "Zone", points: form.points, fill_color: form.fill_color || "#3498DB", image_url, opacity: form.opacity ?? 80, revealed: form.revealed || false };
+    const body = { name: form.name || "Zone", points: form.points, fill_color: form.fill_color || "#3498DB", image_url, opacity: form.opacity ?? 80, revealed: form.revealed || false, image_scale: form.image_scale ?? 100, image_repeat: form.image_repeat ?? false };
     try {
       if (form.zone) {
         await dbUpdate(session.access_token, "zones", form.zone.id, body);
@@ -667,6 +675,8 @@ function App() {
   const takenColors = members.filter(m => m.user_id !== user?.id && m.player_color).map(m => m.player_color);
   const mapOverlays = overlays.filter(o => o.map_id === activeMapId);
   const mapZones = zones.filter(z => z.map_id === activeMapId);
+  // POIs fade out as user zooms toward the fit scale; fully visible at 2× fit zoom
+  const poiOpacity = fitScale > 0 ? Math.min(1, Math.max(0, (transform.scale / fitScale) - 1)) : 1;
 
   function fitToContainer(iw, ih) {
     const rect = mapRef.current?.getBoundingClientRect();
@@ -682,10 +692,10 @@ function App() {
     return { ...t, x: Math.min(maxX, Math.max(minX, t.x)), y: Math.min(maxY, Math.max(minY, t.y)) };
   }
   function getContainerRect() { return mapRef.current?.getBoundingClientRect() || { width: 800, height: 500, left: 0, top: 0 }; }
-  function resetView() { setTransform(fitToContainer(imgSize.w, imgSize.h)); }
+  function resetView() { const fit = fitToContainer(imgSize.w, imgSize.h); setTransform(fit); setFitScale(fit.scale); }
   function onImgLoad(e) {
     const w = e.target.naturalWidth, h = e.target.naturalHeight;
-    setImgSize({ w, h }); setTransform(fitToContainer(w, h));
+    setImgSize({ w, h }); const fit = fitToContainer(w, h); setTransform(fit); setFitScale(fit.scale);
   }
   function toMapCoords(cx, cy) {
     const rect = getContainerRect(); const t = transformRef.current;
@@ -1037,7 +1047,22 @@ function App() {
       </div>
 
       {error && <div style={{ background:"#fee",color:"#A32D2D",padding:"5px 14px",fontSize:12 }}>{error}<button onClick={()=>setError("")} style={{ marginLeft:8,border:"none",background:"none",cursor:"pointer" }}>✕</button></div>}
-      {isGM && <div style={{ padding:"3px 14px",background:"#f0f0ff",fontSize:11,color:"#555",borderBottom:"0.5px solid #ddd" }}>Campaign ID for players: <strong>{activeCampaign.id}</strong></div>}
+      {isGM && (
+        <div style={{ display:"flex",alignItems:"center",gap:8,padding:"3px 14px",background:"#f0f0ff",fontSize:11,color:"#555",borderBottom:"0.5px solid #ddd" }}>
+          <span>Campaign ID for players: <strong>{activeCampaign.id}</strong></span>
+          <button onClick={()=>{
+            const copy = () => { navigator.clipboard.writeText(activeCampaign.id).catch(()=>{}); };
+            try { copy(); } catch {
+              const el = document.createElement("textarea"); el.value = activeCampaign.id;
+              el.style.cssText = "position:fixed;opacity:0"; document.body.appendChild(el);
+              el.select(); document.execCommand("copy"); document.body.removeChild(el);
+            }
+            setCopiedCode(true); setTimeout(()=>setCopiedCode(false), 2000);
+          }} style={{ padding:"1px 8px",borderRadius:6,border:"0.5px solid #aaa",background:copiedCode?"#EAF3DE":"#fff",color:copiedCode?"#3B6D11":"#555",fontSize:11,cursor:"pointer",flexShrink:0,fontWeight:copiedCode?500:400 }}>
+            {copiedCode ? "Copied ✓" : "Copy"}
+          </button>
+        </div>
+      )}
 
       {/* Tabs */}
       <div style={{ display:"flex",borderBottom:"0.5px solid #ddd",padding:"0 14px" }}>
@@ -1156,11 +1181,25 @@ function App() {
                   {(mapZones.length > 0 || (placingZonePoints && placingZonePoints.length > 0)) && imgSize.w > 0 && (
                     <svg style={{ position:"absolute",left:0,top:0,width:imgSize.w,height:imgSize.h,overflow:"visible",pointerEvents:"none" }}>
                       <defs>
-                        {mapZones.map(z => z.image_url && (
-                          <clipPath key={z.id} id={`zclip-${z.id}`}>
-                            <polygon points={z.points.map(p=>`${p.x},${p.y}`).join(" ")} />
-                          </clipPath>
-                        ))}
+                        {mapZones.map(z => {
+                          if (!z.image_url) return null;
+                          if (z.image_repeat) {
+                            const bbox = getZoneBBox(z.points);
+                            const base = Math.min(bbox.w, bbox.h) * 0.35;
+                            const tile = Math.max(8, base * (z.image_scale || 100) / 100);
+                            return (
+                              <pattern key={z.id} id={`zpat-${z.id}`} patternUnits="userSpaceOnUse"
+                                x={bbox.x} y={bbox.y} width={tile} height={tile}>
+                                <image href={z.image_url} width={tile} height={tile} preserveAspectRatio="xMidYMid slice" />
+                              </pattern>
+                            );
+                          }
+                          return (
+                            <clipPath key={z.id} id={`zclip-${z.id}`}>
+                              <polygon points={z.points.map(p=>`${p.x},${p.y}`).join(" ")} />
+                            </clipPath>
+                          );
+                        })}
                       </defs>
                       {mapZones.map(z => {
                         if (!isGM && !z.revealed) return null;
@@ -1172,7 +1211,19 @@ function App() {
                             onClick={e=>{ e.stopPropagation(); if(isGM && placingMode !== "zone" && placingMode !== "addpoint") setZoneForm({zone:z,name:z.name,fill_color:z.fill_color,opacity:z.opacity,revealed:z.revealed,points:[...z.points]}); }}
                             style={{ pointerEvents: isGM && placingMode !== "zone" && placingMode !== "addpoint" ? "all" : "none", cursor: isGM ? "pointer" : "default" }}>
                             <polygon points={pts} fill={z.fill_color} />
-                            {z.image_url && <image href={z.image_url} x={0} y={0} width={imgSize.w} height={imgSize.h} clipPath={`url(#zclip-${z.id})`} preserveAspectRatio="xMidYMid slice" />}
+                            {z.image_url && (z.image_repeat
+                              ? <polygon points={pts} fill={`url(#zpat-${z.id})`} />
+                              : (() => {
+                                  const bbox = getZoneBBox(z.points);
+                                  const s = (z.image_scale || 100) / 100;
+                                  const iw = Math.max(1, bbox.w * s), ih = Math.max(1, bbox.h * s);
+                                  return <image href={z.image_url}
+                                    x={bbox.x + (bbox.w - iw)/2} y={bbox.y + (bbox.h - ih)/2}
+                                    width={iw} height={ih}
+                                    clipPath={`url(#zclip-${z.id})`}
+                                    preserveAspectRatio="xMidYMid slice" />;
+                                })()
+                            )}
                             {/* Border: dashed when hidden from players */}
                             <polygon points={pts} fill="none" stroke={z.revealed ? z.fill_color : "#ffffff"} strokeWidth={sw}
                               strokeDasharray={z.revealed ? undefined : `${6/transform.scale},${3/transform.scale}`} style={{ pointerEvents:"none" }} />
@@ -1243,6 +1294,7 @@ function App() {
                   {mapPOIs.map(p=>(
                     <POIPin key={p.id} poi={p} scale={transform.scale} isGM={isGM}
                       resolvedIconUrl={categoryIcons[p.category]||""}
+                      poiOpacity={poiOpacity}
                       onTap={poi=>{ if(!isGM) setOpenPOICard(openPOICard===poi.id?null:poi.id); }}
                       onDragStart={startPOIDrag} />
                   ))}
@@ -1557,6 +1609,8 @@ function ZoneFormModal({ form, onSave, onDelete, onAddPoint, onMovePoints, onClo
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(form.zone?.image_url || "");
   const [clearImage, setClearImage] = useState(false);
+  const [imageScale, setImageScale] = useState(form.zone?.image_scale ?? 100);
+  const [imageRepeat, setImageRepeat] = useState(form.zone?.image_repeat ?? false);
   async function handleImage(f) { setImageFile(f); setClearImage(false); setImagePreview(await readFile(f)); }
   function removePoint(i) { if (points.length <= 3) return; setPoints(prev => prev.filter((_,idx) => idx !== i)); }
   return (
@@ -1586,6 +1640,22 @@ function ZoneFormModal({ form, onSave, onDelete, onAddPoint, onMovePoints, onClo
             {imagePreview && !clearImage && <Btn size="sm" variant="danger" onClick={()=>{setClearImage(true);setImagePreview("");setImageFile(null);}}>Remove</Btn>}
           </div>
         </div>
+        {(imagePreview && !clearImage) && (
+          <div style={{ marginTop:10 }}>
+            <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:6 }}>
+              <input type="checkbox" checked={imageRepeat} onChange={e=>setImageRepeat(e.target.checked)} id="zrep" />
+              <label htmlFor="zrep" style={{ fontSize:13,cursor:"pointer" }}>Seamless repeat (tile)</label>
+            </div>
+            <div style={{ display:"flex",alignItems:"center",gap:8 }}>
+              <span style={{ fontSize:12,color:"#666",minWidth:80 }}>{imageRepeat ? "Tile size" : "Image zoom"}: {imageScale}%</span>
+              <input type="range" min={10} max={300} step={5} value={imageScale}
+                onChange={e=>setImageScale(Number(e.target.value))} style={{ flex:1 }} />
+            </div>
+            <div style={{ fontSize:11,color:"#888",marginTop:3 }}>
+              {imageRepeat ? "Smaller % = more tiles, larger % = fewer larger tiles." : "100% fills the zone. Lower = zoomed out, higher = zoomed in."}
+            </div>
+          </div>
+        )}
       </Field>
       <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:14 }}>
         <input type="checkbox" checked={revealed} onChange={e=>setRevealed(e.target.checked)} id="zrev" />
@@ -1611,7 +1681,7 @@ function ZoneFormModal({ form, onSave, onDelete, onAddPoint, onMovePoints, onClo
         )}
       </Field>
       <div style={{ display:"flex",gap:8,flexWrap:"wrap",marginTop:8 }}>
-        <Btn variant="primary" onClick={()=>onSave({...form,name,fill_color:fillColor,opacity,revealed,points,clearImage},imageFile)} style={{ flex:1 }}>Save</Btn>
+        <Btn variant="primary" onClick={()=>onSave({...form,name,fill_color:fillColor,opacity,revealed,points,clearImage,image_scale:imageScale,image_repeat:imageRepeat},imageFile)} style={{ flex:1 }}>Save</Btn>
         {isEdit && <Btn variant="danger" onClick={()=>onDelete(form.zone.id)}>Delete Zone</Btn>}
       </div>
     </Modal>
