@@ -1,36 +1,42 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { createRoot } from "react-dom/client";
-import { createClient } from "@supabase/supabase-js";
 
 const SUPA_URL = "https://iqmaumupuftguhurnsdt.supabase.co";
 const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlxbWF1bXVwdWZ0Z3VodXJuc2R0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyNTQ5MjEsImV4cCI6MjA4OTgzMDkyMX0.m7lg88RD_3M3OAqt0g17voz_jbZ0f02w-LocREn5Ffg";
 
-const sb = createClient(SUPA_URL, SUPA_KEY);
-
-function authedHeaders(token) {
+// ── Supabase helpers ──────────────────────────────────────────────────────────
+function hdrs(token) {
   return { "apikey": SUPA_KEY, "Authorization": `Bearer ${token || SUPA_KEY}`, "Content-Type": "application/json", "Prefer": "return=representation" };
 }
-async function aSelect(token, table, params = "") {
-  const r = await fetch(`${SUPA_URL}/rest/v1/${table}?${params}`, { headers: authedHeaders(token) });
+async function dbSelect(token, table, params = "") {
+  const r = await fetch(`${SUPA_URL}/rest/v1/${table}?${params}`, { headers: hdrs(token) });
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
-async function aInsert(token, table, body) {
-  const r = await fetch(`${SUPA_URL}/rest/v1/${table}`, { method: "POST", headers: authedHeaders(token), body: JSON.stringify(body) });
+async function dbInsert(token, table, body) {
+  const r = await fetch(`${SUPA_URL}/rest/v1/${table}`, { method: "POST", headers: hdrs(token), body: JSON.stringify(body) });
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
-async function aUpdate(token, table, id, body) {
-  const r = await fetch(`${SUPA_URL}/rest/v1/${table}?id=eq.${id}`, { method: "PATCH", headers: authedHeaders(token), body: JSON.stringify(body) });
+async function dbUpdate(token, table, id, body) {
+  const r = await fetch(`${SUPA_URL}/rest/v1/${table}?id=eq.${id}`, { method: "PATCH", headers: hdrs(token), body: JSON.stringify(body) });
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
-async function aDelete(token, table, id) {
-  const r = await fetch(`${SUPA_URL}/rest/v1/${table}?id=eq.${id}`, { method: "DELETE", headers: authedHeaders(token) });
+async function dbDelete(token, table, id) {
+  const r = await fetch(`${SUPA_URL}/rest/v1/${table}?id=eq.${id}`, { method: "DELETE", headers: hdrs(token) });
   if (!r.ok) throw new Error(await r.text());
 }
 async function getUser(token) {
-  const r = await fetch(`${SUPA_URL}/auth/v1/user`, { headers: authedHeaders(token) });
+  const r = await fetch(`${SUPA_URL}/auth/v1/user`, { headers: hdrs(token) });
+  if (!r.ok) return null;
+  return r.json();
+}
+async function refreshSession(refresh_token) {
+  const r = await fetch(`${SUPA_URL}/auth/v1/token?grant_type=refresh_token`, {
+    method: "POST", headers: { "apikey": SUPA_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify({ refresh_token })
+  });
   if (!r.ok) return null;
   return r.json();
 }
@@ -38,11 +44,9 @@ function getStoredSession() {
   try { const s = localStorage.getItem("sb_session"); return s ? JSON.parse(s) : null; } catch { return null; }
 }
 function parseHashSession() {
-  const hash = window.location.hash;
-  if (!hash) return null;
-  const params = new URLSearchParams(hash.replace("#", ""));
-  const access_token = params.get("access_token");
-  const refresh_token = params.get("refresh_token");
+  const hash = window.location.hash; if (!hash) return null;
+  const p = new URLSearchParams(hash.replace("#", ""));
+  const access_token = p.get("access_token"), refresh_token = p.get("refresh_token");
   if (!access_token) return null;
   return { access_token, refresh_token };
 }
@@ -51,22 +55,88 @@ function signInWithGoogle() {
   window.location.href = `${SUPA_URL}/auth/v1/authorize?provider=google&redirect_to=${redirectTo}`;
 }
 async function signOut(token) {
-  await fetch(`${SUPA_URL}/auth/v1/logout`, { method: "POST", headers: authedHeaders(token) });
+  await fetch(`${SUPA_URL}/auth/v1/logout`, { method: "POST", headers: hdrs(token) });
   localStorage.removeItem("sb_session");
 }
 
+// ── Realtime via Supabase WebSocket ───────────────────────────────────────────
+function createRealtimeChannel(token, campaignId, handlers) {
+  const wsUrl = `${SUPA_URL.replace("https://", "wss://")}/realtime/v1/websocket?apikey=${SUPA_KEY}&vsn=1.0.0`;
+  let ws, heartbeatTimer, reconnectTimer;
+  let closed = false;
+
+  function connect() {
+    if (closed) return;
+    ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+      const tables = ["pois", "markers", "annotations"];
+      tables.forEach((table, i) => {
+        ws.send(JSON.stringify({
+          topic: `realtime:public:${table}:campaign_id=eq.${campaignId}`,
+          event: "phx_join",
+          payload: {
+            config: {
+              postgres_changes: [{ event: "*", schema: "public", table, filter: `campaign_id=eq.${campaignId}` }]
+            },
+            user_token: token
+          },
+          ref: String(i + 1)
+        }));
+      });
+      heartbeatTimer = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ topic: "phoenix", event: "heartbeat", payload: {}, ref: "hb" }));
+        }
+      }, 20000);
+    };
+
+    ws.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        const payload = msg.payload?.data;
+        if (!payload) return;
+        const { table, type: eventType, record, old_record } = payload;
+        const mapped = { eventType, new: record, old: old_record };
+        if (table === "pois") handlers.onPOI(mapped);
+        if (table === "markers") handlers.onMarker(mapped);
+        if (table === "annotations") handlers.onAnnotation(mapped);
+      } catch {}
+    };
+
+    ws.onclose = () => {
+      clearInterval(heartbeatTimer);
+      if (!closed) reconnectTimer = setTimeout(connect, 3000);
+    };
+
+    ws.onerror = () => ws.close();
+  }
+
+  connect();
+
+  return {
+    unsubscribe() {
+      closed = true;
+      clearInterval(heartbeatTimer);
+      clearTimeout(reconnectTimer);
+      if (ws) ws.close();
+    }
+  };
+}
+
+// ── Constants ─────────────────────────────────────────────────────────────────
 const CATEGORIES = [
-  { id: "merchant",   label: "Merchants",          color: "#FFD700" },
-  { id: "entertain",  label: "Entertainment",      color: "#9B59B6" },
-  { id: "guild",      label: "Guilds",             color: "#C0C0C0" },
-  { id: "inn",        label: "Inns / Taverns",     color: "#2ECC71" },
-  { id: "craft",      label: "Craftsmen",          color: "#E67E22" },
-  { id: "government", label: "Government",         color: "#3498DB" },
-  { id: "public",     label: "Public Services",    color: "#EEEEEE" },
-  { id: "security",   label: "Security",           color: "#E74C3C" },
-  { id: "religion",   label: "Religion",           color: "#00BCD4" },
-  { id: "landmark",   label: "Landmark / Nature",  color: "#444444" },
-  { id: "other",      label: "Others",             color: "#95A5A6" },
+  { id: "merchant",   label: "Merchants",         color: "#FFD700" },
+  { id: "entertain",  label: "Entertainment",     color: "#9B59B6" },
+  { id: "guild",      label: "Guilds",            color: "#C0C0C0" },
+  { id: "inn",        label: "Inns / Taverns",    color: "#2ECC71" },
+  { id: "craft",      label: "Craftsmen",         color: "#E67E22" },
+  { id: "government", label: "Government",        color: "#3498DB" },
+  { id: "public",     label: "Public Services",   color: "#EEEEEE" },
+  { id: "security",   label: "Security",          color: "#E74C3C" },
+  { id: "religion",   label: "Religion",          color: "#00BCD4" },
+  { id: "landmark",   label: "Landmark / Nature", color: "#444444" },
+  { id: "other",      label: "Others",            color: "#95A5A6" },
 ];
 const POI_SIZES = [
   { id: "large",  label: "L", scale: 1.0 },
@@ -141,6 +211,7 @@ function POIPin({ poi, scale, isGM, onTap, onDragStart }) {
   );
 }
 
+// ── Main App ──────────────────────────────────────────────────────────────────
 function App() {
   const [session, setSession] = useState(null);
   const [user, setUser] = useState(null);
@@ -178,15 +249,16 @@ function App() {
   const imgSizeRef = useRef(imgSize);
   const scrollSensRef = useRef(scrollSens);
   const poiDragState = useRef(null);
-  const realtimeChannel = useRef(null);
-  const wheelListenerRef = useRef(null);
+  const realtimeRef = useRef(null);
+  const sessionRef = useRef(session);
 
   useEffect(() => { placingRef.current = placingMode; }, [placingMode]);
   useEffect(() => { transformRef.current = transform; }, [transform]);
   useEffect(() => { imgSizeRef.current = imgSize; }, [imgSize]);
   useEffect(() => { scrollSensRef.current = scrollSens; }, [scrollSens]);
+  useEffect(() => { sessionRef.current = session; }, [session]);
 
-  // Auth init
+  // ── Auth init + token refresh ──
   useEffect(() => {
     async function init() {
       let sess = parseHashSession();
@@ -197,6 +269,12 @@ function App() {
         sess = getStoredSession();
       }
       if (sess) {
+        // Try refreshing token immediately
+        const refreshed = await refreshSession(sess.refresh_token);
+        if (refreshed?.access_token) {
+          sess = { access_token: refreshed.access_token, refresh_token: refreshed.refresh_token || sess.refresh_token };
+          localStorage.setItem("sb_session", JSON.stringify(sess));
+        }
         const u = await getUser(sess.access_token);
         if (u) { setSession(sess); setUser(u); }
         else { localStorage.removeItem("sb_session"); }
@@ -204,53 +282,57 @@ function App() {
       setLoading(false);
     }
     init();
+
+    // Refresh token every 50 minutes
+    const refreshTimer = setInterval(async () => {
+      const stored = getStoredSession();
+      if (!stored?.refresh_token) return;
+      const refreshed = await refreshSession(stored.refresh_token);
+      if (refreshed?.access_token) {
+        const newSess = { access_token: refreshed.access_token, refresh_token: refreshed.refresh_token || stored.refresh_token };
+        localStorage.setItem("sb_session", JSON.stringify(newSess));
+        setSession(newSess);
+      }
+    }, 50 * 60 * 1000);
+
+    return () => clearInterval(refreshTimer);
   }, []);
 
   useEffect(() => { if (user && session) loadCampaigns(); }, [user]);
 
-  // Realtime subscriptions using Supabase JS client
+  // ── Realtime subscriptions ──
   useEffect(() => {
-    if (!activeCampaign) return;
-    const campId = activeCampaign.id;
+    if (!activeCampaign || !session) return;
 
-    // Clean up previous channel
-    if (realtimeChannel.current) {
-      sb.removeChannel(realtimeChannel.current);
-    }
+    if (realtimeRef.current) realtimeRef.current.unsubscribe();
 
-    const channel = sb
-      .channel(`campaign-${campId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "pois", filter: `campaign_id=eq.${campId}` }, payload => {
-        if (payload.eventType === "INSERT") setPois(p => [...p.filter(x => x.id !== payload.new.id), payload.new]);
+    realtimeRef.current = createRealtimeChannel(session.access_token, activeCampaign.id, {
+      onPOI: (payload) => {
+        if (payload.eventType === "INSERT") setPois(p => { if (p.find(x => x.id === payload.new.id)) return p; return [...p, payload.new]; });
         if (payload.eventType === "UPDATE") setPois(p => p.map(x => x.id === payload.new.id ? payload.new : x));
-        if (payload.eventType === "DELETE") setPois(p => p.filter(x => x.id !== payload.old.id));
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "markers", filter: `campaign_id=eq.${campId}` }, payload => {
-        if (payload.eventType === "INSERT") setMarkers(m => [...m.filter(x => x.id !== payload.new.id), payload.new]);
+        if (payload.eventType === "DELETE") setPois(p => p.filter(x => x.id !== payload.old?.id));
+      },
+      onMarker: (payload) => {
+        if (payload.eventType === "INSERT") setMarkers(m => { if (m.find(x => x.id === payload.new.id)) return m; return [...m, payload.new]; });
         if (payload.eventType === "UPDATE") setMarkers(m => m.map(x => x.id === payload.new.id ? payload.new : x));
-        if (payload.eventType === "DELETE") setMarkers(m => m.filter(x => x.id !== payload.old.id));
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "annotations", filter: `campaign_id=eq.${campId}` }, payload => {
-        if (payload.eventType === "INSERT") setAnnotations(a => [...a.filter(x => x.id !== payload.new.id), payload.new]);
+        if (payload.eventType === "DELETE") setMarkers(m => m.filter(x => x.id !== payload.old?.id));
+      },
+      onAnnotation: (payload) => {
+        if (payload.eventType === "INSERT") setAnnotations(a => { if (a.find(x => x.id === payload.new.id)) return a; return [...a, payload.new]; });
         if (payload.eventType === "UPDATE") setAnnotations(a => a.map(x => x.id === payload.new.id ? payload.new : x));
-        if (payload.eventType === "DELETE") setAnnotations(a => a.filter(x => x.id !== payload.old.id));
-      })
-      .subscribe();
+        if (payload.eventType === "DELETE") setAnnotations(a => a.filter(x => x.id !== payload.old?.id));
+      },
+    });
 
-    realtimeChannel.current = channel;
-
-    return () => {
-      sb.removeChannel(channel);
-      realtimeChannel.current = null;
-    };
-  }, [activeCampaign?.id]);
+    return () => { if (realtimeRef.current) realtimeRef.current.unsubscribe(); };
+  }, [activeCampaign?.id, session?.access_token]);
 
   async function loadCampaigns() {
     try {
-      const members = await aSelect(session.access_token, "campaign_members", `user_id=eq.${user.id}&select=campaign_id,role`);
+      const members = await dbSelect(session.access_token, "campaign_members", `user_id=eq.${user.id}&select=campaign_id,role`);
       if (!members.length) { setCampaigns([]); return; }
       const ids = members.map(m => m.campaign_id).join(",");
-      const camps = await aSelect(session.access_token, "campaigns", `id=in.(${ids})`);
+      const camps = await dbSelect(session.access_token, "campaigns", `id=in.(${ids})`);
       setCampaigns(camps.map(c => ({ ...c, myRole: members.find(m => m.campaign_id === c.id)?.role })));
     } catch(e) { setError(e.message); }
   }
@@ -259,10 +341,10 @@ function App() {
     setActiveCampaign(camp); setMemberRole(role);
     try {
       const [mapsData, poisData, markersData, annsData] = await Promise.all([
-        aSelect(session.access_token, "maps", `campaign_id=eq.${camp.id}&order=created_at`),
-        aSelect(session.access_token, "pois", `campaign_id=eq.${camp.id}`),
-        aSelect(session.access_token, "markers", `campaign_id=eq.${camp.id}`),
-        aSelect(session.access_token, "annotations", `campaign_id=eq.${camp.id}`),
+        dbSelect(session.access_token, "maps", `campaign_id=eq.${camp.id}&order=created_at`),
+        dbSelect(session.access_token, "pois", `campaign_id=eq.${camp.id}`),
+        dbSelect(session.access_token, "markers", `campaign_id=eq.${camp.id}`),
+        dbSelect(session.access_token, "annotations", `campaign_id=eq.${camp.id}`),
       ]);
       setMaps(mapsData); setPois(poisData); setMarkers(markersData); setAnnotations(annsData);
       const main = mapsData.find(m => m.is_main) || mapsData[0];
@@ -273,8 +355,8 @@ function App() {
   async function createCampaign() {
     if (!newCampaignName.trim()) return;
     try {
-      const [camp] = await aInsert(session.access_token, "campaigns", { name: newCampaignName.trim(), gm_id: user.id });
-      await aInsert(session.access_token, "campaign_members", { campaign_id: camp.id, user_id: user.id, role: "gm" });
+      const [camp] = await dbInsert(session.access_token, "campaigns", { name: newCampaignName.trim(), gm_id: user.id });
+      await dbInsert(session.access_token, "campaign_members", { campaign_id: camp.id, user_id: user.id, role: "gm" });
       setNewCampaignName(""); setShowCampaignModal(false);
       await loadCampaigns(); loadCampaignData(camp, "gm");
     } catch(e) { setError(e.message); }
@@ -283,9 +365,9 @@ function App() {
   async function joinCampaign() {
     if (!joinCode.trim()) return;
     try {
-      const camps = await aSelect(session.access_token, "campaigns", `id=eq.${joinCode.trim()}`);
+      const camps = await dbSelect(session.access_token, "campaigns", `id=eq.${joinCode.trim()}`);
       if (!camps.length) { setError("Campaign not found."); return; }
-      await aInsert(session.access_token, "campaign_members", { campaign_id: camps[0].id, user_id: user.id, role: "player" });
+      await dbInsert(session.access_token, "campaign_members", { campaign_id: camps[0].id, user_id: user.id, role: "player" });
       setJoinCode(""); setShowJoinModal(false);
       await loadCampaigns(); loadCampaignData(camps[0], "player");
     } catch(e) { setError("Could not join — you may already be a member."); }
@@ -350,7 +432,7 @@ function App() {
         const p = pois.find(p => p.id === poiId);
         if (p) setPoiForm({ poi: p, name: p.name, description: p.description, revealed: p.revealed, category: p.category || "other", size: p.size || "large" });
       } else {
-        aUpdate(session.access_token, "pois", poiId, { x: mapX, y: mapY }).catch(console.error);
+        dbUpdate(session.access_token, "pois", poiId, { x: mapX, y: mapY }).catch(console.error);
       }
     }
     window.addEventListener("mousemove", onMove); window.addEventListener("mouseup", onUp);
@@ -396,138 +478,142 @@ function App() {
     window.addEventListener("touchmove", onMove, { passive: true }); window.addEventListener("touchend", onUp);
   }
 
-  // Attach wheel listener — uses ref so sensitivity changes don't cause re-attach
-  function attachWheelListener(el) {
-    if (!el) return;
-    if (wheelListenerRef.current) {
-      el.removeEventListener("wheel", wheelListenerRef.current);
-    }
-    function onWheel(e) {
-      e.preventDefault();
-      const sens = scrollSensRef.current / 10;
-      const factor = 1 + (e.deltaY < 0 ? 1 : -1) * 0.08 * sens * 10;
-      const rect = el.getBoundingClientRect();
-      const mx = e.clientX - rect.left, my = e.clientY - rect.top;
-      setTransform(t => {
-        const ns = Math.min(8, Math.max(0.1, t.scale * factor));
-        const sr = ns / t.scale;
-        const next = { scale: ns, x: mx - sr * (mx - t.x), y: my - sr * (my - t.y) };
-        return clamp(next, rect.width, rect.height, imgSizeRef.current.w, imgSizeRef.current.h);
-      });
-    }
-    el.addEventListener("wheel", onWheel, { passive: false });
-    wheelListenerRef.current = onWheel;
-  }
-
-  // Pinch zoom
-  const pinchSetup = useCallback((el) => {
-    if (!el) return () => {};
-    let lastDist = null, isPinching = false;
-    function getDist(t) { const dx=t[0].clientX-t[1].clientX,dy=t[0].clientY-t[1].clientY; return Math.sqrt(dx*dx+dy*dy); }
-    function getMid(t) { return { x:(t[0].clientX+t[1].clientX)/2, y:(t[0].clientY+t[1].clientY)/2 }; }
-    function onTS(e) { if(e.touches.length===2){isPinching=true;lastDist=getDist(e.touches);dragRef.current.active=false;setIsDragging(false);} }
-    function onTM(e) {
-      if(e.touches.length!==2||!isPinching)return; e.preventDefault();
-      const dist=getDist(e.touches); if(!lastDist){lastDist=dist;return;}
-      const factor=Math.min(Math.max(dist/lastDist,0.5),2); lastDist=dist;
-      const mid=getMid(e.touches); const rect=el.getBoundingClientRect();
-      const mx=mid.x-rect.left,my=mid.y-rect.top;
-      setTransform(t=>{const ns=Math.min(8,Math.max(0.1,t.scale*factor));const sr=ns/t.scale;const next={scale:ns,x:mx-sr*(mx-t.x),y:my-sr*(my-t.y)};return clamp(next,rect.width,rect.height,imgSizeRef.current.w,imgSizeRef.current.h);});
-    }
-    function onTE(e){if(e.touches.length<2){isPinching=false;lastDist=null;}}
-    el.addEventListener("touchstart",onTS,{passive:true});
-    el.addEventListener("touchmove",onTM,{passive:false});
-    el.addEventListener("touchend",onTE,{passive:true});
-    return ()=>{el.removeEventListener("touchstart",onTS);el.removeEventListener("touchmove",onTM);el.removeEventListener("touchend",onTE);};
-  }, []);
-
-  // Map ref callback — attaches listeners as soon as the div is in the DOM
-  const setMapRef = useCallback((el) => {
-    mapRef.current = el;
-    if (!el) return;
-    attachWheelListener(el);
-    pinchSetup(el);
-  }, [pinchSetup]);
-
-  // Re-attach when switching back to map tab
+  // ── Attach wheel + pinch once map is ready ──
   useEffect(() => {
-    if (tab === "map" && mapRef.current) {
-      attachWheelListener(mapRef.current);
-      pinchSetup(mapRef.current);
-    }
-  }, [tab]);
+    if (tab !== "map") return;
+    let wheelCleanup = null, pinchCleanup = null;
+    let attempts = 0;
 
+    function attachAll() {
+      const el = mapRef.current;
+      if (!el) {
+        if (attempts++ < 30) { setTimeout(attachAll, 100); return; }
+        return;
+      }
+
+      // Wheel zoom — uses ref so sensitivity changes work without re-attaching
+      function onWheel(e) {
+        e.preventDefault();
+        const sens = scrollSensRef.current / 10;
+        const factor = 1 + (e.deltaY < 0 ? 1 : -1) * 0.08 * sens * 10;
+        const rect = el.getBoundingClientRect();
+        const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+        setTransform(t => {
+          const ns = Math.min(8, Math.max(0.1, t.scale * factor));
+          const sr = ns / t.scale;
+          const next = { scale: ns, x: mx - sr * (mx - t.x), y: my - sr * (my - t.y) };
+          return clamp(next, rect.width, rect.height, imgSizeRef.current.w, imgSizeRef.current.h);
+        });
+      }
+      el.addEventListener("wheel", onWheel, { passive: false });
+      wheelCleanup = () => el.removeEventListener("wheel", onWheel);
+
+      // Pinch zoom
+      let lastDist = null, isPinching = false;
+      function getDist(t) { const dx = t[0].clientX - t[1].clientX, dy = t[0].clientY - t[1].clientY; return Math.sqrt(dx*dx+dy*dy); }
+      function getMid(t) { return { x: (t[0].clientX+t[1].clientX)/2, y: (t[0].clientY+t[1].clientY)/2 }; }
+      function onTS(e) { if (e.touches.length === 2) { isPinching = true; lastDist = getDist(e.touches); dragRef.current.active = false; setIsDragging(false); } }
+      function onTM(e) {
+        if (e.touches.length !== 2 || !isPinching) return;
+        e.preventDefault();
+        const dist = getDist(e.touches); if (!lastDist) { lastDist = dist; return; }
+        const factor = Math.min(Math.max(dist / lastDist, 0.5), 2); lastDist = dist;
+        const mid = getMid(e.touches); const rect = el.getBoundingClientRect();
+        const mx = mid.x - rect.left, my = mid.y - rect.top;
+        setTransform(t => {
+          const ns = Math.min(8, Math.max(0.1, t.scale * factor));
+          const sr = ns / t.scale;
+          const next = { scale: ns, x: mx - sr * (mx - t.x), y: my - sr * (my - t.y) };
+          return clamp(next, rect.width, rect.height, imgSizeRef.current.w, imgSizeRef.current.h);
+        });
+      }
+      function onTE(e) { if (e.touches.length < 2) { isPinching = false; lastDist = null; } }
+      el.addEventListener("touchstart", onTS, { passive: true });
+      el.addEventListener("touchmove", onTM, { passive: false });
+      el.addEventListener("touchend", onTE, { passive: true });
+      pinchCleanup = () => { el.removeEventListener("touchstart", onTS); el.removeEventListener("touchmove", onTM); el.removeEventListener("touchend", onTE); };
+    }
+
+    const t = setTimeout(attachAll, 80);
+    return () => {
+      clearTimeout(t);
+      wheelCleanup && wheelCleanup();
+      pinchCleanup && pinchCleanup();
+    };
+  }, [tab, activeCampaign]);
+
+  // CRUD
   async function savePOI(form, iconFile) {
     let icon_url = form.clearIcon ? "" : (form.poi?.icon_url || "");
     if (iconFile) icon_url = await readFile(iconFile);
     const body = { name: form.name||"Unnamed POI", description: form.description||"", revealed: form.revealed, category: form.category||"other", size: form.size||"large", icon_url };
     try {
       if (form.poi) {
-        await aUpdate(session.access_token, "pois", form.poi.id, body);
+        await dbUpdate(session.access_token, "pois", form.poi.id, body);
         setPois(prev => prev.map(p => p.id === form.poi.id ? { ...p, ...body } : p));
       } else {
-        const [np] = await aInsert(session.access_token, "pois", { ...body, campaign_id: activeCampaign.id, map_id: activeMapId, x: form.x, y: form.y });
+        const [np] = await dbInsert(session.access_token, "pois", { ...body, campaign_id: activeCampaign.id, map_id: activeMapId, x: form.x, y: form.y });
         setPois(prev => [...prev, np]);
       }
       setPoiForm(null);
     } catch(e) { setError(e.message); }
   }
   async function deletePOI(id) {
-    try { await aDelete(session.access_token, "pois", id); setPois(prev=>prev.filter(p=>p.id!==id)); setPoiForm(null); setOpenPOICard(null); } catch(e) { setError(e.message); }
+    try { await dbDelete(session.access_token, "pois", id); setPois(prev=>prev.filter(p=>p.id!==id)); setPoiForm(null); setOpenPOICard(null); } catch(e) { setError(e.message); }
   }
   function duplicatePOI(poi) {
-    aInsert(session.access_token, "pois", { name: poi.name+" (copy)", description: poi.description, revealed: false, category: poi.category, size: poi.size, icon_url: poi.icon_url, campaign_id: poi.campaign_id, map_id: poi.map_id, x: poi.x+30, y: poi.y+30 })
-      .then(([np])=>setPois(prev=>[...prev,np])).catch(e=>setError(e.message));
+    dbInsert(session.access_token, "pois", { name: poi.name+" (copy)", description: poi.description, revealed: false, category: poi.category, size: poi.size, icon_url: poi.icon_url, campaign_id: poi.campaign_id, map_id: poi.map_id, x: poi.x+30, y: poi.y+30 })
+      .then(([np]) => setPois(prev => [...prev, np])).catch(e => setError(e.message));
     setPoiForm(null);
   }
   async function togglePOIReveal(id, current) {
-    try { await aUpdate(session.access_token, "pois", id, { revealed: !current }); setPois(prev=>prev.map(p=>p.id===id?{...p,revealed:!current}:p)); } catch(e) { setError(e.message); }
+    try { await dbUpdate(session.access_token, "pois", id, { revealed: !current }); setPois(prev=>prev.map(p=>p.id===id?{...p,revealed:!current}:p)); } catch(e) { setError(e.message); }
   }
   async function saveMarker(label) {
     if (!markerForm) return;
     try {
-      const [nm] = await aInsert(session.access_token, "markers", { campaign_id: activeCampaign.id, map_id: activeMapId, user_id: user.id, user_name: user.user_metadata?.full_name||user.email, label, x: markerForm.x, y: markerForm.y });
-      setMarkers(prev=>[...prev,nm]); setMarkerForm(null);
+      const [nm] = await dbInsert(session.access_token, "markers", { campaign_id: activeCampaign.id, map_id: activeMapId, user_id: user.id, user_name: user.user_metadata?.full_name||user.email, label, x: markerForm.x, y: markerForm.y });
+      setMarkers(prev => [...prev, nm]); setMarkerForm(null);
     } catch(e) { setError(e.message); }
   }
   async function deleteMarker(id) {
-    try { await aDelete(session.access_token, "markers", id); setMarkers(prev=>prev.filter(m=>m.id!==id)); } catch(e) { setError(e.message); }
+    try { await dbDelete(session.access_token, "markers", id); setMarkers(prev=>prev.filter(m=>m.id!==id)); } catch(e) { setError(e.message); }
   }
   async function saveAnnotation(form, type, content) {
     try {
       if (form.ann) {
-        await aUpdate(session.access_token, "annotations", form.ann.id, { type, content });
+        await dbUpdate(session.access_token, "annotations", form.ann.id, { type, content });
         setAnnotations(prev=>prev.map(a=>a.id===form.ann.id?{...a,type,content}:a));
       } else {
-        const [na] = await aInsert(session.access_token, "annotations", { campaign_id: activeCampaign.id, map_id: activeMapId, type, content, visible: false, x: form.x, y: form.y });
+        const [na] = await dbInsert(session.access_token, "annotations", { campaign_id: activeCampaign.id, map_id: activeMapId, type, content, visible: false, x: form.x, y: form.y });
         setAnnotations(prev=>[...prev,na]);
       }
       setAnnotationForm(null);
     } catch(e) { setError(e.message); }
   }
   async function toggleAnnotation(id, current) {
-    try { await aUpdate(session.access_token, "annotations", id, { visible: !current }); setAnnotations(prev=>prev.map(a=>a.id===id?{...a,visible:!current}:a)); } catch(e) { setError(e.message); }
+    try { await dbUpdate(session.access_token, "annotations", id, { visible: !current }); setAnnotations(prev=>prev.map(a=>a.id===id?{...a,visible:!current}:a)); } catch(e) { setError(e.message); }
   }
   async function deleteAnnotation(id) {
-    try { await aDelete(session.access_token, "annotations", id); setAnnotations(prev=>prev.filter(a=>a.id!==id)); setAnnotationForm(null); } catch(e) { setError(e.message); }
+    try { await dbDelete(session.access_token, "annotations", id); setAnnotations(prev=>prev.filter(a=>a.id!==id)); setAnnotationForm(null); } catch(e) { setError(e.message); }
   }
   async function uploadMap(file) {
     const src = await readFile(file); const isFirst = maps.length === 0;
     try {
-      const [nm] = await aInsert(session.access_token, "maps", { campaign_id: activeCampaign.id, name: file.name.replace(/\.[^.]+$/,""), src, is_main: isFirst });
+      const [nm] = await dbInsert(session.access_token, "maps", { campaign_id: activeCampaign.id, name: file.name.replace(/\.[^.]+$/,""), src, is_main: isFirst });
       setMaps(prev=>[...prev,nm]); if (isFirst) setActiveMapId(nm.id);
     } catch(e) { setError(e.message); }
   }
   async function setMainMap(id) {
     try {
-      for (const m of maps) await aUpdate(session.access_token, "maps", m.id, { is_main: m.id===id });
+      for (const m of maps) await dbUpdate(session.access_token, "maps", m.id, { is_main: m.id===id });
       setMaps(prev=>prev.map(m=>({...m,is_main:m.id===id})));
     } catch(e) { setError(e.message); }
   }
   async function deleteMap(id) {
     if (!window.confirm("Delete this map?")) return;
     try {
-      await aDelete(session.access_token, "maps", id);
+      await dbDelete(session.access_token, "maps", id);
       const remaining = maps.filter(m=>m.id!==id); setMaps(remaining);
       if (activeMapId===id) setActiveMapId(remaining[0]?.id||null);
     } catch(e) { setError(e.message); }
@@ -549,6 +635,7 @@ function App() {
   const sortedLibPOIs = [...pois].sort((a,b)=>libSort==="name"?(a.name||"").localeCompare(b.name||""):(a.category||"").localeCompare(b.category||""));
   const tabs = ["map",...(isGM?["library","overlays"]:[])];
 
+  // ── Render ──
   if (loading) return <div style={{ display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",fontFamily:"sans-serif",color:"#888",fontSize:16 }}>Loading...</div>;
 
   if (!user) return (
@@ -556,7 +643,7 @@ function App() {
       <div style={{ fontSize:52 }}>🗺</div>
       <div style={{ fontWeight:600,fontSize:22 }}>Verlantis Interactive Map</div>
       <div style={{ color:"#666",fontSize:14,textAlign:"center",maxWidth:320 }}>Sign in with your Google account to access your campaigns.</div>
-      <button onClick={signInWithGoogle} style={{ display:"flex",alignItems:"center",gap:10,padding:"12px 24px",fontSize:15,borderRadius:10,border:"1px solid #ddd",background:"#fff",cursor:"pointer",fontWeight:500,boxShadow:"0 1px 4px rgba(0,0,0,0.1)" }}>
+      <button onClick={signInWithGoogle} style={{ display:"flex",alignItems:"center",gap:10,padding:"12px 24px",fontSize:15,borderRadius:10,border:"1px solid #ddd",background:"#fff",cursor:"pointer",fontWeight:500 }}>
         <img src="https://www.google.com/favicon.ico" width={18} height={18} alt="" />
         Sign in with Google
       </button>
@@ -600,7 +687,7 @@ function App() {
   return (
     <div style={{ fontFamily:"sans-serif",fontSize:14,color:"#111",display:"flex",flexDirection:"column",height:"100vh",background:"#fff" }}>
       <div style={{ display:"flex",alignItems:"center",gap:8,padding:"8px 14px",borderBottom:"0.5px solid #ddd",flexWrap:"wrap",background:"#fff" }}>
-        <button onClick={()=>setActiveCampaign(null)} style={{ background:"none",border:"none",cursor:"pointer",fontSize:18,padding:0,color:"#555" }}>←</button>
+        <button onClick={()=>{setActiveCampaign(null);if(realtimeRef.current)realtimeRef.current.unsubscribe();}} style={{ background:"none",border:"none",cursor:"pointer",fontSize:18,padding:0,color:"#555" }}>←</button>
         <span style={{ fontWeight:500,fontSize:14,flex:1 }}>{activeCampaign.name}</span>
         {mapStack.length>0 && <Btn size="sm" onClick={goBack}>↩ Back</Btn>}
         <span style={{ fontSize:11,padding:"2px 8px",borderRadius:20,background:isGM?"#EAF3DE":"#E6F1FB",color:isGM?"#3B6D11":"#185FA5",fontWeight:500 }}>{isGM?"GM":"Player"}</span>
@@ -608,7 +695,6 @@ function App() {
       </div>
       {error && <div style={{ background:"#fee",color:"#A32D2D",padding:"5px 14px",fontSize:12 }}>{error}<button onClick={()=>setError("")} style={{ marginLeft:8,border:"none",background:"none",cursor:"pointer" }}>✕</button></div>}
       {isGM && <div style={{ padding:"3px 14px",background:"#f0f0ff",fontSize:11,color:"#555",borderBottom:"0.5px solid #ddd" }}>Campaign ID for players: <strong>{activeCampaign.id}</strong></div>}
-
       <div style={{ display:"flex",borderBottom:"0.5px solid #ddd",padding:"0 14px" }}>
         {tabs.map(t=>(
           <button key={t} onClick={()=>setTab(t)} style={{ padding:"7px 12px",border:"none",borderBottom:tab===t?"2px solid #3C3489":"2px solid transparent",background:"transparent",cursor:"pointer",fontSize:12,fontWeight:tab===t?500:400,color:tab===t?"#3C3489":"#888",textTransform:"capitalize" }}>{t}</button>
@@ -632,12 +718,9 @@ function App() {
             <span style={{ fontSize:11,color:"#888",minWidth:12 }}>{scrollSens}</span>
           </div>
           <div style={{ flex:1,minHeight:0,position:"relative" }}>
-            <div ref={setMapRef}
-              style={{ position:"absolute",inset:0,overflow:"hidden",background:"#1a1a2e",cursor:placingMode?"crosshair":isDragging?"grabbing":"grab",touchAction:"none",userSelect:"none" }}
-              onMouseDown={onPointerDown}
-              onTouchStart={onPointerDown}
-              onClick={()=>{ if(!dragRef.current.moved) setOpenPOICard(null); }}
-            >
+            <div ref={mapRef} style={{ position:"absolute",inset:0,overflow:"hidden",background:"#1a1a2e",cursor:placingMode?"crosshair":isDragging?"grabbing":"grab",touchAction:"none",userSelect:"none" }}
+              onMouseDown={onPointerDown} onTouchStart={onPointerDown}
+              onClick={()=>{ if(!dragRef.current.moved) setOpenPOICard(null); }}>
               {!currentMap ? (
                 <div style={{ display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",color:"#aaa",gap:8 }}>
                   <span style={{ fontSize:40 }}>🗺</span>
@@ -670,7 +753,6 @@ function App() {
                 </div>
               )}
             </div>
-
             {openPOI && poiCardPos && (
               <div onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
                 style={{ position:"absolute",left:poiCardPos.left,top:poiCardPos.top,width:poiCardPos.cardW,background:"white",borderRadius:10,border:`2px solid ${getCatColor(openPOI.category)}`,zIndex:100,overflow:"hidden",boxSizing:"border-box" }}>
@@ -693,7 +775,6 @@ function App() {
               </div>
             )}
           </div>
-
           <div style={{ padding:"4px 14px",borderTop:"0.5px solid #ddd",display:"flex",gap:12,fontSize:10,color:"#888",flexWrap:"wrap" }}>
             <span>Tap POI to view</span>
             {isGM && <span style={{ color:"#185FA5" }}>GM: drag pin to move, tap to edit</span>}
