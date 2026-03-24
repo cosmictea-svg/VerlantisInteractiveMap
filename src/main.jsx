@@ -124,7 +124,18 @@ function createRealtimeChannel(token, campaignId, handlers) {
   };
 }
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+// ── Supabase Storage upload ───────────────────────────────────────────────────
+async function uploadToStorage(token, file) {
+  const ext = file.name.split(".").pop() || "png";
+  const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+  const r = await fetch(`${SUPA_URL}/storage/v1/object/poi-icons/${path}`, {
+    method: "POST",
+    headers: { "apikey": SUPA_KEY, "Authorization": `Bearer ${token}`, "Content-Type": file.type || "image/png" },
+    body: file
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return `${SUPA_URL}/storage/v1/object/public/poi-icons/${path}`;
+}
 const CATEGORIES = [
   { id: "merchant",   label: "Merchants",         color: "#FFD700" },
   { id: "entertain",  label: "Entertainment",     color: "#9B59B6" },
@@ -202,7 +213,7 @@ function POIPin({ poi, scale, isGM, onTap, onDragStart }) {
       style={{ position: "absolute", left: poi.x - size/2, top: poi.y - size, width: size, height: size, cursor: isGM ? "grab" : "pointer", zIndex: 20, borderRadius: "50%", border: `${bw}px solid ${cc}`, boxSizing: "border-box", overflow: "hidden", background: cc + "59" }}
     >
       {poi.icon_url
-        ? <img src={poi.icon_url} alt={poi.name} style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
+        ? <img src={poi.icon_url} alt={poi.name} draggable={false} onDragStart={e => e.preventDefault()} style={{ width: "100%", height: "100%", objectFit: "contain", display: "block", pointerEvents: "none" }} />
         : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <span style={{ color: "white", fontWeight: 700, fontSize: Math.max(8, 14 * ss / scale), lineHeight: 1 }}>?</span>
           </div>
@@ -310,17 +321,17 @@ function App() {
       onPOI: (payload) => {
         if (payload.eventType === "INSERT") setPois(p => { if (p.find(x => x.id === payload.new.id)) return p; return [...p, payload.new]; });
         if (payload.eventType === "UPDATE") setPois(p => p.map(x => x.id === payload.new.id ? payload.new : x));
-        if (payload.eventType === "DELETE") setPois(p => p.filter(x => x.id !== payload.old?.id));
+        if (payload.eventType === "DELETE") setPois(p => p.filter(x => x.id !== (payload.old?.id || payload.old_record?.id)));
       },
       onMarker: (payload) => {
         if (payload.eventType === "INSERT") setMarkers(m => { if (m.find(x => x.id === payload.new.id)) return m; return [...m, payload.new]; });
         if (payload.eventType === "UPDATE") setMarkers(m => m.map(x => x.id === payload.new.id ? payload.new : x));
-        if (payload.eventType === "DELETE") setMarkers(m => m.filter(x => x.id !== payload.old?.id));
+        if (payload.eventType === "DELETE") setMarkers(m => m.filter(x => x.id !== (payload.old?.id || payload.old_record?.id)));
       },
       onAnnotation: (payload) => {
         if (payload.eventType === "INSERT") setAnnotations(a => { if (a.find(x => x.id === payload.new.id)) return a; return [...a, payload.new]; });
         if (payload.eventType === "UPDATE") setAnnotations(a => a.map(x => x.id === payload.new.id ? payload.new : x));
-        if (payload.eventType === "DELETE") setAnnotations(a => a.filter(x => x.id !== payload.old?.id));
+        if (payload.eventType === "DELETE") setAnnotations(a => a.filter(x => x.id !== (payload.old?.id || payload.old_record?.id)));
       },
     });
 
@@ -545,7 +556,14 @@ function App() {
   // CRUD
   async function savePOI(form, iconFile) {
     let icon_url = form.clearIcon ? "" : (form.poi?.icon_url || "");
-    if (iconFile) icon_url = await readFile(iconFile);
+    if (iconFile) {
+      try {
+        icon_url = await uploadToStorage(session.access_token, iconFile);
+      } catch(e) {
+        // Fallback to base64 if storage upload fails
+        icon_url = await readFile(iconFile);
+      }
+    }
     const body = { name: form.name||"Unnamed POI", description: form.description||"", revealed: form.revealed, category: form.category||"other", size: form.size||"large", icon_url };
     try {
       if (form.poi) {
@@ -692,7 +710,6 @@ function App() {
         {mapStack.length>0 && <Btn size="sm" onClick={goBack}>↩ Back</Btn>}
         <span style={{ fontSize:11,padding:"2px 8px",borderRadius:20,background:isGM?"#EAF3DE":"#E6F1FB",color:isGM?"#3B6D11":"#185FA5",fontWeight:500 }}>{isGM?"GM":"Player"}</span>
         <span style={{ fontSize:11,color:"#888",maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{user.user_metadata?.full_name||user.email}</span>
-        <span style={{ fontSize:10,color:"#bbb" }}>v{__BUILD_DATE__}-{__COMMIT__}</span>
       </div>
       {error && <div style={{ background:"#fee",color:"#A32D2D",padding:"5px 14px",fontSize:12 }}>{error}<button onClick={()=>setError("")} style={{ marginLeft:8,border:"none",background:"none",cursor:"pointer" }}>✕</button></div>}
       {isGM && <div style={{ padding:"3px 14px",background:"#f0f0ff",fontSize:11,color:"#555",borderBottom:"0.5px solid #ddd" }}>Campaign ID for players: <strong>{activeCampaign.id}</strong></div>}
