@@ -102,6 +102,7 @@ function createRealtimeChannel(token, campaignId, handlers) {
         { table: "npcs",             filter: `campaign_id=eq.${campaignId}` },
         { table: "announcements",    filter: `campaign_id=eq.${campaignId}` },
         { table: "notification_log", filter: `campaign_id=eq.${campaignId}` },
+        { table: "maps",             filter: `campaign_id=eq.${campaignId}` },
       ];
       tableConfigs.forEach(({ table, filter }, i) => {
         ws.send(JSON.stringify({
@@ -132,6 +133,7 @@ function createRealtimeChannel(token, campaignId, handlers) {
         if (table === "npcs") handlers.onNPC?.(mapped);
         if (table === "announcements") handlers.onAnnouncement?.(mapped);
         if (table === "notification_log") handlers.onNotifLog?.(mapped);
+        if (table === "maps") handlers.onMap?.(mapped);
       } catch {}
     };
     ws.onclose = () => { clearInterval(heartbeatTimer); if (!closed) reconnectTimer = setTimeout(connect, 3000); };
@@ -153,11 +155,10 @@ const CATEGORIES = [
   { id: "security",   label: "Security",          color: "#E74C3C" },
   { id: "religion",   label: "Religion",          color: "#00BCD4" },
   { id: "landmark",   label: "Landmark / Nature", color: "#4CAF50" },
-  { id: "sewer",      label: "Sewer / Underground", color: "#795548" },
-  { id: "arena",      label: "Arena / Combat",    color: "#FF5722" },
-  { id: "jail",       label: "Jail / Prison",     color: "#546E7A" },
-  { id: "door",       label: "Door / Passage",    color: "#A1887F" },
-  { id: "portal",     label: "Portal",            color: "#7C4DFF" },
+  { id: "sewer",      label: "Sewer",             color: "#795548" },
+  { id: "arena",      label: "Arena",             color: "#FF5722" },
+  { id: "jail",       label: "Jail",              color: "#546E7A" },
+  { id: "door",       label: "Door",              color: "#A1887F" },
   { id: "other",      label: "Others",            color: "#95A5A6" },
 ];
 const POI_SIZES = [
@@ -437,6 +438,7 @@ function App() {
   const [campInfoEdit, setCampInfoEdit] = useState(null); // { name, sub_header, description } or null
   const [npcs, setNpcs] = useState([]);
   const [npcForm, setNpcForm] = useState(null);
+  const [portalConfirm, setPortalConfirm] = useState(null); // { poi, targetMap }
   const [announcements, setAnnouncements] = useState([]);
   const [notifLog, setNotifLog] = useState([]);
   const [toasts, setToasts] = useState([]);
@@ -606,12 +608,21 @@ function App() {
       onNotifLog: (payload) => {
         if (payload.eventType === "INSERT") {
           setNotifLog(p => p.find(x => x.id === payload.new.id) ? p : [payload.new, ...p]);
-          setUnreadCount(c => c + 1);
-          if (payload.new.type !== "announcement") {
+          // Only show toast + sound for players (GM triggered the event, they don't need it)
+          if (memberRole !== "gm" && payload.new.type !== "announcement") {
+            setUnreadCount(c => c + 1);
             playSound(payload.new.type);
-            addToast(payload.new.message || payload.new.title || "Update", payload.new.type);
+            const label = payload.new.type === "poi_revealed" ? `📍 ${payload.new.title} revealed`
+                        : payload.new.type === "poi_hidden"   ? `🙈 ${payload.new.title} hidden`
+                        : payload.new.message || payload.new.title || "Update";
+            addToast(label, payload.new.type);
           }
         }
+      },
+      onMap: (payload) => {
+        if (payload.eventType === "INSERT") setMaps(p => p.find(x => x.id === payload.new.id) ? p : [...p, payload.new]);
+        if (payload.eventType === "UPDATE") setMaps(p => p.map(x => x.id === payload.new.id ? payload.new : x));
+        if (payload.eventType === "DELETE") setMaps(p => p.filter(x => x.id !== payload.old?.id));
       },
     });
     return () => { if (realtimeRef.current) realtimeRef.current.unsubscribe(); };
@@ -1288,6 +1299,7 @@ function App() {
     function onKey(e) {
       if (e.target.tagName==="INPUT"||e.target.tagName==="TEXTAREA"||e.target.tagName==="SELECT") return;
       if (e.key==="Escape") {
+        if (portalConfirm) { setPortalConfirm(null); return; }
         if (poiForm) { setPoiForm(null); return; }
         if (markerForm) { setMarkerForm(null); return; }
         if (zoneForm) { setZoneForm(null); return; }
@@ -1301,7 +1313,7 @@ function App() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [tab, poiForm, markerForm, zoneForm, npcForm, announceForm, showFilter, showBell, placingMode]);
+  }, [tab, poiForm, markerForm, zoneForm, npcForm, announceForm, showFilter, showBell, placingMode, portalConfirm]);
 
   // Card positions
   const openPOI = mapPOIs.find(p=>p.id===openPOICard);
@@ -1450,8 +1462,13 @@ function App() {
             </Btn>
             <Btn size="sm" onClick={resetView}>Fit (F)</Btn>
             {accessibleMaps.length > 1 && (
-              <select value={activeMapId||""} onChange={e=>{setActiveMapId(e.target.value);setTransform({x:0,y:0,scale:1});setImgSize({w:0,h:0});setMapStack([]);}}
-                style={{ fontSize:11,padding:"3px 8px",borderRadius:6,border:`1px solid ${T.border}`,background:T.bg,color:T.ink,fontFamily:T.fBody,maxWidth:130 }}>
+              <select value={activeMapId||""} onChange={e=>{
+                const target = maps.find(m=>m.id===e.target.value);
+                if (!isGM && target && !target.is_main && !target.player_accessible) {
+                  addToast("🔒 The GM has locked access to this area.", "denied"); return;
+                }
+                setActiveMapId(e.target.value); setTransform({x:0,y:0,scale:1}); setImgSize({w:0,h:0}); setMapStack([]);
+              }} style={{ fontSize:11,padding:"3px 8px",borderRadius:6,border:`1px solid ${T.border}`,background:T.bg,color:T.ink,fontFamily:T.fBody,maxWidth:130 }}>
                 {accessibleMaps.map(m=><option key={m.id} value={m.id}>{m.name}{m.is_main?" ★":""}</option>)}
               </select>
             )}
@@ -1757,9 +1774,18 @@ function App() {
                       poiOpacity={poiOpacity}
                       onTap={poi=>{
                         if (poi.poi_type==="portal" && poi.linked_map_id) {
-                          setMapStack(s=>[...s, activeMapId]);
-                          setActiveMapId(poi.linked_map_id);
-                          setTransform({x:0,y:0,scale:1}); setImgSize({w:0,h:0});
+                          if (isGM) {
+                            // GM tap on portal → open edit form (same as any POI)
+                            setPoiForm({ poi, name:poi.name, description:poi.description, revealed:poi.revealed, category:poi.category, size:poi.size||"large", poi_type:poi.poi_type, linked_map_id:poi.linked_map_id });
+                          } else {
+                            // Player tap on portal → show confirmation first
+                            const targetMap = maps.find(m=>m.id===poi.linked_map_id);
+                            if (!targetMap) { addToast("⚠ Destination map not found", "error"); return; }
+                            if (!targetMap.is_main && !targetMap.player_accessible) {
+                              addToast("🔒 The GM has locked access to this area.", "denied"); return;
+                            }
+                            setPortalConfirm({ poi, targetMap });
+                          }
                         } else if (!isGM) { setOpenPOICard(openPOICard===poi.id?null:poi.id); }
                       }}
                       onDragStart={startPOIDrag} />
@@ -2202,6 +2228,33 @@ function App() {
           </div>
         ))}
       </div>
+
+      {/* Portal confirmation modal */}
+      {portalConfirm && (
+        <div style={{ position:"fixed",inset:0,zIndex:5000,display:"flex",alignItems:"center",justifyContent:"center",padding:16 }} onClick={()=>setPortalConfirm(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:T.bg,border:`2px solid ${T.gold}`,borderRadius:14,padding:"24px 28px",maxWidth:340,width:"100%",boxShadow:"0 8px 40px rgba(26,16,53,0.45)",textAlign:"center" }}>
+            <div style={{ fontSize:28,marginBottom:8 }}>⛩</div>
+            <div style={{ fontFamily:T.fHead,fontSize:16,fontWeight:700,color:T.ink,marginBottom:6 }}>{portalConfirm.poi.name||"Portal"}</div>
+            <div style={{ fontSize:13,color:T.muted,marginBottom:18,lineHeight:1.5 }}>
+              Travel to <strong>{portalConfirm.targetMap.name}</strong>?
+              {portalConfirm.poi.description && <><br/><span style={{ fontStyle:"italic",fontSize:12 }}>{portalConfirm.poi.description}</span></>}
+            </div>
+            <div style={{ display:"flex",gap:10,justifyContent:"center" }}>
+              <button onClick={()=>{
+                setMapStack(s=>[...s, activeMapId]);
+                setActiveMapId(portalConfirm.targetMap.id);
+                setTransform({x:0,y:0,scale:1}); setImgSize({w:0,h:0});
+                setPortalConfirm(null);
+              }} style={{ padding:"9px 24px",borderRadius:20,border:"none",background:T.purple,color:T.headerFg,fontFamily:T.fHead,fontSize:13,fontWeight:600,cursor:"pointer" }}>
+                ✦ Enter
+              </button>
+              <button onClick={()=>setPortalConfirm(null)} style={{ padding:"9px 24px",borderRadius:20,border:`1px solid ${T.border}`,background:"transparent",color:T.muted,fontFamily:T.fBody,fontSize:13,cursor:"pointer" }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* NPC form modal */}
       {npcForm && <NpcFormModal form={npcForm} onSave={saveNPC} onDelete={deleteNPC} onClose={()=>setNpcForm(null)} />}
