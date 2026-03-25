@@ -149,10 +149,15 @@ const CATEGORIES = [
   { id: "inn",        label: "Inns / Taverns",    color: "#2ECC71" },
   { id: "craft",      label: "Craftsmen",         color: "#E67E22" },
   { id: "government", label: "Government",        color: "#3498DB" },
-  { id: "public",     label: "Public Services",   color: "#EEEEEE" },
+  { id: "public",     label: "Public Services",   color: "#90CAF9" },
   { id: "security",   label: "Security",          color: "#E74C3C" },
   { id: "religion",   label: "Religion",          color: "#00BCD4" },
-  { id: "landmark",   label: "Landmark / Nature", color: "#444444" },
+  { id: "landmark",   label: "Landmark / Nature", color: "#4CAF50" },
+  { id: "sewer",      label: "Sewer / Underground", color: "#795548" },
+  { id: "arena",      label: "Arena / Combat",    color: "#FF5722" },
+  { id: "jail",       label: "Jail / Prison",     color: "#546E7A" },
+  { id: "door",       label: "Door / Passage",    color: "#A1887F" },
+  { id: "portal",     label: "Portal",            color: "#7C4DFF" },
   { id: "other",      label: "Others",            color: "#95A5A6" },
 ];
 const POI_SIZES = [
@@ -164,6 +169,8 @@ const PLAYER_COLORS = [
   "#E74C3C","#E67E22","#F1C40F","#2ECC71","#1ABC9C",
   "#3498DB","#9B59B6","#E91E63","#FF5722","#00BCD4",
   "#8BC34A","#FF9800","#607D8B","#795548","#FFFFFF",
+  "#F06292","#4DB6AC","#7986CB","#A5D6A7","#CE93D8",
+  "#FFCC80","#80DEEA","#B0BEC5","#FFAB91","#DCE775",
 ];
 
 // ── Parchment & Ink Theme ─────────────────────────────────────────────────────
@@ -262,6 +269,32 @@ function POIPin({ poi, scale, isGM, onTap, onDragStart, resolvedIconUrl, poiOpac
   const cc = getCatColor(poi.category);
   const borderStyle = (isGM && !poi.revealed) ? "dashed" : "solid";
   const iconUrl = poi.icon_url || resolvedIconUrl || "";
+  const isPortal = poi.poi_type === "portal";
+
+  if (isPortal) {
+    const d = size * 0.95;
+    return (
+      <div
+        onMouseDown={e => { if (isGM) { e.stopPropagation(); onDragStart(e, poi); } }}
+        onTouchStart={e => { if (isGM) { e.stopPropagation(); onDragStart(e, poi); } }}
+        onClick={e => { e.stopPropagation(); onTap(poi); }}
+        style={{ position:"absolute", left:poi.x-d/2, top:poi.y-d, width:d, height:d, cursor:isGM?"grab":"pointer", zIndex:22, opacity:poiOpacity, transition:"opacity 0.15s ease" }}
+      >
+        {/* Pulsing aura ring */}
+        <div style={{ position:"absolute", inset:-d*0.3, borderRadius:"50%", border:`${bw}px solid #7C4DFF`, animation:"portalPulse 2s ease-in-out infinite", pointerEvents:"none" }} />
+        {/* Diamond shape */}
+        <div style={{ position:"absolute", inset:0, transform:"rotate(45deg)", background:"#7C4DFF33", border:`${bw}px ${borderStyle} #7C4DFF`, boxSizing:"border-box" }}>
+          {iconUrl && <img src={iconUrl} alt={poi.name} draggable={false} style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"contain", transform:"rotate(-45deg)", pointerEvents:"none" }} />}
+        </div>
+        {!iconUrl && (
+          <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
+            <span style={{ fontSize:Math.max(10, size*0.35), lineHeight:1, pointerEvents:"none" }}>⛩</span>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div
       onMouseDown={e => { if (isGM) { e.stopPropagation(); onDragStart(e, poi); } }}
@@ -398,7 +431,7 @@ function App() {
   const [editingZonePoints, setEditingZonePoints] = useState(null); // { zoneId, points, originalPoints }
   const [fitScale, setFitScale] = useState(1);
   const [copiedCode, setCopiedCode] = useState(false);
-  const [visFilter, setVisFilter] = useState({ categories: {}, players: {}, zones: {} });
+  const [visFilter, setVisFilter] = useState({ categories: {}, players: {}, zones: {}, npcs: {} });
   const [showFilter, setShowFilter] = useState(false);
   const [renamingOverlay, setRenamingOverlay] = useState(null); // { id, name }
   const [campInfoEdit, setCampInfoEdit] = useState(null); // { name, sub_header, description } or null
@@ -692,7 +725,9 @@ function App() {
     const cats = {}; CATEGORIES.forEach(c => { cats[c.id] = show; });
     const players = {}; members.forEach(m => { players[m.user_id] = show; });
     const zns = {}; mapZones.forEach(z => { zns[z.id] = show; });
-    setVisFilter({ categories: cats, players: players, zones: zns });
+    const npcMap = {}; mapNPCs.forEach(n => { npcMap[n.id] = show; });
+    const portMap = {}; mapPOIs.filter(p=>p.poi_type==="portal").forEach(p => { portMap[p.id] = show; });
+    setVisFilter({ categories: cats, players: players, zones: zns, npcs: npcMap, portals: portMap });
     mapOverlays.forEach(ov => setOverlaySetting(ov.id, "visible", show));
   }
 
@@ -1056,8 +1091,13 @@ function App() {
       setPois(prev=>prev.map(p=>p.id===id?{...p,revealed:!current}:p));
       const poi = pois.find(p=>p.id===id);
       const label = poi?.name || "A location";
-      if (!current) logNotif("poi_revealed", label, `${label} has been revealed on the map`, id);
-      else logNotif("poi_hidden", label, `${label} has been hidden`, id);
+      if (!current) {
+        logNotif("poi_revealed", label, `${label} has been revealed on the map`, id);
+        if (!isGM) { addToast(`📍 ${label} has been revealed`, "poi_revealed"); playSound("poi_revealed"); }
+      } else {
+        logNotif("poi_hidden", label, `${label} has been hidden`, id);
+        if (!isGM) { addToast(`🙈 ${label} has been hidden`, "poi_hidden"); }
+      }
     } catch(e) { setError(e.message); }
   }
   async function saveMarker(label, description) {
@@ -1449,18 +1489,31 @@ function App() {
           </div>
           {/* ── Personal visibility filter dropdown ── */}
           {showFilter && (()=>{
+            const mapPortals = mapPOIs.filter(p=>p.poi_type==="portal");
+            const mapStandardPOIs = mapPOIs.filter(p=>p.poi_type!=="portal");
             const allVisible =
               CATEGORIES.every(c => isVisible("categories", c.id)) &&
               members.every(m => isVisible("players", m.user_id)) &&
               mapZones.every(z => isVisible("zones", z.id)) &&
-              mapOverlays.every(ov => (overlaySettings[ov.id]?.visible ?? true));
+              mapOverlays.every(ov => (overlaySettings[ov.id]?.visible ?? true)) &&
+              mapNPCs.every(n => isVisible("npcs", n.id)) &&
+              mapPortals.every(p => isVisible("portals", p.id));
+            function setAllVis(show) {
+              const cats = {}; CATEGORIES.forEach(c => { cats[c.id] = show; });
+              const plays = {}; members.forEach(m => { plays[m.user_id] = show; });
+              const zns = {}; mapZones.forEach(z => { zns[z.id] = show; });
+              const npcMap = {}; mapNPCs.forEach(n => { npcMap[n.id] = show; });
+              const portMap = {}; mapPortals.forEach(p => { portMap[p.id] = show; });
+              setVisFilter({ categories:cats, players:plays, zones:zns, npcs:npcMap, portals:portMap });
+              mapOverlays.forEach(ov => setOverlaySetting(ov.id,"visible",show));
+            }
             const rowStyle = { display:"flex",alignItems:"center",gap:8,padding:"4px 14px",cursor:"pointer" };
-            const headStyle = { fontSize:10,fontWeight:600,color:"#888",textTransform:"uppercase",padding:"6px 14px 2px",letterSpacing:"0.05em" };
+            const headStyle = { fontSize:10,fontWeight:600,color:T.muted,textTransform:"uppercase",padding:"6px 14px 2px",letterSpacing:"0.05em" };
             return (
-              <div style={{ position:"absolute",top:80,right:14,zIndex:300,background:"#fff",border:"1px solid #ddd",borderRadius:10,boxShadow:"0 4px 18px rgba(0,0,0,0.13)",minWidth:220,maxHeight:340,overflowY:"auto",paddingBottom:6 }}>
+              <div style={{ position:"absolute",top:80,right:14,zIndex:300,background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,boxShadow:"0 4px 18px rgba(26,16,53,0.18)",minWidth:230,maxHeight:360,overflowY:"auto",paddingBottom:6,fontFamily:T.fBody }}>
                 {/* Toggle All */}
-                <label style={{ ...rowStyle, borderBottom:"0.5px solid #eee",paddingBottom:8,marginBottom:2,fontWeight:500,fontSize:12 }}>
-                  <input type="checkbox" checked={allVisible} onChange={()=>setAllVisible(!allVisible)} />
+                <label style={{ ...rowStyle, borderBottom:`0.5px solid ${T.border}`,paddingBottom:8,marginBottom:2,fontWeight:600,fontSize:12 }}>
+                  <input type="checkbox" checked={allVisible} onChange={()=>setAllVis(!allVisible)} />
                   <span>Toggle All</span>
                 </label>
                 {/* POI Categories */}
@@ -1468,8 +1521,26 @@ function App() {
                 {CATEGORIES.map(cat => (
                   <label key={cat.id} style={{ ...rowStyle, fontSize:12 }}>
                     <input type="checkbox" checked={isVisible("categories", cat.id)} onChange={e=>setVis("categories", cat.id, e.target.checked)} />
-                    <span style={{ width:10,height:10,borderRadius:"50%",background:cat.color,display:"inline-block",flexShrink:0 }} />
+                    <span style={{ width:10,height:10,borderRadius:"50%",background:cat.color,display:"inline-block",flexShrink:0,border:"1px solid #0003" }} />
                     <span>{cat.label}</span>
+                  </label>
+                ))}
+                {/* Portals */}
+                {mapPortals.length > 0 && <div style={headStyle}>Portals</div>}
+                {mapPortals.map(p => (
+                  <label key={p.id} style={{ ...rowStyle, fontSize:12 }}>
+                    <input type="checkbox" checked={isVisible("portals", p.id)} onChange={e=>setVis("portals", p.id, e.target.checked)} />
+                    <span style={{ fontSize:13 }}>⛩</span>
+                    <span>{p.name||"Unnamed portal"}</span>
+                  </label>
+                ))}
+                {/* NPC Nodes */}
+                {mapNPCs.length > 0 && <div style={headStyle}>NPC Nodes</div>}
+                {mapNPCs.map(n => (
+                  <label key={n.id} style={{ ...rowStyle, fontSize:12 }}>
+                    <input type="checkbox" checked={isVisible("npcs", n.id)} onChange={e=>setVis("npcs", n.id, e.target.checked)} />
+                    <span style={{ width:10,height:10,borderRadius:"50%",background:n.border_color,display:"inline-block",flexShrink:0,border:"1px solid #0003" }} />
+                    <span>{n.show_name ? n.name : "???"}</span>
                   </label>
                 ))}
                 {/* Player Markers */}
@@ -1680,7 +1751,7 @@ function App() {
                       })()}
                     </svg>
                   )}
-                  {mapPOIs.filter(p=>isVisible("categories", p.category)).map(p=>(
+                  {mapPOIs.filter(p=>p.poi_type==="portal" ? isVisible("portals", p.id) : isVisible("categories", p.category)).map(p=>(
                     <POIPin key={p.id} poi={p} scale={transform.scale} isGM={isGM}
                       resolvedIconUrl={categoryIcons[p.category]||""}
                       poiOpacity={poiOpacity}
@@ -1694,26 +1765,28 @@ function App() {
                       onDragStart={startPOIDrag} />
                   ))}
                   {/* NPC nodes */}
-                  {mapNPCs.map(npc => {
-                    const r = Math.max(20, npc.aura_radius||80);
-                    const ns = Math.max(14, 18/transform.scale);
+                  {mapNPCs.filter(n=>isVisible("npcs", n.id)).map(npc => {
+                    const r = npc.aura_radius > 0 ? npc.aura_radius : 0;
+                    const nodeR = 18;
+                    const ns = Math.max(14, nodeR/transform.scale);
                     const bw = Math.max(1, 2/transform.scale);
                     const fs = Math.max(7, 10/transform.scale);
                     const showName = isGM || npc.show_name;
                     const showStatus = isGM || npc.show_status;
-                    const showAura = npc.show_aura;
+                    const showAura = npc.show_aura && r > 0;
+                    const pad = Math.max(r, ns/2);
                     return (
-                      <div key={npc.id} style={{ position:"absolute", left:npc.x-r, top:npc.y-r, width:r*2, height:r*2, pointerEvents:"none" }}>
-                        {showAura && <div style={{ position:"absolute", inset:0, borderRadius:"50%", border:`${bw}px dashed ${npc.border_color}`, background:`${npc.border_color}1A`, pointerEvents:"none" }} />}
+                      <div key={npc.id} style={{ position:"absolute", left:npc.x-pad, top:npc.y-pad, width:pad*2, height:pad*2, pointerEvents:"none" }}>
+                        {showAura && <div style={{ position:"absolute", left:pad-r, top:pad-r, width:r*2, height:r*2, borderRadius:"50%", border:`${bw}px dashed ${npc.border_color}`, background:`${npc.border_color}1A`, pointerEvents:"none" }} />}
                         <div
                           onMouseDown={isGM ? e=>startNPCDrag(e,npc) : undefined}
                           onTouchStart={isGM ? e=>startNPCDrag(e,npc) : undefined}
-                          style={{ position:"absolute", left:r-ns/2, top:r-ns/2, width:ns, height:ns, borderRadius:"50%", background:`${npc.border_color}33`, border:`${bw}px solid ${npc.border_color}`, cursor:isGM?"grab":"default", pointerEvents:"all", display:"flex", alignItems:"center", justifyContent:"center", boxShadow:`0 0 ${6/transform.scale}px ${npc.border_color}88` }}>
-                          <span style={{ fontSize:fs, pointerEvents:"none", userSelect:"none" }}>👤</span>
+                          style={{ position:"absolute", left:pad-ns/2, top:pad-ns/2, width:ns, height:ns, borderRadius:"50%", background:`${npc.border_color}33`, border:`${bw}px solid ${npc.border_color}`, cursor:isGM?"grab":"default", pointerEvents:"all", display:"flex", alignItems:"center", justifyContent:"center", boxShadow:`0 0 ${6/transform.scale}px ${npc.border_color}88` }}>
+                          <span style={{ fontSize:fs*0.9, pointerEvents:"none", userSelect:"none" }}>👤</span>
                         </div>
-                        <div style={{ position:"absolute", left:r, top:r+ns/2+4/transform.scale, transform:"translateX(-50%)", fontSize:fs, fontWeight:600, color:npc.border_color, textShadow:"0 1px 3px rgba(0,0,0,0.85)", whiteSpace:"nowrap", pointerEvents:"none", userSelect:"none", lineHeight:1.3 }}>
+                        <div style={{ position:"absolute", left:pad, top:pad+ns/2+4/transform.scale, transform:"translateX(-50%)", fontSize:fs, fontWeight:600, color:npc.border_color, textShadow:"0 1px 3px rgba(0,0,0,0.85)", whiteSpace:"nowrap", pointerEvents:"none", userSelect:"none", lineHeight:1.3 }}>
                           {showName ? npc.name : "???"}
-                          {showStatus && <span style={{ opacity:0.8, fontWeight:400 }}> · {showStatus ? npc.status : "???"}</span>}
+                          {showStatus && <span style={{ opacity:0.8, fontWeight:400 }}> · {npc.show_status ? npc.status : "???"}</span>}
                         </div>
                       </div>
                     );
@@ -1739,6 +1812,22 @@ function App() {
                 </div>
               )}
             </div>
+
+            {/* On-map portal back button — shown when navigated via portal */}
+            {mapStack.length > 0 && (
+              <div style={{ position:"absolute", bottom:16, left:"50%", transform:"translateX(-50%)", zIndex:200, display:"flex", gap:8, pointerEvents:"all" }}>
+                <button onClick={goBack}
+                  style={{ padding:"8px 18px", borderRadius:24, border:`2px solid ${T.gold}`, background:T.header, color:T.headerFg, fontFamily:T.fHead, fontSize:13, fontWeight:600, cursor:"pointer", boxShadow:"0 4px 16px rgba(0,0,0,0.5)", display:"flex", alignItems:"center", gap:6, whiteSpace:"nowrap" }}>
+                  ↩ Go Back
+                </button>
+                {mapStack.length > 1 && (
+                  <button onClick={goHome}
+                    style={{ padding:"8px 18px", borderRadius:24, border:`2px solid ${T.gold}66`, background:T.purple, color:T.headerFg, fontFamily:T.fHead, fontSize:13, fontWeight:600, cursor:"pointer", boxShadow:"0 4px 16px rgba(0,0,0,0.5)", display:"flex", alignItems:"center", gap:6, whiteSpace:"nowrap" }}>
+                    ⌂ Main Map
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* POI popup */}
             {openPOI && poiCardPos && (
@@ -2354,6 +2443,23 @@ function AnnotationModal({ form, onSave, onDelete, onCancel }) {
   );
 }
 
+// ── Global CSS injections ──────────────────────────────────────────────────────
+(function injectStyles() {
+  const s = document.createElement("style");
+  s.textContent = `
+    @keyframes portalPulse {
+      0%   { transform: scale(1);   opacity: 0.8; }
+      50%  { transform: scale(1.4); opacity: 0.2; }
+      100% { transform: scale(1);   opacity: 0.8; }
+    }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #B8A88A; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #7A5C10; }
+  `;
+  document.head.appendChild(s);
+})();
+
 const NPC_STATUSES = ["Alive","Dead","Missing","Hidden"];
 const NPC_COLORS = ["#C9A84C","#E74C3C","#3498DB","#2ECC71","#9B59B6","#E67E22","#1ABC9C","#E91E63","#FFFFFF","#555555"];
 
@@ -2396,8 +2502,8 @@ function NpcFormModal({ form, onSave, onDelete, onClose }) {
         </div>
       </Field>
       <Field label={`Aura Radius: ${auraRadius}px`}>
-        <input type="range" min={20} max={300} step={5} value={auraRadius} onChange={e=>setAuraRadius(Number(e.target.value))} style={{ width:"100%" }} />
-        <div style={{ fontSize:11,color:"#888",marginTop:2 }}>Shows the uncertainty range around the NPC's location.</div>
+        <input type="range" min={0} max={300} step={5} value={auraRadius} onChange={e=>setAuraRadius(Number(e.target.value))} style={{ width:"100%" }} />
+        <div style={{ fontSize:11,color:"#888",marginTop:2 }}>Set to 0 to hide the aura. Shows the uncertainty range around the NPC's location.</div>
       </Field>
       <div style={{ background:T.surface,borderRadius:8,padding:"10px 12px",marginBottom:12,border:`1px solid ${T.border}` }}>
         <div style={{ fontSize:12,fontWeight:500,marginBottom:8,color:T.ink }}>Visibility to Players</div>
