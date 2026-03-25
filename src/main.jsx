@@ -546,6 +546,8 @@ function App() {
   const npcsRef = useRef([]);
   const pendingFocusRef = useRef(null); // { x, y } applied after map image loads
   const notifLimitRef = useRef(20);
+  const [mapFadeState, setMapFadeState] = useState(null); // null | "covering" | "revealing"
+  const mapFadeTimerRef = useRef(null);
 
   useEffect(() => { placingRef.current = placingMode; }, [placingMode]);
   useEffect(() => { transformRef.current = transform; }, [transform]);
@@ -699,7 +701,8 @@ function App() {
           if (memberRole !== "gm" && payload.new.type !== "announcement") {
             setUnreadCount(c => c + 1);
             playSound(payload.new.type);
-            const label = payload.new.type === "poi_revealed" ? `📍 ${payload.new.title} revealed`
+            const catLabel = payload.new.category ? ` · ${getCatLabel(payload.new.category)}` : "";
+            const label = payload.new.type === "poi_revealed" ? `📍 ${payload.new.title} revealed${catLabel}`
                         : payload.new.type === "poi_hidden"   ? `🙈 ${payload.new.title} hidden`
                         : payload.new.type === "marker_placed"? `📌 ${payload.new.message || payload.new.title}`
                         : payload.new.type === "npc_moved"    ? `👤 ${payload.new.message || payload.new.title}`
@@ -905,7 +908,7 @@ function App() {
   async function saveZone(form, imageFile) {
     let image_url = form.clearImage ? null : (form.zone?.image_url || null);
     if (imageFile) { try { image_url = await uploadToStorage(session.access_token, imageFile); } catch { image_url = await readFile(imageFile); } }
-    const body = { name: form.name || "Zone", points: form.points, fill_color: form.fill_color || "#3498DB", image_url, opacity: form.opacity ?? 80, revealed: form.revealed || false, image_scale: form.image_scale ?? 100, image_repeat: form.image_repeat ?? false, broadcast_location: form.broadcast_location ?? true };
+    const body = { name: form.name || "Zone", points: form.points, fill_color: form.fill_color || "#3498DB", image_url, opacity: form.opacity ?? 80, revealed: form.revealed || false, image_scale: form.image_scale ?? 100, image_repeat: form.image_repeat ?? false, broadcast_location: form.broadcast_location ?? true, animate_scroll: form.animate_scroll ?? false, scroll_speed: form.scroll_speed ?? 20 };
     try {
       if (form.zone) {
         await dbUpdate(session.access_token, "zones", form.zone.id, body);
@@ -1060,6 +1063,10 @@ function App() {
     } else {
       setTransform(fit);
     }
+    // Reveal the map once its image has fully loaded (clears the transition overlay)
+    clearTimeout(mapFadeTimerRef.current);
+    setMapFadeState(prev => prev === "covering" ? "revealing" : null);
+    mapFadeTimerRef.current = setTimeout(() => setMapFadeState(null), 380);
   }
   function toMapCoords(cx, cy) {
     const rect = getContainerRect(); const t = transformRef.current;
@@ -1249,7 +1256,7 @@ function App() {
           const label = body.name || form.poi.name || "A location";
           const zCtx = getZoneContext(form.poi.x, form.poi.y, zonesRef.current.filter(z=>z.map_id===form.poi.map_id));
           const coords = { x: form.poi.x, y: form.poi.y, mapId: form.poi.map_id };
-          if (body.revealed) logNotif("poi_revealed", label, zCtx ? `${label} revealed (${zCtx})` : `${label} has been revealed`, form.poi.id, coords);
+          if (body.revealed) logNotif("poi_revealed", label, zCtx ? `${label} revealed (${zCtx})` : `${label} has been revealed`, form.poi.id, coords, form.poi.category || form.category);
           else logNotif("poi_hidden", label, `${label} has been hidden`, form.poi.id, coords);
         }
       } else {
@@ -1276,7 +1283,7 @@ function App() {
       const zCtx = poi ? getZoneContext(poi.x, poi.y, zonesRef.current.filter(z=>z.map_id===poi.map_id)) : null;
       const coords = poi ? { x:poi.x, y:poi.y, mapId:poi.map_id } : null;
       if (!current) {
-        logNotif("poi_revealed", label, zCtx ? `${label} revealed (${zCtx})` : `${label} has been revealed`, id, coords);
+        logNotif("poi_revealed", label, zCtx ? `${label} revealed (${zCtx})` : `${label} has been revealed`, id, coords, poi?.category);
         if (!isGM) { addToast(`📍 ${label} revealed${zCtx?" ("+zCtx+")":""}`, "poi_revealed"); playSound("poi_revealed"); }
       } else {
         logNotif("poi_hidden", label, `${label} has been hidden`, id, coords);
@@ -1359,15 +1366,24 @@ function App() {
     if (!window.confirm("Delete this map?")) return;
     try { await dbDelete(session.access_token, "maps", id); const remaining = maps.filter(m=>m.id!==id); setMaps(remaining); if (activeMapId===id) switchToMap(remaining[0]?.id||null); } catch(e) { setError(e.message); }
   }
-  // Central map-switch helper — resets view and ensures the map's src is loaded.
+  // Central map-switch helper — fades the map out, switches, then reveals when image loads.
   function switchToMap(id, { push = false } = {}) {
     if (!id) return;
     if (push) setMapStack(s => [...s, activeMapId]);
-    setActiveMapId(id);
-    setTransform({x:0,y:0,scale:1}); setImgSize({w:0,h:0});
-    // Load src if not already present (e.g. RPC returned maps without src)
-    const already = maps.find(m => m.id === id);
-    if (!already?.src) loadMapSrc(id);
+    clearTimeout(mapFadeTimerRef.current);
+    setMapFadeState("covering");
+    // Allow the cover animation to start before we swap the map
+    mapFadeTimerRef.current = setTimeout(() => {
+      setActiveMapId(id);
+      setTransform({x:0,y:0,scale:1}); setImgSize({w:0,h:0});
+      const already = maps.find(m => m.id === id);
+      if (!already?.src) loadMapSrc(id);
+      // Safety: reveal even if the image onLoad never fires (e.g. base64 or error)
+      mapFadeTimerRef.current = setTimeout(() => {
+        setMapFadeState("revealing");
+        setTimeout(() => setMapFadeState(null), 350);
+      }, 2500);
+    }, 220);
   }
   function goBack() { const prev=mapStack[mapStack.length-1]; setMapStack(s=>s.slice(0,-1)); switchToMap(prev||null); }
   function goHome() { setMapStack([]); const main=maps.find(m=>m.is_main)||maps[0]; if(main) switchToMap(main.id); }
@@ -1440,9 +1456,9 @@ function App() {
   }
 
   // ── Notification log helper ──
-  function logNotif(type, title, message, relatedId, coords) {
+  function logNotif(type, title, message, relatedId, coords, category) {
     if (!activeCampaign || !session) return;
-    const row = { campaign_id: activeCampaign.id, type, title, message, related_id: relatedId, map_id: coords?.mapId||activeMapId, x: coords?.x??null, y: coords?.y??null };
+    const row = { campaign_id: activeCampaign.id, type, title, message, related_id: relatedId, map_id: coords?.mapId||activeMapId, x: coords?.x??null, y: coords?.y??null, ...(category ? { category } : {}) };
     dbInsert(session.access_token, "notification_log", row).then(([inserted]) => {
       // Trim oldest entries beyond the limit
       const lim = notifLimitRef.current;
@@ -1978,10 +1994,16 @@ function App() {
                             const bbox = getZoneBBox(z.points);
                             const base = Math.min(bbox.w, bbox.h) * 0.35;
                             const tile = Math.max(8, base * (z.image_scale || 100) / 100);
+                            const speed = Math.max(1, z.scroll_speed || 20);
+                            const dur = `${(tile / speed).toFixed(2)}s`;
                             return (
                               <pattern key={z.id} id={`zpat-${z.id}`} patternUnits="userSpaceOnUse"
                                 x={bbox.x} y={bbox.y} width={tile} height={tile}>
                                 <image href={z.image_url} width={tile} height={tile} preserveAspectRatio="xMidYMid slice" />
+                                {z.animate_scroll && (
+                                  <animateTransform attributeName="patternTransform" type="translate"
+                                    from="0,0" to={`${tile},${tile}`} dur={dur} repeatCount="indefinite" additive="sum" />
+                                )}
                               </pattern>
                             );
                           }
@@ -2115,9 +2137,13 @@ function App() {
                     const showStatus = isGM || npc.show_status;
                     const showAura = npc.show_aura && r > 0;
                     const pad = Math.max(r, ns/2);
+                    const rippleR = ns * 0.88;
+                    const rippleDelay = `${(parseInt(npc.id.slice(-4), 16) % 250) / 100}s`;
                     return (
                       <div key={npc.id} style={{ position:"absolute", left:npc.x-pad, top:npc.y-pad, width:pad*2, height:pad*2, pointerEvents:"none" }}>
                         {showAura && <div style={{ position:"absolute", left:pad-r, top:pad-r, width:r*2, height:r*2, borderRadius:"50%", border:`${bw}px dashed ${npc.border_color}`, background:`${npc.border_color}1A`, pointerEvents:"none" }} />}
+                        {/* Sonar-ping ripple — makes NPCs noticeable on crowded maps */}
+                        <div style={{ position:"absolute", left:pad-rippleR, top:pad-rippleR, width:rippleR*2, height:rippleR*2, borderRadius:"50%", border:`${Math.max(1,2/transform.scale)}px solid ${npc.border_color}`, animation:"npcRipple 2.6s ease-out infinite", animationDelay:rippleDelay, pointerEvents:"none" }} />
                         <div
                           onMouseDown={isGM ? e=>startNPCDrag(e,npc) : undefined}
                           onTouchStart={isGM ? e=>startNPCDrag(e,npc) : undefined}
@@ -2169,12 +2195,24 @@ function App() {
               </div>
             )}
 
+            {/* Map-switch fade overlay */}
+            {mapFadeState && (
+              <div style={{ position:"absolute",inset:0,zIndex:400,background:T.bg,
+                animation:`${mapFadeState==="covering"?"mapOverlayIn 0.25s":"mapOverlayOut 0.35s"} ease forwards`,
+                pointerEvents:mapFadeState==="covering"?"all":"none",
+                display:"flex",alignItems:"center",justifyContent:"center" }}>
+                {mapFadeState==="covering" && (
+                  <span style={{ fontFamily:T.fHead,fontSize:14,color:T.muted,letterSpacing:"0.1em",opacity:0.7 }}>✦  Loading Map  ✦</span>
+                )}
+              </div>
+            )}
+
             {/* POI popup */}
             {openPOI && poiCardPos && (()=>{
               const cc = getCatColor(openPOI.category);
               return (
-              <div onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
-                style={{ position:"absolute",left:poiCardPos.left,top:poiCardPos.top,width:poiCardPos.cardW,background:T.bg,borderRadius:12,border:`1.5px solid ${cc}`,zIndex:100,overflow:"hidden",boxSizing:"border-box",boxShadow:"0 6px 24px rgba(26,16,53,0.22)" }}>
+              <div key={openPOI.id} onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
+                style={{ position:"absolute",left:poiCardPos.left,top:poiCardPos.top,width:poiCardPos.cardW,background:T.bg,borderRadius:12,border:`1.5px solid ${cc}`,zIndex:100,overflow:"hidden",boxSizing:"border-box",boxShadow:"0 6px 24px rgba(26,16,53,0.22)",animation:"popupFadeIn 0.18s ease" }}>
                 {/* Coloured header strip */}
                 <div style={{ display:"flex",alignItems:"center",gap:10,padding:"10px 12px 8px",borderBottom:`1px solid ${cc}33`,background:cc+"18" }}>
                   <div style={{ width:34,height:34,borderRadius:"50%",border:`2px solid ${cc}`,overflow:"hidden",flexShrink:0,background:cc+"28",display:"flex",alignItems:"center",justifyContent:"center" }}>
@@ -2200,8 +2238,8 @@ function App() {
             {openMarker && markerCardPos && (() => {
               const openMarkerColor = openMarkerMember?.player_color || openMarker.player_color || "#378ADD";
               return (
-              <div onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
-                style={{ position:"absolute",left:markerCardPos.left,top:markerCardPos.top,width:markerCardPos.cardW,background:T.bg,borderRadius:12,border:`1.5px solid ${openMarkerColor}`,zIndex:100,overflow:"hidden",boxSizing:"border-box",boxShadow:"0 6px 24px rgba(26,16,53,0.22)" }}>
+              <div key={openMarker.id} onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
+                style={{ position:"absolute",left:markerCardPos.left,top:markerCardPos.top,width:markerCardPos.cardW,background:T.bg,borderRadius:12,border:`1.5px solid ${openMarkerColor}`,zIndex:100,overflow:"hidden",boxSizing:"border-box",boxShadow:"0 6px 24px rgba(26,16,53,0.22)",animation:"popupFadeIn 0.18s ease" }}>
                 <div style={{ display:"flex",alignItems:"center",gap:10,padding:"10px 12px 8px",borderBottom:`1px solid ${openMarkerColor}33`,background:openMarkerColor+"18" }}>
                   <div style={{ width:28,height:28,borderRadius:"50% 50% 50% 0",transform:"rotate(-45deg)",background:openMarkerColor,border:`2px solid ${T.bg}`,flexShrink:0 }} />
                   <div style={{ flex:1,minWidth:0 }}>
@@ -2238,7 +2276,7 @@ function App() {
 
       {/* INFO TAB */}
       {tab==="info" && (
-        <div style={{ flex:1,overflowY:"auto",padding:"20px 16px" }}>
+        <div style={{ flex:1,overflowY:"auto",padding:"20px 16px",animation:"tabFadeIn 0.2s ease" }}>
           {campInfoEdit === null ? (
             <div style={{ maxWidth:560 }}>
               {/* Campaign title block */}
@@ -2294,7 +2332,7 @@ function App() {
 
       {/* LIBRARY TAB — GM only; alphabetical sub-tabs */}
       {tab==="library" && isGM && (
-        <div style={{ display:"flex",flexDirection:"column",flex:1,minHeight:0 }}>
+        <div style={{ display:"flex",flexDirection:"column",flex:1,minHeight:0,animation:"tabFadeIn 0.2s ease" }}>
           {/* Sub-tab bar — alphabetical: Categories, Layers, Maps, NPCs, Players, POIs, Zones */}
           <div style={{ display:"flex",borderBottom:`1px solid ${T.border}`,padding:"0 10px",background:T.surface,overflowX:"auto" }}>
             {[
@@ -2484,7 +2522,7 @@ function App() {
 
       {/* PROFILE TAB */}
       {tab==="profile" && (
-        <div style={{ flex:1,overflowY:"auto",padding:"20px 16px" }}>
+        <div style={{ flex:1,overflowY:"auto",padding:"20px 16px",animation:"tabFadeIn 0.2s ease" }}>
           <ProfileTab
             user={user}
             members={members}
@@ -2542,7 +2580,14 @@ function App() {
                   onMouseLeave={e=>{e.currentTarget.style.background="transparent"}}>
                   <span style={{ fontSize:16,flexShrink:0,lineHeight:1.4 }}>{icon}</span>
                   <div style={{ flex:1,minWidth:0 }}>
-                    <div style={{ fontSize:12,fontWeight:600,color:T.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{n.title||"Notification"}</div>
+                    <div style={{ display:"flex",alignItems:"center",gap:6,flexWrap:"wrap" }}>
+                      <span style={{ fontSize:12,fontWeight:600,color:T.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{n.title||"Notification"}</span>
+                      {n.category && n.type==="poi_revealed" && (
+                        <span style={{ fontSize:9,fontWeight:700,padding:"1px 6px",borderRadius:10,background:getCatColor(n.category)+"22",color:getCatColor(n.category),border:`1px solid ${getCatColor(n.category)}55`,letterSpacing:"0.04em",flexShrink:0 }}>
+                          {getCatLabel(n.category)}
+                        </span>
+                      )}
+                    </div>
                     {n.message && <div style={{ fontSize:11,color:T.muted,marginTop:1,lineHeight:1.4 }}>{n.message}</div>}
                     <div style={{ fontSize:10,color:T.muted,marginTop:3 }}>{new Date(n.created_at).toLocaleDateString(undefined,{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}{canFocus&&<span style={{ marginLeft:6,color:T.gold,fontSize:9 }}>tap to focus</span>}</div>
                   </div>
@@ -2556,7 +2601,7 @@ function App() {
       {/* Toast notifications */}
       <div style={{ position:"fixed",bottom:16,right:16,zIndex:8000,display:"flex",flexDirection:"column-reverse",gap:8,maxWidth:Math.min(280,window.innerWidth-32),pointerEvents:"none" }}>
         {toasts.map(t=>(
-          <div key={t.id} style={{ background:T.header,color:T.headerFg,borderRadius:10,padding:"10px 14px",boxShadow:"0 4px 16px rgba(0,0,0,0.35)",border:`1px solid ${T.gold}55`,fontSize:12,display:"flex",gap:8,alignItems:"flex-start",pointerEvents:"all" }}>
+          <div key={t.id} style={{ background:T.header,color:T.headerFg,borderRadius:10,padding:"10px 14px",boxShadow:"0 4px 16px rgba(0,0,0,0.35)",border:`1px solid ${T.gold}55`,fontSize:12,display:"flex",gap:8,alignItems:"flex-start",pointerEvents:"all",animation:"toastSlide 0.22s ease" }}>
             <span style={{ flex:1,lineHeight:1.4 }}>{t.msg}</span>
             <button onClick={()=>setToasts(p=>p.filter(x=>x.id!==t.id))} style={{ background:"none",border:"none",color:T.headerFg,cursor:"pointer",padding:0,fontSize:14,flexShrink:0 }}>✕</button>
           </div>
@@ -2644,6 +2689,8 @@ function ZoneFormModal({ form, onSave, onDelete, onAddPoint, onMovePoints, onClo
   const [clearImage, setClearImage] = useState(false);
   const [imageScale, setImageScale] = useState(form.zone?.image_scale ?? 100);
   const [imageRepeat, setImageRepeat] = useState(form.zone?.image_repeat ?? false);
+  const [animateScroll, setAnimateScroll] = useState(form.zone?.animate_scroll ?? false);
+  const [scrollSpeed, setScrollSpeed] = useState(form.zone?.scroll_speed ?? 20);
   const [broadcastLocation, setBroadcastLocation] = useState(form.zone?.broadcast_location ?? true);
   async function handleImage(f) { setImageFile(f); setClearImage(false); setImagePreview(await readFile(f)); }
   function removePoint(i) { if (points.length <= 3) return; setPoints(prev => prev.filter((_,idx) => idx !== i)); }
@@ -2677,7 +2724,7 @@ function ZoneFormModal({ form, onSave, onDelete, onAddPoint, onMovePoints, onClo
         {(imagePreview && !clearImage) && (
           <div style={{ marginTop:10 }}>
             <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:6 }}>
-              <input type="checkbox" checked={imageRepeat} onChange={e=>setImageRepeat(e.target.checked)} id="zrep" />
+              <input type="checkbox" checked={imageRepeat} onChange={e=>{ setImageRepeat(e.target.checked); if(!e.target.checked) setAnimateScroll(false); }} id="zrep" />
               <label htmlFor="zrep" style={{ fontSize:13,cursor:"pointer" }}>Seamless repeat (tile)</label>
             </div>
             <div style={{ display:"flex",alignItems:"center",gap:8 }}>
@@ -2688,6 +2735,25 @@ function ZoneFormModal({ form, onSave, onDelete, onAddPoint, onMovePoints, onClo
             <div style={{ fontSize:11,color:"#888",marginTop:3 }}>
               {imageRepeat ? "Smaller % = more tiles, larger % = fewer larger tiles." : "100% fills the zone. Lower = zoomed out, higher = zoomed in."}
             </div>
+            {/* Scroll animation — only when repeat is on */}
+            {imageRepeat && (
+              <div style={{ marginTop:10,padding:"10px 12px",background:T.surface,borderRadius:8,border:`1px solid ${T.border}` }}>
+                <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:animateScroll?8:0 }}>
+                  <input type="checkbox" checked={animateScroll} onChange={e=>setAnimateScroll(e.target.checked)} id="zanim" />
+                  <label htmlFor="zanim" style={{ fontSize:13,cursor:"pointer",fontWeight:600,color:T.ink }}>✦ Animate scroll (diagonal)</label>
+                </div>
+                {animateScroll && (
+                  <div>
+                    <div style={{ display:"flex",alignItems:"center",gap:8 }}>
+                      <span style={{ fontSize:12,color:T.muted,minWidth:80 }}>Speed: {scrollSpeed} px/s</span>
+                      <input type="range" min={2} max={120} step={2} value={scrollSpeed}
+                        onChange={e=>setScrollSpeed(Number(e.target.value))} style={{ flex:1 }} />
+                    </div>
+                    <div style={{ fontSize:11,color:T.muted,marginTop:3 }}>Slow (2) → Fast (120). Scrolls diagonally on the live map.</div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </Field>
@@ -2722,7 +2788,7 @@ function ZoneFormModal({ form, onSave, onDelete, onAddPoint, onMovePoints, onClo
         </span>
       </label>
       <div style={{ display:"flex",gap:8,flexWrap:"wrap" }}>
-        <Btn variant="primary" onClick={()=>onSave({...form,name,fill_color:fillColor,opacity,revealed,points,clearImage,image_scale:imageScale,image_repeat:imageRepeat,broadcast_location:broadcastLocation},imageFile)} style={{ flex:1 }}>Save</Btn>
+        <Btn variant="primary" onClick={()=>onSave({...form,name,fill_color:fillColor,opacity,revealed,points,clearImage,image_scale:imageScale,image_repeat:imageRepeat,animate_scroll:animateScroll,scroll_speed:scrollSpeed,broadcast_location:broadcastLocation},imageFile)} style={{ flex:1 }}>Save</Btn>
         {isEdit && <Btn variant="danger" onClick={()=>onDelete(form.zone.id)}>Delete Zone</Btn>}
       </div>
     </Modal>
@@ -2855,6 +2921,29 @@ function AnnotationModal({ form, onSave, onDelete, onCancel }) {
       0%   { transform: scale(1);   opacity: 0.8; }
       50%  { transform: scale(1.4); opacity: 0.2; }
       100% { transform: scale(1);   opacity: 0.8; }
+    }
+    /* NPC sonar-ping ring: expands outward and fades, staggered per-NPC */
+    @keyframes npcRipple {
+      0%   { transform: scale(0.75); opacity: 0.85; }
+      100% { transform: scale(2.4);  opacity: 0; }
+    }
+    /* Popup card entrance */
+    @keyframes popupFadeIn {
+      from { opacity: 0; transform: translateY(6px) scale(0.97); }
+      to   { opacity: 1; transform: translateY(0)   scale(1); }
+    }
+    /* Map-switch overlay covering / revealing */
+    @keyframes mapOverlayIn  { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes mapOverlayOut { from { opacity: 1; } to { opacity: 0; } }
+    /* Tab panel content fade */
+    @keyframes tabFadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    /* Toast slide-in from right */
+    @keyframes toastSlide {
+      from { opacity: 0; transform: translateX(36px); }
+      to   { opacity: 1; transform: translateX(0); }
     }
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
