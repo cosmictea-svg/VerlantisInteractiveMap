@@ -522,6 +522,7 @@ function App() {
   const [showFilter, setShowFilter] = useState(false);
   const [renamingOverlay, setRenamingOverlay] = useState(null); // { id, name }
   const [campInfoEdit, setCampInfoEdit] = useState(null); // { name, sub_header, description } or null
+  const [campDeleteConfirm, setCampDeleteConfirm] = useState(null); // campaign object to delete, or null
   const [npcs, setNpcs] = useState([]);
   const [npcForm, setNpcForm] = useState(null);
   const [portalConfirm, setPortalConfirm] = useState(null); // { poi, targetMap }
@@ -843,6 +844,27 @@ function App() {
     } catch(e) { setError(e.message || "Could not leave campaign."); }
   }
 
+  async function deleteCampaign(camp) {
+    try {
+      const res = await fetch(`${SUPA_URL}/rest/v1/rpc/delete_campaign`, {
+        method: "POST", headers: hdrs(session.access_token),
+        body: JSON.stringify({ p_campaign_id: camp.id })
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Failed to delete campaign."); }
+      setCampDeleteConfirm(null);
+      // Remove from campaign list
+      setCampaigns(prev => prev.filter(c => c.id !== camp.id));
+      // If currently inside the deleted campaign, return to the list
+      if (activeCampaign?.id === camp.id) {
+        if (realtimeRef.current) realtimeRef.current.unsubscribe();
+        setActiveCampaign(null); setMemberRole(""); setMembers([]); setMaps([]); setPois([]);
+        setMarkers([]); setZones([]); setNpcs([]); setOverlays([]); setAnnotations([]);
+        setAnnouncements([]); setNotifLog([]); setTab("map");
+        localStorage.removeItem("sb_last_campaign");
+      }
+    } catch(e) { setError(e.message); setCampDeleteConfirm(null); }
+  }
+
   async function saveDisplayName(name) {
     try {
       await fetch(`${SUPA_URL}/rest/v1/campaign_members?campaign_id=eq.${activeCampaign.id}&user_id=eq.${user.id}`, {
@@ -982,14 +1004,18 @@ function App() {
   async function createCampaign() {
     if (!newCampaignName.trim()) return;
     try {
-      const payload = {
-        name: newCampaignName.trim(),
-        gm_id: user.id,
-        sub_header: newCampaignSubHeader.trim() || null,
-        description: newCampaignDescription.trim() || null,
-      };
-      const [camp] = await dbInsert(session.access_token, "campaigns", payload);
-      await dbInsert(session.access_token, "campaign_members", { campaign_id: camp.id, user_id: user.id, role: "gm" });
+      // SECURITY DEFINER RPC handles both campaign + GM member inserts atomically,
+      // bypassing the RLS catch-22 that blocks the campaign_members INSERT via REST.
+      const res = await fetch(`${SUPA_URL}/rest/v1/rpc/create_campaign`, {
+        method: "POST", headers: hdrs(session.access_token),
+        body: JSON.stringify({
+          p_name: newCampaignName.trim(),
+          p_sub_header: newCampaignSubHeader.trim() || null,
+          p_description: newCampaignDescription.trim() || null,
+        })
+      });
+      if (!res.ok) throw new Error((await res.json()).message || "Failed to create campaign");
+      const camp = await res.json();
       setNewCampaignName(""); setNewCampaignSubHeader(""); setNewCampaignDescription("");
       setShowCampaignModal(false);
       await loadCampaigns(); loadCampaignData(camp, "gm");
@@ -1702,7 +1728,7 @@ function App() {
       {campaigns.length===0 && <p style={{ color:T.muted,fontSize:13,marginBottom:16,fontStyle:"italic" }}>No campaigns yet. Create one or join with a campaign ID from your GM.</p>}
       {campaigns.map(c=>(
         <div key={c.id} onClick={()=>loadCampaignData(c,c.myRole)}
-          style={{ padding:"16px 18px",background:T.surface,borderRadius:12,marginBottom:10,cursor:"pointer",border:`1.5px solid ${T.border}`,boxShadow:"0 2px 8px rgba(26,16,53,0.07)",transition:"border-color 0.15s" }}
+          style={{ padding:"16px 18px",background:T.surface,borderRadius:12,marginBottom:10,cursor:"pointer",border:`1.5px solid ${T.border}`,boxShadow:"0 2px 8px rgba(26,16,53,0.07)",transition:"border-color 0.15s",position:"relative" }}
           onMouseEnter={e=>e.currentTarget.style.borderColor=T.gold}
           onMouseLeave={e=>e.currentTarget.style.borderColor=T.border}>
           <div style={{ display:"flex",alignItems:"center",gap:10 }}>
@@ -1714,14 +1740,28 @@ function App() {
               {c.sub_header && <div style={{ fontSize:12,color:T.goldDim,fontStyle:"italic",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{c.sub_header}</div>}
               <div style={{ fontSize:11,color:T.muted,marginTop:3 }}>{c.myRole==="gm"?"Game Master":"Player"}</div>
             </div>
+            {c.myRole==="gm" && (
+              <button onClick={e=>{ e.stopPropagation(); setCampDeleteConfirm(c); }}
+                title="Delete campaign"
+                style={{ background:"none",border:`1px solid ${T.danger}44`,borderRadius:8,color:T.danger,cursor:"pointer",padding:"5px 8px",fontSize:14,lineHeight:1,flexShrink:0,opacity:0.7,transition:"opacity 0.15s" }}
+                onMouseEnter={e=>e.currentTarget.style.opacity="1"}
+                onMouseLeave={e=>e.currentTarget.style.opacity="0.7"}>
+                🗑
+              </button>
+            )}
             <span style={{ fontSize:18,color:T.muted }}>›</span>
           </div>
         </div>
       ))}
-      <div style={{ display:"flex",gap:10,marginTop:18 }}>
-        <Btn variant="primary" onClick={()=>setShowCampaignModal(true)} style={{ flex:1 }}>＋ Create Campaign</Btn>
-        <Btn onClick={()=>setShowJoinModal(true)} style={{ flex:1 }}>Join Campaign</Btn>
+      {(()=>{ const ownedCount = campaigns.filter(c=>c.myRole==="gm").length; const atLimit = ownedCount >= 5; return (
+      <div style={{ display:"flex",gap:10,marginTop:18,flexDirection:"column" }}>
+        <div style={{ display:"flex",gap:10 }}>
+          <Btn variant="primary" onClick={()=>{ if(atLimit){setError("You've reached the 5 campaign limit. Delete an existing campaign to create a new one.");return;} setShowCampaignModal(true); }} style={{ flex:1,opacity:atLimit?0.6:1 }}>＋ Create Campaign</Btn>
+          <Btn onClick={()=>setShowJoinModal(true)} style={{ flex:1 }}>Join Campaign</Btn>
+        </div>
+        {ownedCount > 0 && <div style={{ fontSize:11,color:atLimit?T.danger:T.muted,textAlign:"center",fontStyle:"italic" }}>You own {ownedCount}/5 campaigns{atLimit?" — limit reached":""}</div>}
       </div>
+      ); })()}
       {showCampaignModal && (
         <Modal title="Create Campaign" onClose={()=>{ setShowCampaignModal(false); setNewCampaignName(""); setNewCampaignSubHeader(""); setNewCampaignDescription(""); }} width={400}>
           <Field label="Campaign Name">
@@ -2369,6 +2409,13 @@ function App() {
                 }
                 {isGM && <Btn size="sm" onClick={()=>setCampInfoEdit({ name:activeCampaign?.name||"", sub_header:activeCampaign?.sub_header||"", description:activeCampaign?.description||"" })} style={{ marginTop:14 }}>✎ Edit Campaign Info</Btn>}
               </div>
+              {isGM && (
+                <div style={{ marginTop:20,padding:"14px 16px",background:"#2a0a0a",borderRadius:10,border:`1.5px solid ${T.danger}55` }}>
+                  <div style={{ fontSize:11,fontWeight:700,color:T.danger,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:6 }}>⚠ Danger Zone</div>
+                  <div style={{ fontSize:12,color:"#cc8888",marginBottom:10,lineHeight:1.5 }}>Deleting this campaign is <strong style={{ color:T.danger }}>permanent and irreversible</strong>. All maps, POIs, NPCs, markers, zones, and player data will be destroyed forever.</div>
+                  <Btn variant="danger" size="sm" onClick={()=>setCampDeleteConfirm(activeCampaign)}>🗑 Delete This Campaign</Btn>
+                </div>
+              )}
             </div>
           ) : (
             <div style={{ maxWidth:560 }}>
@@ -2689,6 +2736,44 @@ function App() {
       </div>
 
       {/* Portal travel is now handled inline inside the POI popup card */}
+
+      {/* ── Campaign delete confirmation modal ── */}
+      {campDeleteConfirm && (
+        <div style={{ position:"fixed",inset:0,zIndex:9000,display:"flex",alignItems:"center",justifyContent:"center",padding:16,background:"rgba(10,5,20,0.75)" }} onClick={()=>setCampDeleteConfirm(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:T.bg,border:`2px solid ${T.danger}`,borderRadius:14,padding:"28px 28px 24px",maxWidth:400,width:"100%",boxShadow:"0 12px 48px rgba(0,0,0,0.6)" }}>
+            {/* Header */}
+            <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:16 }}>
+              <div style={{ fontSize:28,lineHeight:1 }}>⚠️</div>
+              <div>
+                <div style={{ fontFamily:T.fHead,fontSize:16,fontWeight:700,color:T.danger,letterSpacing:"0.03em" }}>Delete Campaign Forever</div>
+                <div style={{ fontSize:11,color:"#cc8888",marginTop:2 }}>This action cannot be undone — ever.</div>
+              </div>
+            </div>
+            {/* Campaign name */}
+            <div style={{ background:"#1a0808",border:`1px solid ${T.danger}44`,borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:14,fontFamily:T.fHead,color:T.danger,fontWeight:600 }}>
+              "{campDeleteConfirm.name}"
+            </div>
+            {/* What gets deleted */}
+            <div style={{ fontSize:12,color:"#cc8888",lineHeight:1.7,marginBottom:18 }}>
+              <strong style={{ color:T.danger,display:"block",marginBottom:4 }}>Everything inside will be permanently destroyed:</strong>
+              All maps · All POIs & NPCs · All zones & overlays · All player markers · All announcements · All member data
+            </div>
+            {/* Buttons */}
+            <div style={{ display:"flex",gap:10 }}>
+              <button
+                onClick={()=>deleteCampaign(campDeleteConfirm)}
+                style={{ flex:1,padding:"10px 0",borderRadius:20,border:"none",background:T.danger,color:"#fff",fontFamily:T.fHead,fontSize:13,fontWeight:700,cursor:"pointer",letterSpacing:"0.04em" }}>
+                🗑 Delete Forever
+              </button>
+              <button
+                onClick={()=>setCampDeleteConfirm(null)}
+                style={{ flex:1,padding:"10px 0",borderRadius:20,border:`1px solid ${T.border}`,background:"transparent",color:T.muted,fontFamily:T.fBody,fontSize:13,cursor:"pointer" }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* NPC form modal */}
       {npcForm && <NpcFormModal form={npcForm} onSave={saveNPC} onDelete={deleteNPC} onClose={()=>setNpcForm(null)} />}
