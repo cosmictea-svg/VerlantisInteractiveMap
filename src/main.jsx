@@ -283,9 +283,9 @@ function POIPin({ poi, scale, isGM, onTap, onDragStart, resolvedIconUrl, poiOpac
         style={{ position:"absolute", left:poi.x-d/2, top:poi.y-d, width:d, height:d, cursor:isGM?"grab":"pointer", zIndex:22, opacity:poiOpacity, transition:"opacity 0.15s ease" }}
       >
         {/* Pulsing aura ring */}
-        <div style={{ position:"absolute", inset:-d*0.3, borderRadius:"50%", border:`${bw}px solid #7C4DFF`, animation:"portalPulse 2s ease-in-out infinite", pointerEvents:"none" }} />
+        <div style={{ position:"absolute", inset:-d*0.3, borderRadius:"50%", border:`${bw}px solid ${cc}`, animation:"portalPulse 2s ease-in-out infinite", pointerEvents:"none" }} />
         {/* Diamond shape */}
-        <div style={{ position:"absolute", inset:0, transform:"rotate(45deg)", background:"#7C4DFF33", border:`${bw}px ${borderStyle} #7C4DFF`, boxSizing:"border-box" }}>
+        <div style={{ position:"absolute", inset:0, transform:"rotate(45deg)", background:cc+"33", border:`${bw}px ${borderStyle} ${cc}`, boxSizing:"border-box" }}>
           {iconUrl && <img src={iconUrl} alt={poi.name} draggable={false} style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"contain", transform:"rotate(-45deg)", pointerEvents:"none" }} />}
         </div>
         {!iconUrl && (
@@ -622,7 +622,8 @@ function App() {
       },
       onMap: (payload) => {
         if (payload.eventType === "INSERT") setMaps(p => p.find(x => x.id === payload.new.id) ? p : [...p, payload.new]);
-        if (payload.eventType === "UPDATE") setMaps(p => p.map(x => x.id === payload.new.id ? payload.new : x));
+        // Merge rather than replace — preserves src/image if realtime payload omits it
+        if (payload.eventType === "UPDATE") setMaps(p => p.map(x => x.id === payload.new.id ? { ...x, ...payload.new } : x));
         if (payload.eventType === "DELETE") setMaps(p => p.filter(x => x.id !== payload.old?.id));
       },
     });
@@ -1084,8 +1085,20 @@ function App() {
     if (iconFile) { try { icon_url = await uploadToStorage(session.access_token, iconFile); } catch { icon_url = await readFile(iconFile); } }
     const body = { name: form.name||"Unnamed POI", description: form.description||"", revealed: form.revealed, category: form.category||"other", size: form.size||"large", icon_url, poi_type: form.poi_type||"standard", linked_map_id: form.linked_map_id||null };
     try {
-      if (form.poi) { await dbUpdate(session.access_token, "pois", form.poi.id, body); setPois(prev => prev.map(p => p.id === form.poi.id ? { ...p, ...body } : p)); }
-      else { const [np] = await dbInsert(session.access_token, "pois", { ...body, campaign_id: activeCampaign.id, map_id: activeMapId, x: form.x, y: form.y }); setPois(prev => [...prev, np]); }
+      if (form.poi) {
+        await dbUpdate(session.access_token, "pois", form.poi.id, body);
+        setPois(prev => prev.map(p => p.id === form.poi.id ? { ...p, ...body } : p));
+        // Notify players if revealed status changed via the edit form
+        const wasRevealed = form.poi.revealed;
+        if (body.revealed !== wasRevealed) {
+          const label = body.name || form.poi.name || "A location";
+          if (body.revealed) logNotif("poi_revealed", label, `${label} has been revealed on the map`, form.poi.id);
+          else logNotif("poi_hidden", label, `${label} has been hidden`, form.poi.id);
+        }
+      } else {
+        const [np] = await dbInsert(session.access_token, "pois", { ...body, campaign_id: activeCampaign.id, map_id: activeMapId, x: form.x, y: form.y });
+        setPois(prev => [...prev, np]);
+      }
       setPoiForm(null);
     } catch(e) { setError(e.message); }
   }
@@ -2231,11 +2244,17 @@ function App() {
       </div>
 
       {/* Portal confirmation modal */}
-      {portalConfirm && (
+      {portalConfirm && (()=>{
+        const pPOI = portalConfirm.poi;
+        const pIcon = pPOI.icon_url || categoryIcons[pPOI.category] || "";
+        const pColor = getCatColor(pPOI.category);
+        return (
         <div style={{ position:"fixed",inset:0,zIndex:5000,display:"flex",alignItems:"center",justifyContent:"center",padding:16 }} onClick={()=>setPortalConfirm(null)}>
           <div onClick={e=>e.stopPropagation()} style={{ background:T.bg,border:`2px solid ${T.gold}`,borderRadius:14,padding:"24px 28px",maxWidth:340,width:"100%",boxShadow:"0 8px 40px rgba(26,16,53,0.45)",textAlign:"center" }}>
-            <div style={{ fontSize:28,marginBottom:8 }}>⛩</div>
-            <div style={{ fontFamily:T.fHead,fontSize:16,fontWeight:700,color:T.ink,marginBottom:6 }}>{portalConfirm.poi.name||"Portal"}</div>
+            <div style={{ width:52,height:52,borderRadius:"50%",background:pColor+"33",border:`2px solid ${pColor}`,margin:"0 auto 10px",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden" }}>
+              {pIcon ? <img src={pIcon} alt="" style={{ width:"100%",height:"100%",objectFit:"contain" }} /> : <span style={{ fontSize:24 }}>⛩</span>}
+            </div>
+            <div style={{ fontFamily:T.fHead,fontSize:16,fontWeight:700,color:T.ink,marginBottom:6 }}>{pPOI.name||"Portal"}</div>
             <div style={{ fontSize:13,color:T.muted,marginBottom:18,lineHeight:1.5 }}>
               Travel to <strong>{portalConfirm.targetMap.name}</strong>?
               {portalConfirm.poi.description && <><br/><span style={{ fontStyle:"italic",fontSize:12 }}>{portalConfirm.poi.description}</span></>}
@@ -2255,7 +2274,8 @@ function App() {
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* NPC form modal */}
       {npcForm && <NpcFormModal form={npcForm} onSave={saveNPC} onDelete={deleteNPC} onClose={()=>setNpcForm(null)} />}
