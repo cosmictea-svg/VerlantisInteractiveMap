@@ -35,16 +35,43 @@ async function dbUpsert(token, table, body, onConflict) {
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
-async function uploadToStorage(token, file) {
+async function uploadToStorage(token, file, bucket = "poi-icons") {
   const ext = file.name.split(".").pop() || "png";
   const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-  const r = await fetch(`${SUPA_URL}/storage/v1/object/poi-icons/${path}`, {
+  const r = await fetch(`${SUPA_URL}/storage/v1/object/${bucket}/${path}`, {
     method: "POST",
     headers: { "apikey": SUPA_KEY, "Authorization": `Bearer ${token}`, "Content-Type": file.type || "image/png" },
     body: file
   });
   if (!r.ok) throw new Error(await r.text());
-  return `${SUPA_URL}/storage/v1/object/public/poi-icons/${path}`;
+  return `${SUPA_URL}/storage/v1/object/public/${bucket}/${path}`;
+}
+
+// Compress + convert any image file to WebP before uploading (huge savings for map images).
+// Returns a Blob ready for upload. Falls back to original file if Canvas API unavailable.
+async function compressToWebP(file, quality = 0.82) {
+  return new Promise(resolve => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      try {
+        // Scale down if larger than 4096px on either axis (keeps file size sane)
+        const MAX = 4096;
+        let w = img.naturalWidth, h = img.naturalHeight;
+        if (w > MAX || h > MAX) {
+          const ratio = Math.min(MAX / w, MAX / h);
+          w = Math.round(w * ratio); h = Math.round(h * ratio);
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        canvas.toBlob(blob => resolve(blob || file), "image/webp", quality);
+      } catch { resolve(file); }
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
 }
 
 // ── Auth helpers ──────────────────────────────────────────────────────────────
@@ -714,36 +741,43 @@ function App() {
   }
 
   async function loadCampaignData(camp, role) {
-    localStorage.setItem("sb_last_campaign", camp.id); // persist so refresh auto-returns here
+    localStorage.setItem("sb_last_campaign", camp.id);
     setActiveCampaign(camp); setMemberRole(role);
     setMarkerLimit(camp.marker_limit || 10);
     try {
-      const [mapsData, poisData, markersData, annsData, catIconsData, membersData, overlaysData, zonesData, npcsData, announceData, notifData] = await Promise.all([
-        dbSelect(session.access_token, "maps", `campaign_id=eq.${camp.id}&order=created_at`),
-        dbSelect(session.access_token, "pois", `campaign_id=eq.${camp.id}`),
-        dbSelect(session.access_token, "markers", `campaign_id=eq.${camp.id}`),
-        dbSelect(session.access_token, "annotations", `campaign_id=eq.${camp.id}`),
-        dbSelect(session.access_token, "category_icons", `campaign_id=eq.${camp.id}`),
-        dbSelect(session.access_token, "campaign_members", `campaign_id=eq.${camp.id}&select=user_id,role,player_color,joined_at,display_name`),
-        dbSelect(session.access_token, "overlays", `campaign_id=eq.${camp.id}&order=z_order`),
-        dbSelect(session.access_token, "zones", `campaign_id=eq.${camp.id}`),
-        dbSelect(session.access_token, "npcs", `campaign_id=eq.${camp.id}`),
-        dbSelect(session.access_token, "announcements", `campaign_id=eq.${camp.id}&order=created_at.desc&limit=50`),
-        dbSelect(session.access_token, "notification_log", `campaign_id=eq.${camp.id}&order=created_at.desc&limit=100`),
-      ]);
-      setMaps(mapsData); setPois(poisData); setMarkers(markersData); setAnnotations(annsData);
-      setMembers(membersData); setOverlays(overlaysData); setZones(zonesData);
-      setNpcs(npcsData); setAnnouncements(announceData); setNotifLog(notifData);
-      const catMap = {};
-      catIconsData.forEach(ci => { catMap[ci.category_id] = ci.icon_url; });
-      setCategoryIcons(catMap);
-      const me = membersData.find(m => m.user_id === user.id);
+      // Single RPC replaces 11 separate REST round-trips. Maps are returned WITHOUT
+      // their src blob — the active map's src is fetched lazily by loadMapSrc().
+      const res = await fetch(`${SUPA_URL}/rest/v1/rpc/load_campaign_data`, {
+        method: "POST", headers: hdrs(session.access_token),
+        body: JSON.stringify({ p_campaign_id: camp.id })
+      });
+      if (!res.ok) throw new Error((await res.json()).message || "Failed to load campaign");
+      const d = await res.json();
+      setMaps(d.maps || []); setPois(d.pois || []); setMarkers(d.markers || []);
+      setAnnotations(d.annotations || []); setMembers(d.members || []);
+      setOverlays(d.overlays || []); setZones(d.zones || []); setNpcs(d.npcs || []);
+      setAnnouncements(d.announcements || []); setNotifLog(d.notification_log || []);
+      setCategoryIcons(d.category_icons || {});
+      const me = (d.members || []).find(m => m.user_id === user.id);
       setMyColor(me?.player_color || null);
-      const main = mapsData.find(m => m.is_main) || mapsData[0];
-      if (main) setActiveMapId(main.id);
-      // Only show colour picker if player has genuinely never chosen one
+      const main = (d.maps || []).find(m => m.is_main) || (d.maps || [])[0];
+      if (main) {
+        setActiveMapId(main.id);
+        await loadMapSrc(main.id); // fetch the active map's image src immediately
+      }
       if (!me?.player_color && role !== "gm") setShowColorPicker(true);
     } catch(e) { setError(e.message); }
+  }
+
+  // Lazily fetches just the src URL/blob for one map and patches it into state.
+  // Called when the active map changes so we never transfer unused image data.
+  async function loadMapSrc(mapId) {
+    try {
+      const rows = await dbSelect(session.access_token, "maps", `id=eq.${mapId}&select=id,src`);
+      if (rows?.[0]?.src) {
+        setMaps(prev => prev.map(m => m.id === mapId ? { ...m, src: rows[0].src } : m));
+      }
+    } catch { /* non-fatal — map will show broken image, user can retry */ }
   }
 
   async function chooseColor(color) {
@@ -975,6 +1009,27 @@ function App() {
   const mainMap        = useMemo(() => maps.find(m => m.is_main) || maps[0],                                          [maps]);
   // POIs fade out as user zooms toward the fit scale; fully visible at 2× fit zoom
   const poiOpacity = fitScale > 0 ? Math.min(1, Math.max(0, (transform.scale / fitScale) - 1)) : 1;
+
+  // Viewport culling — map-coordinate bounds of what's currently visible on screen.
+  // Entities outside this rect are not rendered at all (saves DOM nodes on large maps).
+  const viewportBounds = useMemo(() => {
+    if (!mapRef.current) return null;
+    const rect = mapRef.current.getBoundingClientRect();
+    if (!rect || !rect.width) return null;
+    const PAD = 120; // pixels of padding so pins don't pop in at the edge
+    return {
+      minX: (-transform.x - PAD) / transform.scale,
+      maxX: (rect.width  - transform.x + PAD) / transform.scale,
+      minY: (-transform.y - PAD) / transform.scale,
+      maxY: (rect.height - transform.y + PAD) / transform.scale,
+    };
+  }, [transform]);
+
+  function inViewport(x, y) {
+    if (!viewportBounds) return true; // fallback: show everything
+    return x >= viewportBounds.minX && x <= viewportBounds.maxX &&
+           y >= viewportBounds.minY && y <= viewportBounds.maxY;
+  }
 
   function fitToContainer(iw, ih) {
     const rect = mapRef.current?.getBoundingClientRect();
@@ -1285,10 +1340,16 @@ function App() {
     try { await dbDelete(session.access_token, "annotations", id); setAnnotations(prev=>prev.filter(a=>a.id!==id)); setAnnotationForm(null); } catch(e) { setError(e.message); }
   }
   async function uploadMap(file) {
-    const src = await readFile(file); const isFirst = maps.length === 0;
+    const isFirst = maps.length === 0;
     try {
+      // Compress to WebP and upload to Storage (avoids storing base64 blobs in the DB)
+      const compressed = await compressToWebP(file);
+      const webpFile = new File([compressed], file.name.replace(/\.[^.]+$/, ".webp"), { type: "image/webp" });
+      const src = await uploadToStorage(session.access_token, webpFile, "maps");
       const [nm] = await dbInsert(session.access_token, "maps", { campaign_id: activeCampaign.id, name: file.name.replace(/\.[^.]+$/,""), src, is_main: isFirst });
-      setMaps(prev=>[...prev,nm]); if (isFirst) setActiveMapId(nm.id);
+      // The RPC doesn't return src, so attach it client-side
+      setMaps(prev => [...prev, { ...nm, src }]);
+      if (isFirst) setActiveMapId(nm.id);
     } catch(e) { setError(e.message); }
   }
   async function setMainMap(id) {
@@ -1296,10 +1357,20 @@ function App() {
   }
   async function deleteMap(id) {
     if (!window.confirm("Delete this map?")) return;
-    try { await dbDelete(session.access_token, "maps", id); const remaining = maps.filter(m=>m.id!==id); setMaps(remaining); if (activeMapId===id) setActiveMapId(remaining[0]?.id||null); } catch(e) { setError(e.message); }
+    try { await dbDelete(session.access_token, "maps", id); const remaining = maps.filter(m=>m.id!==id); setMaps(remaining); if (activeMapId===id) switchToMap(remaining[0]?.id||null); } catch(e) { setError(e.message); }
   }
-  function goBack() { const prev=mapStack[mapStack.length-1]; setMapStack(s=>s.slice(0,-1)); setActiveMapId(prev||null); setTransform({x:0,y:0,scale:1}); setImgSize({w:0,h:0}); }
-  function goHome() { setMapStack([]); const main=maps.find(m=>m.is_main)||maps[0]; if(main){setActiveMapId(main.id);setTransform({x:0,y:0,scale:1});setImgSize({w:0,h:0});} }
+  // Central map-switch helper — resets view and ensures the map's src is loaded.
+  function switchToMap(id, { push = false } = {}) {
+    if (!id) return;
+    if (push) setMapStack(s => [...s, activeMapId]);
+    setActiveMapId(id);
+    setTransform({x:0,y:0,scale:1}); setImgSize({w:0,h:0});
+    // Load src if not already present (e.g. RPC returned maps without src)
+    const already = maps.find(m => m.id === id);
+    if (!already?.src) loadMapSrc(id);
+  }
+  function goBack() { const prev=mapStack[mapStack.length-1]; setMapStack(s=>s.slice(0,-1)); switchToMap(prev||null); }
+  function goHome() { setMapStack([]); const main=maps.find(m=>m.is_main)||maps[0]; if(main) switchToMap(main.id); }
 
   // ── Notification helpers ──
   function pointInPolygon(x, y, points) {
@@ -1323,8 +1394,7 @@ function App() {
     setTab("map");
     if (notif.map_id && notif.map_id !== activeMapId) {
       setMapStack([]);
-      setActiveMapId(notif.map_id);
-      setTransform({x:0,y:0,scale:1}); setImgSize({w:0,h:0});
+      switchToMap(notif.map_id);
       pendingFocusRef.current = { x: notif.x, y: notif.y };
     } else {
       const targetScale = Math.max(fitScale*2.5, 1);
@@ -1686,7 +1756,7 @@ function App() {
                   if (!isGM && target && !target.is_main && !target.player_accessible) {
                     addToast("🔒 The GM has locked access to this area.", "denied"); return;
                   }
-                  setActiveMapId(e.target.value); setTransform({x:0,y:0,scale:1}); setImgSize({w:0,h:0}); setMapStack([]);
+                  setMapStack([]); switchToMap(e.target.value);
                 }} style={{ fontSize:12,padding:"4px 8px",borderRadius:8,border:`1px solid ${T.border}`,background:T.bg,color:T.ink,fontFamily:T.fBody,maxWidth:140,flexShrink:0 }}>
                   {accessibleMaps.map(m=><option key={m.id} value={m.id}>{m.name}{m.is_main?" ★":""}</option>)}
                 </select>
@@ -2012,7 +2082,7 @@ function App() {
                       })()}
                     </svg>
                   )}
-                  {mapPOIs.filter(p=>p.poi_type==="portal" ? isVisible("portals", p.id) : isVisible("categories", p.category)).map(p=>(
+                  {mapPOIs.filter(p=>inViewport(p.x, p.y) && (p.poi_type==="portal" ? isVisible("portals", p.id) : isVisible("categories", p.category))).map(p=>(
                     <POIPin key={p.id} poi={p} scale={transform.scale} isGM={isGM}
                       resolvedIconUrl={categoryIcons[p.category]||""}
                       poiOpacity={poiOpacity}
@@ -2035,7 +2105,7 @@ function App() {
                       onDragStart={startPOIDrag} />
                   ))}
                   {/* NPC nodes */}
-                  {mapNPCs.filter(n=>isVisible("npcs", n.id)).map(npc => {
+                  {mapNPCs.filter(n=>inViewport(n.x, n.y) && isVisible("npcs", n.id)).map(npc => {
                     const r = npc.aura_radius > 0 ? npc.aura_radius : 0;
                     const nodeR = 18;
                     const ns = Math.max(14, nodeR/transform.scale);
@@ -2068,7 +2138,7 @@ function App() {
                       {isGM && <div style={{ fontSize:10,color:a.visible?"#0F6E56":"#854F0B",marginTop:3 }}>{a.visible?"Visible — tap to hide":"Hidden — tap to show"}</div>}
                     </div>
                   ))}
-                  {mapMarkers.filter(m=>isVisible("players", m.user_id)).map(m => {
+                  {mapMarkers.filter(m=>inViewport(m.x, m.y) && isVisible("players", m.user_id)).map(m => {
                     const isOwner = m.user_id === user.id;
                     const memberInfo = members.find(mb => mb.user_id === m.user_id);
                     return (
@@ -2511,9 +2581,7 @@ function App() {
             </div>
             <div style={{ display:"flex",gap:10,justifyContent:"center" }}>
               <button onClick={()=>{
-                setMapStack(s=>[...s, activeMapId]);
-                setActiveMapId(portalConfirm.targetMap.id);
-                setTransform({x:0,y:0,scale:1}); setImgSize({w:0,h:0});
+                switchToMap(portalConfirm.targetMap.id, { push: true });
                 setPortalConfirm(null);
               }} style={{ padding:"9px 24px",borderRadius:20,border:"none",background:T.purple,color:T.headerFg,fontFamily:T.fHead,fontSize:13,fontWeight:600,cursor:"pointer" }}>
                 ✦ Enter
