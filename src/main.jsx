@@ -315,7 +315,7 @@ function POIPin({ poi, scale, isGM, onTap, onDragStart, resolvedIconUrl, poiOpac
 }
 
 // ── Profile Tab ───────────────────────────────────────────────────────────────
-function ProfileTab({ user, members, myColor, takenColors, isGM, onColorChange, onSaveDisplayName, soundVolume, onVolumeChange }) {
+function ProfileTab({ user, members, myColor, takenColors, isGM, onColorChange, onSaveDisplayName, soundVolume, onVolumeChange, markers, activeMapId, markerLimit, onMarkerLimitChange, onKickPlayer }) {
   const me = members.find(m => m.user_id === user.id);
   const [displayName, setDisplayName] = useState(me?.display_name || "");
   const [saved, setSaved] = useState(false);
@@ -383,11 +383,45 @@ function ProfileTab({ user, members, myColor, takenColors, isGM, onColorChange, 
       </div>
 
       {/* Account info */}
-      <div style={{ padding:"14px 16px",background:T.surface,borderRadius:12,border:`1px solid ${T.border}` }}>
+      <div style={{ padding:"14px 16px",background:T.surface,borderRadius:12,border:`1px solid ${T.border}`,marginBottom:16 }}>
         <div style={{ fontFamily:T.fHead,fontWeight:600,fontSize:13,color:T.ink,marginBottom:8,letterSpacing:"0.03em" }}>Account</div>
         <div style={{ fontSize:13,color:T.ink,fontWeight:500 }}>{user.user_metadata?.full_name || "—"}</div>
         <div style={{ fontSize:12,color:T.muted,marginTop:2 }}>{user.email}</div>
         <div style={{ fontSize:11,color:T.muted,marginTop:6,padding:"3px 10px",background:isGM?`${T.gold}20`:T.bg,borderRadius:20,display:"inline-block",border:`1px solid ${isGM?`${T.gold}44`:T.border}`,color:isGM?T.goldDim:T.muted,fontWeight:600 }}>{isGM ? "Game Master" : "Player"}</div>
+      </div>
+
+      {/* Campaign roster — visible to everyone */}
+      <div style={{ padding:"14px 16px",background:T.surface,borderRadius:12,border:`1px solid ${T.border}` }}>
+        <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:12,flexWrap:"wrap" }}>
+          <div style={{ fontFamily:T.fHead,fontWeight:600,fontSize:13,color:T.ink,flex:1,letterSpacing:"0.03em" }}>Campaign Roster</div>
+          {isGM && (
+            <div style={{ display:"flex",alignItems:"center",gap:8 }}>
+              <span style={{ fontSize:11,color:T.muted }}>Marker limit:</span>
+              <input type="number" min={0} max={50} value={markerLimit}
+                onChange={e=>onMarkerLimitChange(Number(e.target.value))}
+                style={{ width:56,padding:"3px 8px",borderRadius:6,border:`1px solid ${T.border}`,fontSize:12,background:"#fffbf2",color:T.ink,fontFamily:T.fBody }} />
+            </div>
+          )}
+        </div>
+        {members.length===0 && <p style={{ color:T.muted,fontSize:12,fontStyle:"italic" }}>No members yet.</p>}
+        {members.map(m=>(
+          <div key={m.user_id} style={{ display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:`0.5px solid ${T.border}` }}>
+            <div style={{ width:28,height:28,borderRadius:"50%",background:m.player_color||T.border,border:`2px solid ${m.player_color||T.border}`,flexShrink:0 }} />
+            <div style={{ flex:1,minWidth:0 }}>
+              <div style={{ fontSize:13,fontWeight:600,color:T.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>
+                {m.display_name || (m.role==="gm" ? "Game Master" : m.user_id===user.id ? "You" : "Unknown")}
+                {m.user_id===user.id && <span style={{ marginLeft:6,fontSize:10,color:T.muted,fontStyle:"italic" }}>(you)</span>}
+              </div>
+              <div style={{ fontSize:11,color:T.muted }}>
+                {m.role==="gm"?"Game Master":"Player"}
+                {markers && activeMapId && <span> · {markers.filter(mk=>mk.user_id===m.user_id&&mk.map_id===activeMapId).length} markers</span>}
+              </div>
+            </div>
+            {isGM && m.role!=="gm" && m.user_id!==user.id && onKickPlayer && (
+              <Btn size="sm" variant="danger" onClick={()=>{ if(window.confirm(`Remove ${m.display_name||"this player"} from the campaign?`)) onKickPlayer(m.user_id); }}>Kick</Btn>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -886,11 +920,11 @@ function App() {
     if (!joinCode.trim()) return;
     try {
       const camps = await dbSelect(session.access_token, "campaigns", `id=eq.${joinCode.trim()}`);
-      if (!camps.length) { setError("Campaign not found."); return; }
-      await dbInsert(session.access_token, "campaign_members", { campaign_id: camps[0].id, user_id: user.id, role: "player" });
+      if (!camps.length) { setError("Campaign not found. Check the ID and try again."); return; }
+      await dbUpsert(session.access_token, "campaign_members", { campaign_id: camps[0].id, user_id: user.id, role: "player" }, "campaign_id,user_id");
       setJoinCode(""); setShowJoinModal(false);
       await loadCampaigns(); loadCampaignData(camps[0], "player");
-    } catch(e) { setError("Could not join — you may already be a member."); }
+    } catch(e) { setError(e.message || "Could not join campaign."); }
   }
 
   const isGM = memberRole === "gm";
@@ -1428,7 +1462,7 @@ function App() {
   function getCardPos(x, y) {
     const rect = getContainerRect();
     const sx = x * transform.scale + transform.x, sy = y * transform.scale + transform.y;
-    const cardW = 210, cardH = 200, pad = 8;
+    const cardW = 240, cardH = 200, pad = 8;
     let left = sx + 16, top = sy - cardH / 2;
     if (left + cardW > rect.width - pad) left = sx - cardW - 16;
     left = Math.max(pad, Math.min(rect.width - cardW - pad, left));
@@ -1553,7 +1587,6 @@ function App() {
           style={{ width:30,height:30,borderRadius:"50%",background:myColor||`${T.headerFg}33`,border:`2px solid ${myColor?T.gold:`${T.headerFg}44`}`,cursor:"pointer",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,color:myColor?"transparent":T.headerFg,fontWeight:700 }}>
           {!myColor&&"?"}
         </div>
-        <span style={{ fontSize:9,color:`${T.headerFg}40`,whiteSpace:"nowrap",display:"none" }}>{buildVersion}</span>
       </div>
 
       {error && <div style={{ background:"#f5d5d5",color:T.danger,padding:"5px 14px",fontSize:12,borderBottom:`1px solid ${T.danger}44` }}>{error}<button onClick={()=>setError("")} style={{ marginLeft:8,border:"none",background:"none",cursor:"pointer",color:T.danger }}>✕</button></div>}
@@ -1622,6 +1655,13 @@ function App() {
               )}
               {/* Spacer */}
               <div style={{ flex:1 }} />
+              {/* Layers panel toggle — only when there are layers/zones */}
+              {(mapOverlays.length > 0 || mapZones.filter(z => isGM || z.revealed).length > 0) && (
+                <button onClick={()=>setShowLayerControls(f=>!f)}
+                  style={{ padding:"5px 12px",borderRadius:8,border:`1px solid ${showLayerControls?T.gold:T.border}`,background:showLayerControls?`${T.gold}22`:T.bg,color:showLayerControls?T.goldDim:T.muted,fontSize:12,cursor:"pointer",flexShrink:0,fontFamily:T.fBody }}>
+                  🗂 Layers
+                </button>
+              )}
               {/* Filter toggle */}
               <button onClick={()=>setShowFilter(f=>!f)}
                 style={{ padding:"5px 12px",borderRadius:8,border:`1px solid ${showFilter?T.gold:T.border}`,background:showFilter?T.purple:T.bg,color:showFilter?T.headerFg:T.muted,fontSize:12,cursor:"pointer",flexShrink:0,fontFamily:T.fBody }}>
@@ -1750,45 +1790,54 @@ function App() {
             );
           })()}
 
-          {/* ── Layers & Zones quick controls — visible to everyone on the map page ── */}
-          {(mapOverlays.length > 0 || mapZones.filter(z => isGM || z.revealed).length > 0) && (
-            <div style={{ borderBottom:`1px solid ${T.border}`,background:T.bg }}>
-              <button onClick={()=>setShowLayerControls(p=>!p)}
-                style={{ display:"flex",alignItems:"center",gap:6,width:"100%",padding:"6px 14px",background:"none",border:"none",cursor:"pointer",fontSize:11,color:T.muted,fontWeight:600,textAlign:"left",fontFamily:T.fBody }}>
-                <span style={{ flex:1,color:T.ink }}>🗂 Layers &amp; Zones</span>
-                <span style={{ color:T.muted }}>{showLayerControls ? "▲" : "▼"}</span>
-              </button>
-              {showLayerControls && (
-                <div style={{ padding:"4px 14px 12px",display:"flex",flexDirection:"column",gap:8 }}>
+
+          {/* ── Layers & Zones floating panel — appears over the map ── */}
+          {showLayerControls && (
+            <div style={{ position:"absolute",top:0,left:0,right:0,bottom:0,zIndex:250,pointerEvents:"none" }}>
+              <div style={{ position:"absolute",top:8,left:8,background:T.bg,border:`1.5px solid ${T.gold}`,borderRadius:12,boxShadow:"0 8px 28px rgba(26,16,53,0.25)",minWidth:260,maxWidth:320,pointerEvents:"all" }}
+                onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}>
+                <div style={{ display:"flex",alignItems:"center",padding:"10px 14px",borderBottom:`1px solid ${T.border}`,background:T.header,borderRadius:"10px 10px 0 0" }}>
+                  <span style={{ fontFamily:T.fHead,fontSize:13,fontWeight:700,color:T.headerFg,flex:1,letterSpacing:"0.04em" }}>🗂 Layers &amp; Zones</span>
+                  <button onClick={()=>setShowLayerControls(false)} style={{ background:"none",border:"none",color:T.headerFg,cursor:"pointer",fontSize:16,padding:0,lineHeight:1 }}>✕</button>
+                </div>
+                <div style={{ padding:"10px 14px",display:"flex",flexDirection:"column",gap:10,maxHeight:"50vh",overflowY:"auto" }}>
                   {/* Master zone opacity */}
                   {mapZones.filter(z => isGM || z.revealed).length > 0 && (
-                    <div style={{ display:"flex",alignItems:"center",gap:8,paddingBottom:8,borderBottom:mapOverlays.length>0?`0.5px solid ${T.border}`:"none" }}>
-                      <span style={{ fontSize:11,color:T.muted,minWidth:80,fontWeight:600,whiteSpace:"nowrap" }}>All Zones</span>
-                      <input type="range" min={0} max={100} value={masterZoneOpacity}
-                        onChange={e=>{ const v=Number(e.target.value); setMasterZoneOpacity(v); if(activeCampaign) localStorage.setItem(`zone_master_${activeCampaign.id}`,String(v)); }}
-                        style={{ flex:1,maxWidth:160 }} />
-                      <span style={{ fontSize:11,color:T.muted,minWidth:36 }}>{masterZoneOpacity}%</span>
+                    <div>
+                      <div style={{ fontSize:11,color:T.muted,fontWeight:600,marginBottom:6,textTransform:"uppercase",letterSpacing:"0.06em" }}>Zones</div>
+                      <div style={{ display:"flex",alignItems:"center",gap:8 }}>
+                        <span style={{ fontSize:12,color:T.ink,minWidth:70,whiteSpace:"nowrap" }}>All Zones</span>
+                        <input type="range" min={0} max={100} value={masterZoneOpacity}
+                          onChange={e=>{ const v=Number(e.target.value); setMasterZoneOpacity(v); if(activeCampaign) localStorage.setItem(`zone_master_${activeCampaign.id}`,String(v)); }}
+                          style={{ flex:1 }} />
+                        <span style={{ fontSize:11,color:T.muted,minWidth:36,textAlign:"right" }}>{masterZoneOpacity}%</span>
+                      </div>
                     </div>
                   )}
                   {/* Per-layer opacity + visibility */}
-                  {mapOverlays.map(ov=>{
-                    const s = overlaySettings[ov.id] || { opacity:80, visible:true };
-                    return (
-                      <div key={ov.id} style={{ display:"flex",alignItems:"center",gap:8 }}>
-                        <span style={{ fontSize:11,color:T.ink,minWidth:80,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontWeight:500 }}>{ov.name}</span>
-                        <input type="range" min={1} max={100} value={s.opacity}
-                          onChange={e=>setOverlaySetting(ov.id,"opacity",Number(e.target.value))}
-                          style={{ flex:1,maxWidth:160 }} />
-                        <span style={{ fontSize:11,color:T.muted,minWidth:36 }}>{s.opacity}%</span>
-                        <button onClick={()=>setOverlaySetting(ov.id,"visible",!s.visible)}
-                          style={{ fontSize:11,padding:"3px 10px",borderRadius:20,border:"none",background:s.visible?"#EAF3DE":"#F0F0F0",color:s.visible?"#3B6D11":"#888",cursor:"pointer",flexShrink:0,fontWeight:500 }}>
-                          {s.visible?"On":"Off"}
-                        </button>
-                      </div>
-                    );
-                  })}
+                  {mapOverlays.length > 0 && (
+                    <div>
+                      <div style={{ fontSize:11,color:T.muted,fontWeight:600,marginBottom:6,textTransform:"uppercase",letterSpacing:"0.06em",borderTop:mapZones.filter(z=>isGM||z.revealed).length>0?`0.5px solid ${T.border}`:"none",paddingTop:mapZones.filter(z=>isGM||z.revealed).length>0?10:0 }}>Image Layers</div>
+                      {mapOverlays.map(ov=>{
+                        const s = overlaySettings[ov.id] || { opacity:80, visible:true };
+                        return (
+                          <div key={ov.id} style={{ display:"flex",alignItems:"center",gap:8 }}>
+                            <span style={{ fontSize:12,color:T.ink,minWidth:70,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontWeight:500 }}>{ov.name}</span>
+                            <input type="range" min={1} max={100} value={s.opacity}
+                              onChange={e=>setOverlaySetting(ov.id,"opacity",Number(e.target.value))}
+                              style={{ flex:1 }} />
+                            <span style={{ fontSize:11,color:T.muted,minWidth:36,textAlign:"right" }}>{s.opacity}%</span>
+                            <button onClick={()=>setOverlaySetting(ov.id,"visible",!s.visible)}
+                              style={{ fontSize:11,padding:"3px 10px",borderRadius:20,border:"none",background:s.visible?"#EAF3DE":"#F0F0F0",color:s.visible?"#3B6D11":"#888",cursor:"pointer",flexShrink:0,fontWeight:600 }}>
+                              {s.visible?"On":"Off"}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
           )}
 
@@ -2145,8 +2194,7 @@ function App() {
               { id:"layers",     label:"Layers" },
               { id:"maps",       label:"Maps" },
               { id:"npcs",       label:"NPCs" },
-              { id:"players",    label:"Players" },
-              { id:"pois",       label:"POIs" },
+                { id:"pois",       label:"POIs" },
               { id:"zones",      label:"Zones" },
             ].map(({ id, label })=>(
               <button key={id} onClick={()=>setLibSubTab(id)}
@@ -2267,35 +2315,6 @@ function App() {
               ))}
             </>}
 
-            {/* ── PLAYERS ── */}
-            {libSubTab==="players" && <>
-              <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:14,flexWrap:"wrap" }}>
-                <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:14,color:T.ink,flex:1 }}>Players</div>
-                <div style={{ display:"flex",alignItems:"center",gap:8 }}>
-                  <span style={{ fontSize:12,color:T.muted }}>Marker limit:</span>
-                  <input type="number" min={0} max={50} value={markerLimit}
-                    onChange={e=>setMarkerLimit(Number(e.target.value))}
-                    onBlur={e=>updateMarkerLimit(Number(e.target.value))}
-                    style={{ ...IS,width:64 }} />
-                </div>
-              </div>
-              {members.length===0 && <p style={{ color:T.muted,fontSize:13,fontStyle:"italic" }}>No members yet.</p>}
-              {members.map(m=>(
-                <div key={m.user_id} style={{ display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:T.surface,borderRadius:10,marginBottom:8,border:`1px solid ${T.border}` }}>
-                  <div style={{ width:28,height:28,borderRadius:"50%",background:m.player_color||`${T.border}`,border:`2.5px solid ${m.player_color||T.border}`,flexShrink:0 }} />
-                  <div style={{ flex:1,minWidth:0 }}>
-                    <div style={{ fontSize:13,fontWeight:600,color:T.ink }}>
-                      {m.display_name || (m.role==="gm" ? "Game Master" : m.user_id===user.id ? "You" : "Unknown")}
-                      {m.user_id===user.id && <span style={{ marginLeft:6,fontSize:10,color:T.muted,fontStyle:"italic" }}>(you)</span>}
-                    </div>
-                    <div style={{ fontSize:11,color:T.muted }}>{m.role==="gm"?"Game Master":"Player"} · {markers.filter(mk=>mk.user_id===m.user_id&&mk.map_id===activeMapId).length} markers</div>
-                  </div>
-                  {isGM && m.role!=="gm" && m.user_id!==user.id && (
-                    <Btn size="sm" variant="danger" onClick={()=>{ if(window.confirm(`Remove ${m.display_name||"this player"} from the campaign?`)) kickPlayer(m.user_id); }}>Kick</Btn>
-                  )}
-                </div>
-              ))}
-            </>}
 
             {/* ── POIS ── */}
             {libSubTab==="pois" && <>
@@ -2368,6 +2387,11 @@ function App() {
             onSaveDisplayName={saveDisplayName}
             soundVolume={soundVolume}
             onVolumeChange={setSoundVolume}
+            markers={markers}
+            activeMapId={activeMapId}
+            markerLimit={markerLimit}
+            onMarkerLimitChange={v=>{ setMarkerLimit(v); updateMarkerLimit(v); }}
+            onKickPlayer={kickPlayer}
           />
         </div>
       )}
@@ -2491,6 +2515,10 @@ function App() {
           {myColor && <Btn variant="primary" onClick={()=>setShowColorPicker(false)} style={{ width:"100%" }}>Confirm</Btn>}
         </Modal>
       )}
+      {/* Version footer */}
+      <div style={{ padding:"4px 14px",background:T.surface,borderBottom:`none`,borderTop:`1px solid ${T.border}`,fontSize:10,color:T.muted,textAlign:"center",flexShrink:0,fontFamily:T.fBody }}>
+        {buildVersion} · Verlantis Interactive Map
+      </div>
     </div>
   );
 }
