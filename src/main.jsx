@@ -1743,11 +1743,11 @@ function App() {
               <div style={{ fontSize:11,color:T.muted,marginTop:3 }}>{c.myRole==="gm"?"Game Master":"Player"}</div>
             </div>
             {c.myRole==="gm" && (
-              <button onClick={e=>{ e.stopPropagation(); setCampDeleteConfirm(c); }}
+              <button
+                onClick={e=>{ e.stopPropagation(); setCampDeleteConfirm(c); }}
+                onTouchEnd={e=>{ e.stopPropagation(); e.preventDefault(); setCampDeleteConfirm(c); }}
                 title="Delete campaign"
-                style={{ background:"none",border:`1px solid ${T.danger}44`,borderRadius:8,color:T.danger,cursor:"pointer",padding:"5px 8px",fontSize:14,lineHeight:1,flexShrink:0,opacity:0.7,transition:"opacity 0.15s" }}
-                onMouseEnter={e=>e.currentTarget.style.opacity="1"}
-                onMouseLeave={e=>e.currentTarget.style.opacity="0.7"}>
+                style={{ background:"none",border:`1px solid ${T.danger}44`,borderRadius:8,color:T.danger,cursor:"pointer",padding:"5px 8px",fontSize:14,lineHeight:1,flexShrink:0,transition:"opacity 0.15s" }}>
                 🗑
               </button>
             )}
@@ -1785,6 +1785,31 @@ function App() {
           <Field label="Campaign ID (ask your GM)"><input value={joinCode} onChange={e=>setJoinCode(e.target.value)} style={IS} placeholder="Paste campaign UUID here" autoFocus={!isTouchDevice} /></Field>
           <Btn variant="primary" onClick={joinCampaign} style={{ width:"100%" }}>Join</Btn>
         </Modal>
+      )}
+      {/* Delete confirmation — rendered here so it works from the campaign list */}
+      {campDeleteConfirm && (
+        <div style={{ position:"fixed",inset:0,zIndex:9000,display:"flex",alignItems:"center",justifyContent:"center",padding:16,background:"rgba(10,5,20,0.75)" }} onClick={()=>setCampDeleteConfirm(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:T.bg,border:`2px solid ${T.danger}`,borderRadius:14,padding:"28px 28px 24px",maxWidth:400,width:"100%",boxShadow:"0 12px 48px rgba(0,0,0,0.6)" }}>
+            <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:16 }}>
+              <div style={{ fontSize:28,lineHeight:1 }}>⚠️</div>
+              <div>
+                <div style={{ fontFamily:T.fHead,fontSize:16,fontWeight:700,color:T.danger,letterSpacing:"0.03em" }}>Delete Campaign Forever</div>
+                <div style={{ fontSize:11,color:T.muted,marginTop:2 }}>This action cannot be undone — ever.</div>
+              </div>
+            </div>
+            <div style={{ background:"#1a0808",border:`1px solid ${T.danger}44`,borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:14,fontFamily:T.fHead,color:T.danger,fontWeight:600 }}>
+              "{campDeleteConfirm.name}"
+            </div>
+            <div style={{ fontSize:12,color:T.muted,lineHeight:1.7,marginBottom:18 }}>
+              <strong style={{ color:T.danger,display:"block",marginBottom:4 }}>Everything inside will be permanently destroyed:</strong>
+              All maps · All POIs & NPCs · All zones & overlays · All player markers · All announcements · All member data
+            </div>
+            <div style={{ display:"flex",gap:10 }}>
+              <button onClick={()=>deleteCampaign(campDeleteConfirm)} style={{ flex:1,padding:"10px 0",borderRadius:20,border:"none",background:T.danger,color:"#fff",fontFamily:T.fHead,fontSize:13,fontWeight:700,cursor:"pointer",letterSpacing:"0.04em" }}>🗑 Delete Forever</button>
+              <button onClick={()=>setCampDeleteConfirm(null)} style={{ flex:1,padding:"10px 0",borderRadius:20,border:`1px solid ${T.border}`,background:"transparent",color:T.muted,fontFamily:T.fBody,fontSize:13,cursor:"pointer" }}>Cancel</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -2412,9 +2437,9 @@ function App() {
                 {isGM && <Btn size="sm" onClick={()=>setCampInfoEdit({ name:activeCampaign?.name||"", sub_header:activeCampaign?.sub_header||"", description:activeCampaign?.description||"" })} style={{ marginTop:14 }}>✎ Edit Campaign Info</Btn>}
               </div>
               {isGM && (
-                <div style={{ marginTop:20,padding:"14px 16px",background:"#2a0a0a",borderRadius:10,border:`1.5px solid ${T.danger}55` }}>
-                  <div style={{ fontSize:11,fontWeight:700,color:T.danger,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:6 }}>⚠ Danger Zone</div>
-                  <div style={{ fontSize:12,color:"#cc8888",marginBottom:10,lineHeight:1.5 }}>Deleting this campaign is <strong style={{ color:T.danger }}>permanent and irreversible</strong>. All maps, POIs, NPCs, markers, zones, and player data will be destroyed forever.</div>
+                <div style={{ marginTop:20,padding:"14px 16px",background:"#1e0e0e",borderRadius:10,border:`1.5px solid ${T.danger}66` }}>
+                  <div style={{ fontSize:11,fontWeight:700,color:"#ff7070",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:6 }}>⚠ Danger Zone</div>
+                  <div style={{ fontSize:12,color:"#e8c4c4",marginBottom:10,lineHeight:1.5 }}>Deleting this campaign is <strong style={{ color:"#ff7070" }}>permanent and irreversible</strong>. All maps, POIs, NPCs, markers, zones, and player data will be destroyed forever.</div>
                   <Btn variant="danger" size="sm" onClick={()=>setCampDeleteConfirm(activeCampaign)}>🗑 Delete This Campaign</Btn>
                 </div>
               )}
@@ -2433,7 +2458,7 @@ function App() {
           )}
 
           {/* Announcements */}
-          <div style={{ maxWidth:560,marginTop:campInfoEdit?20:0,borderTop:campInfoEdit?`1px solid ${T.border}`:"none",paddingTop:campInfoEdit?20:0 }}>
+          <div style={{ maxWidth:560,marginTop:20,borderTop:`1px solid ${T.border}`,paddingTop:20 }}>
             <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:14 }}>
               <span style={{ fontFamily:T.fHead,fontWeight:700,fontSize:15,color:T.ink }}>📜 Announcements</span>
               {isGM && <Btn size="sm" variant="primary" onClick={()=>setAnnounceForm({announcement:null,title:"",sub_header:"",message:""})}>＋ New</Btn>}
@@ -2756,7 +2781,7 @@ function App() {
               "{campDeleteConfirm.name}"
             </div>
             {/* What gets deleted */}
-            <div style={{ fontSize:12,color:"#cc8888",lineHeight:1.7,marginBottom:18 }}>
+            <div style={{ fontSize:12,color:T.muted,lineHeight:1.7,marginBottom:18 }}>
               <strong style={{ color:T.danger,display:"block",marginBottom:4 }}>Everything inside will be permanently destroyed:</strong>
               All maps · All POIs & NPCs · All zones & overlays · All player markers · All announcements · All member data
             </div>
