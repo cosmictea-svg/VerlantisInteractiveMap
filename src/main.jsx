@@ -1,5 +1,7 @@
 // Verlantis Interactive Map
-const VERSION = "v1.3 · 25 Mar 2026";
+const VERSION = (typeof __BUILD_DATE__ !== "undefined" && typeof __COMMIT__ !== "undefined")
+  ? `v${__BUILD_DATE__}-${__COMMIT__}`
+  : "vdev";
 import { useState, useRef, useEffect, useMemo } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -126,7 +128,6 @@ function createRealtimeChannel(token, campaignId, handlers) {
       const tableConfigs = [
         { table: "pois",             filter: `campaign_id=eq.${campaignId}` },
         { table: "markers",          filter: `campaign_id=eq.${campaignId}` },
-        { table: "annotations",      filter: `campaign_id=eq.${campaignId}` },
         { table: "campaign_members", filter: `campaign_id=eq.${campaignId}` },
         { table: "campaigns",        filter: `id=eq.${campaignId}` },
         { table: "overlays",         filter: `campaign_id=eq.${campaignId}` },
@@ -157,7 +158,6 @@ function createRealtimeChannel(token, campaignId, handlers) {
         const mapped = { eventType, new: record, old: old_record };
         if (table === "pois") handlers.onPOI(mapped);
         if (table === "markers") handlers.onMarker(mapped);
-        if (table === "annotations") handlers.onAnnotation(mapped);
         if (table === "campaign_members") handlers.onMember?.(mapped);
         if (table === "campaigns") handlers.onCampaign?.(mapped);
         if (table === "overlays") handlers.onOverlay?.(mapped);
@@ -350,6 +350,7 @@ function ProfileTab({ user, members, myColor, takenColors, isGM, onColorChange, 
   const me = members.find(m => m.user_id === user.id);
   const [displayName, setDisplayName] = useState(me?.display_name || "");
   const [saved, setSaved] = useState(false);
+  const [kickTarget, setKickTarget] = useState(null);
 
   async function handleSave() {
     await onSaveDisplayName(displayName);
@@ -456,11 +457,27 @@ function ProfileTab({ user, members, myColor, takenColors, isGM, onColorChange, 
               </div>
             </div>
             {isGM && m.role!=="gm" && m.user_id!==user.id && onKickPlayer && (
-              <Btn size="sm" variant="danger" onClick={()=>{ if(window.confirm(`Remove ${m.display_name||"this player"} from the campaign?`)) onKickPlayer(m.user_id); }}>Kick</Btn>
+              <Btn size="sm" variant="danger" onClick={()=>setKickTarget(m)}>Kick</Btn>
             )}
           </div>
         ))}
       </div>
+
+      {/* Kick confirmation modal */}
+      {kickTarget && (
+        <div style={{ position:"fixed",inset:0,zIndex:9000,display:"flex",alignItems:"center",justifyContent:"center",padding:16,background:"rgba(10,5,20,0.75)" }} onClick={()=>setKickTarget(null)}>
+          <div style={{ background:T.surface,borderRadius:16,padding:"24px 24px 20px",maxWidth:340,width:"100%",boxShadow:"0 8px 40px rgba(0,0,0,0.5)",border:`1px solid ${T.border}` }} onClick={e=>e.stopPropagation()}>
+            <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:15,color:T.ink,marginBottom:8 }}>Remove Player?</div>
+            <div style={{ fontSize:13,color:T.muted,marginBottom:20,lineHeight:1.5 }}>
+              Remove <strong style={{ color:T.ink }}>{kickTarget.display_name || "this player"}</strong> from the campaign? Their markers will be deleted.
+            </div>
+            <div style={{ display:"flex",gap:10 }}>
+              <button onClick={()=>{ onKickPlayer(kickTarget.user_id); setKickTarget(null); }} style={{ flex:1,padding:"9px 0",borderRadius:20,border:"none",background:T.danger,color:"#fff",fontFamily:T.fHead,fontSize:13,fontWeight:700,cursor:"pointer" }}>Remove Player</button>
+              <button onClick={()=>setKickTarget(null)} style={{ flex:1,padding:"9px 0",borderRadius:20,border:`1px solid ${T.border}`,background:"transparent",color:T.muted,fontSize:13,cursor:"pointer" }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -480,7 +497,6 @@ function App() {
   const [mapStack, setMapStack] = useState([]);
   const [pois, setPois] = useState([]);
   const [markers, setMarkers] = useState([]);
-  const [annotations, setAnnotations] = useState([]);
   const [categoryIcons, setCategoryIcons] = useState({});
   const [tab, setTab] = useState("map");
   const [libSubTab, setLibSubTab] = useState("maps");
@@ -488,7 +504,6 @@ function App() {
   // Note: ovSubTab removed — overlays/zones management merged into Library tab
   const [poiForm, setPoiForm] = useState(null);
   const [markerForm, setMarkerForm] = useState(null);
-  const [annotationForm, setAnnotationForm] = useState(null);
   const [openPOICard, setOpenPOICard] = useState(null);
   const [openMarkerCard, setOpenMarkerCard] = useState(null);
   const [poiCardClosing, setPoiCardClosing] = useState(null);   // id held during fade-out
@@ -519,11 +534,13 @@ function App() {
   const [editingZonePoints, setEditingZonePoints] = useState(null); // { zoneId, points, originalPoints }
   const [fitScale, setFitScale] = useState(1);
   const [copiedCode, setCopiedCode] = useState(false);
-  const [visFilter, setVisFilter] = useState({ categories: {}, players: {}, zones: {}, npcs: {} });
+  const [visFilter, setVisFilter] = useState({ categories: {}, players: {}, zones: {}, npcs: {}, portals: {} });
   const [showFilter, setShowFilter] = useState(false);
   const [renamingOverlay, setRenamingOverlay] = useState(null); // { id, name }
   const [campInfoEdit, setCampInfoEdit] = useState(null); // { name, sub_header, description } or null
   const [campDeleteConfirm, setCampDeleteConfirm] = useState(null); // campaign object to delete, or null
+  const [mapDeleteConfirm, setMapDeleteConfirm] = useState(null);   // map id to delete, or null
+  const [campaignLoading, setCampaignLoading] = useState(false);
   const [npcs, setNpcs] = useState([]);
   const [npcForm, setNpcForm] = useState(null);
   const [portalConfirm, setPortalConfirm] = useState(null); // { poi, targetMap }
@@ -623,11 +640,6 @@ function App() {
         if (payload.eventType === "INSERT") setMarkers(m => m.find(x => x.id === payload.new.id) ? m : [...m, payload.new]);
         if (payload.eventType === "UPDATE") setMarkers(m => m.map(x => x.id === payload.new.id ? { ...payload.new, player_color: payload.new.player_color } : x));
         if (payload.eventType === "DELETE") setMarkers(m => m.filter(x => x.id !== (payload.old?.id || payload.old_record?.id)));
-      },
-      onAnnotation: (payload) => {
-        if (payload.eventType === "INSERT") setAnnotations(a => a.find(x => x.id === payload.new.id) ? a : [...a, payload.new]);
-        if (payload.eventType === "UPDATE") setAnnotations(a => a.map(x => x.id === payload.new.id ? payload.new : x));
-        if (payload.eventType === "DELETE") setAnnotations(a => a.filter(x => x.id !== (payload.old?.id || payload.old_record?.id)));
       },
       // Real-time campaign changes: GM updating marker_limit propagates instantly to all players
       onCampaign: (payload) => {
@@ -733,7 +745,7 @@ function App() {
 
   async function loadCampaigns() {
     try {
-      const memberData = await dbSelect(session.access_token, "campaign_members", `user_id=eq.${user.id}&select=campaign_id,role,player_color`);
+      const memberData = await dbSelect(session.access_token, "campaign_members", `user_id=eq.${user.id}&select=campaign_id,role,player_color,display_name`);
       if (!memberData.length) { setCampaigns([]); return; }
       const ids = memberData.map(m => m.campaign_id).join(",");
       const camps = await dbSelect(session.access_token, "campaigns", `id=in.(${ids})`);
@@ -756,6 +768,8 @@ function App() {
     localStorage.setItem("sb_last_campaign", camp.id);
     setActiveCampaign(camp); setMemberRole(role);
     setMarkerLimit(camp.marker_limit || 10);
+    if (camp.notif_limit) setNotifLimit(camp.notif_limit);
+    setCampaignLoading(true);
     try {
       // Single RPC replaces 11 separate REST round-trips. Maps are returned WITHOUT
       // their src blob — the active map's src is fetched lazily by loadMapSrc().
@@ -780,7 +794,7 @@ function App() {
       }
       // All state updates batched atomically in one React render (React 18 auto-batching)
       setMaps(mapsWithSrc); setPois(d.pois || []); setMarkers(d.markers || []);
-      setAnnotations(d.annotations || []); setMembers(d.members || []);
+      setMembers(d.members || []);
       setOverlays(d.overlays || []); setZones(d.zones || []); setNpcs(d.npcs || []);
       setAnnouncements(d.announcements || []); setNotifLog(d.notification_log || []);
       setCategoryIcons(d.category_icons || {});
@@ -789,6 +803,7 @@ function App() {
       if (main) setActiveMapId(main.id);
       if (!me?.player_color && role !== "gm") setShowColorPicker(true);
     } catch(e) { setError(e.message); }
+    finally { setCampaignLoading(false); }
   }
 
   // Lazily fetches just the src URL/blob for one map and patches it into state.
@@ -1046,7 +1061,6 @@ function App() {
   const currentMap     = useMemo(() => maps.find(m => m.id === activeMapId),                                          [maps, activeMapId]);
   const mapPOIs        = useMemo(() => pois.filter(p => p.map_id === activeMapId && (isGM || p.revealed)),            [pois, activeMapId, isGM]);
   const mapMarkers     = useMemo(() => markers.filter(m => m.map_id === activeMapId),                                 [markers, activeMapId]);
-  const mapAnnotations = useMemo(() => annotations.filter(a => a.map_id === activeMapId && (isGM || a.visible)),      [annotations, activeMapId, isGM]);
   const myMarkers      = useMemo(() => markers.filter(m => m.map_id === activeMapId && m.user_id === user?.id),       [markers, activeMapId, user?.id]);
   const takenColors    = useMemo(() => members.filter(m => m.user_id !== user?.id && m.player_color).map(m => m.player_color), [members, user?.id]);
   const mapOverlays    = useMemo(() => overlays.filter(o => o.map_id === activeMapId),                                [overlays, activeMapId]);
@@ -1055,7 +1069,7 @@ function App() {
   const accessibleMaps = useMemo(() => maps.filter(m => isGM || m.is_main || m.player_accessible),                   [maps, isGM]);
   const mainMap        = useMemo(() => maps.find(m => m.is_main) || maps[0],                                          [maps]);
   // POIs fade out as user zooms toward the fit scale; fully visible at 2× fit zoom
-  const poiOpacity = fitScale > 0 ? Math.min(1, Math.max(0, (transform.scale / fitScale) - 1)) : 1;
+  const poiOpacity = fitScale > 0 ? Math.min(1, Math.max(0.15, (transform.scale / fitScale) - 1)) : 1;
 
   // Viewport culling — map-coordinate bounds of what's currently visible on screen.
   // Entities outside this rect are not rendered at all (saves DOM nodes on large maps).
@@ -1271,7 +1285,6 @@ function App() {
           if (!myColor && !isGM) { setShowColorPicker(true); setPlacingMode(null); return; }
           setMarkerForm({ x: coords.x, y: coords.y });
         }
-        if (mode === "annotation") setAnnotationForm({ ann: null, x: coords.x, y: coords.y });
       }
     }
     window.addEventListener("mousemove", onMove); window.addEventListener("mouseup", onUp);
@@ -1405,19 +1418,6 @@ function App() {
       setCategoryIcons(prev => { const n = {...prev}; delete n[catId]; return n; });
     } catch(e) { setError(e.message); }
   }
-  async function saveAnnotation(form, type, content) {
-    try {
-      if (form.ann) { await dbUpdate(session.access_token, "annotations", form.ann.id, { type, content }); setAnnotations(prev=>prev.map(a=>a.id===form.ann.id?{...a,type,content}:a)); }
-      else { const [na] = await dbInsert(session.access_token, "annotations", { campaign_id: activeCampaign.id, map_id: activeMapId, type, content, visible: false, x: form.x, y: form.y }); setAnnotations(prev=>[...prev,na]); }
-      setAnnotationForm(null);
-    } catch(e) { setError(e.message); }
-  }
-  async function toggleAnnotation(id, current) {
-    try { await dbUpdate(session.access_token, "annotations", id, { visible: !current }); setAnnotations(prev=>prev.map(a=>a.id===id?{...a,visible:!current}:a)); } catch(e) { setError(e.message); }
-  }
-  async function deleteAnnotation(id) {
-    try { await dbDelete(session.access_token, "annotations", id); setAnnotations(prev=>prev.filter(a=>a.id!==id)); setAnnotationForm(null); } catch(e) { setError(e.message); }
-  }
   async function uploadMap(file) {
     const isFirst = maps.length === 0;
     try {
@@ -1432,11 +1432,16 @@ function App() {
     } catch(e) { setError(e.message); }
   }
   async function setMainMap(id) {
-    try { for (const m of maps) await dbUpdate(session.access_token, "maps", m.id, { is_main: m.id===id }); setMaps(prev=>prev.map(m=>({...m,is_main:m.id===id}))); } catch(e) { setError(e.message); }
+    try {
+      // Clear all in one call, then set the new main — prevents partial failure leaving two is_main=true
+      await fetch(`${SUPA_URL}/rest/v1/maps?campaign_id=eq.${activeCampaign.id}`,
+        { method:"PATCH", headers:hdrs(session.access_token), body:JSON.stringify({ is_main: false }) });
+      await dbUpdate(session.access_token, "maps", id, { is_main: true });
+      setMaps(prev => prev.map(m => ({ ...m, is_main: m.id === id })));
+    } catch(e) { setError(e.message); }
   }
   async function deleteMap(id) {
-    if (!window.confirm("Delete this map?")) return;
-    try { await dbDelete(session.access_token, "maps", id); const remaining = maps.filter(m=>m.id!==id); setMaps(remaining); if (activeMapId===id) switchToMap(remaining[0]?.id||null); } catch(e) { setError(e.message); }
+    try { await dbDelete(session.access_token, "maps", id); const remaining = maps.filter(m=>m.id!==id); setMaps(remaining); if (activeMapId===id) switchToMap(remaining[0]?.id||null); setMapDeleteConfirm(null); } catch(e) { setError(e.message); }
   }
   // Central map-switch helper — fades the map out, switches, then reveals when image loads.
   function switchToMap(id, { push = false } = {}) {
@@ -1485,7 +1490,7 @@ function App() {
       switchToMap(notif.map_id);
       pendingFocusRef.current = { x: notif.x, y: notif.y };
     } else {
-      const targetScale = Math.max(fitScale*2.5, 1);
+      const targetScale = Math.max(fitScale*2.75, 1);
       const rect = mapRef.current?.getBoundingClientRect()||{width:800,height:500};
       setTransform({ scale:targetScale, x:rect.width/2-notif.x*targetScale, y:rect.height/2-notif.y*targetScale });
     }
@@ -1727,7 +1732,8 @@ function App() {
         <Btn size="sm" onClick={async()=>{await signOut(session.access_token);setUser(null);setSession(null);}}>Sign out</Btn>
       </div>
       {error && <div style={{ background:"#f5d5d5",color:T.danger,padding:"9px 14px",borderRadius:10,marginBottom:14,fontSize:13,border:`1px solid ${T.danger}44` }}>{error}<button onClick={()=>setError("")} style={{ marginLeft:8,border:"none",background:"none",cursor:"pointer",color:T.danger }}>✕</button></div>}
-      {campaigns.length===0 && <p style={{ color:T.muted,fontSize:13,marginBottom:16,fontStyle:"italic" }}>No campaigns yet. Create one or join with a campaign ID from your GM.</p>}
+      {campaignLoading && <div style={{ display:"flex",alignItems:"center",justifyContent:"center",padding:"32px 0",gap:12,color:T.muted,fontSize:13 }}><span style={{ animation:"spin 1s linear infinite",display:"inline-block",fontSize:20 }}>⟳</span> Loading campaign…</div>}
+      {!campaignLoading && campaigns.length===0 && <p style={{ color:T.muted,fontSize:13,marginBottom:16,fontStyle:"italic" }}>No campaigns yet. Create one or join with a campaign ID from your GM.</p>}
       {campaigns.map(c=>(
         <div key={c.id} onClick={()=>loadCampaignData(c,c.myRole)}
           style={{ padding:"16px 18px",background:T.surface,borderRadius:12,marginBottom:10,cursor:"pointer",border:`1.5px solid ${T.border}`,boxShadow:"0 2px 8px rgba(26,16,53,0.07)",transition:"border-color 0.15s",position:"relative" }}
@@ -2286,13 +2292,6 @@ function App() {
                       </div>
                     );
                   })}
-                  {mapAnnotations.map(a=>(
-                    <div key={a.id} onClick={e=>{e.stopPropagation();if(dragRef.current.moved)return;if(isGM)toggleAnnotation(a.id,a.visible);}}
-                      style={{ position:"absolute",left:Math.min(a.x,(imgSize.w||800)-210),top:Math.max(0,a.y),maxWidth:200,background:"rgba(255,255,255,0.95)",border:`1.5px solid ${a.visible?"#1D9E75":"#BA7517"}`,borderRadius:8,padding:"6px 8px",cursor:isGM?"pointer":"default",fontSize:12,zIndex:30 }}>
-                      <div style={{ color:"#111" }}>{a.content}</div>
-                      {isGM && <div style={{ fontSize:10,color:a.visible?"#0F6E56":"#854F0B",marginTop:3 }}>{a.visible?"Visible — tap to hide":"Hidden — tap to show"}</div>}
-                    </div>
-                  ))}
                   {mapMarkers.filter(m=>inViewport(m.x, m.y) && isVisible("players", m.user_id)).map(m => {
                     const isOwner = m.user_id === user.id;
                     const memberInfo = members.find(mb => mb.user_id === m.user_id);
@@ -2583,7 +2582,7 @@ function App() {
                             {m.player_accessible?"🔓 Open":"🔒 Locked"}
                           </button>
                         )}
-                        <Btn size="sm" variant="danger" onClick={()=>deleteMap(m.id)}>Delete</Btn>
+                        <Btn size="sm" variant="danger" onClick={()=>setMapDeleteConfirm(m.id)}>Delete</Btn>
                       </div>
                     </div>
                   </div>
@@ -2598,13 +2597,16 @@ function App() {
                 <Btn size="sm" variant="primary" onClick={()=>{setNpcForm({npc:null,name:"",status:"Alive",border_color:"#C9A84C",aura_radius:80,show_name:true,show_status:true,show_aura:true,is_visible_to_players:false,x:200,y:200});setTab("map");}}>＋ Add NPC</Btn>
               </div>
               <p style={{ fontSize:12,color:T.muted,marginBottom:14 }}>NPC nodes appear on the map as draggable icons. Fields can be individually hidden from players (shown as "???").</p>
-              {npcs.filter(n=>n.map_id===activeMapId).length===0 && <p style={{ color:T.muted,fontSize:13,fontStyle:"italic" }}>No NPCs on this map yet.</p>}
-              {npcs.filter(n=>n.map_id===activeMapId).map(npc=>(
+              {npcs.length===0 && <p style={{ color:T.muted,fontSize:13,fontStyle:"italic" }}>No NPCs in this campaign yet.</p>}
+              {npcs.map(npc=>{
+                const npcMapName = maps.find(m=>m.id===npc.map_id)?.name || "Unknown map";
+                const onCurrentMap = npc.map_id === activeMapId;
+                return (
                 <div key={npc.id} style={{ display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:T.surface,borderRadius:10,marginBottom:8,border:`1px solid ${T.border}` }}>
                   <div style={{ width:28,height:28,borderRadius:"50%",background:`${npc.border_color}28`,border:`2.5px solid ${npc.border_color}`,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13 }}>👤</div>
                   <div style={{ flex:1,minWidth:0 }}>
                     <div style={{ fontSize:13,fontWeight:600,color:T.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{npc.name}</div>
-                    <div style={{ fontSize:11,color:T.muted }}>{npc.status} · aura {npc.aura_radius}px</div>
+                    <div style={{ fontSize:11,color:T.muted }}>{npc.status} · {onCurrentMap ? "this map" : npcMapName}</div>
                   </div>
                   <button onClick={()=>{ const n=npcs.find(x=>x.id===npc.id); if(n){setNpcForm({npc:n,...n});setTab("map");} }}
                     style={{ padding:"4px 10px",borderRadius:20,border:"none",background:npc.is_visible_to_players?"#EAF3DE":"#FEF3E2",color:npc.is_visible_to_players?"#3B6D11":"#854F0B",fontSize:11,fontWeight:600,cursor:"pointer",flexShrink:0 }}>
@@ -2612,7 +2614,8 @@ function App() {
                   </button>
                   <Btn size="sm" onClick={()=>{const n=npcs.find(x=>x.id===npc.id);if(n) setNpcForm({npc:n,...n});}}>Edit</Btn>
                 </div>
-              ))}
+                );
+              })}
             </>}
 
 
@@ -2705,7 +2708,6 @@ function App() {
         onClose={()=>setZoneForm(null)} />}
       {poiForm && <POIFormModal form={poiForm} categoryIcons={categoryIcons} maps={maps} onSave={savePOI} onDelete={deletePOI} onDuplicate={duplicatePOI} onClose={()=>setPoiForm(null)} />}
       {markerForm && <MarkerFormModal form={markerForm} onSave={saveMarker} onEdit={editMarker} onCancel={()=>setMarkerForm(null)} />}
-      {annotationForm && <AnnotationModal form={annotationForm} onSave={saveAnnotation} onDelete={deleteAnnotation} onCancel={()=>setAnnotationForm(null)} />}
 
       {/* Bell — notification history panel */}
       {showBell && (
@@ -2717,7 +2719,7 @@ function App() {
           {isGM && (
             <div style={{ display:"flex",alignItems:"center",gap:8,padding:"6px 14px",borderBottom:`0.5px solid ${T.border}`,background:T.surface,flexShrink:0 }}>
               <span style={{ fontSize:11,color:T.muted,whiteSpace:"nowrap" }}>Keep last</span>
-              <input type="range" min={5} max={40} step={1} value={notifLimit} onChange={e=>setNotifLimit(Number(e.target.value))} style={{ flex:1 }} />
+              <input type="range" min={5} max={40} step={1} value={notifLimit} onChange={e=>{ const v=Number(e.target.value); setNotifLimit(v); dbUpdate(session.access_token,"campaigns",activeCampaign.id,{notif_limit:v}).catch(()=>{}); }} style={{ flex:1 }} />
               <span style={{ fontSize:11,color:T.muted,minWidth:24,textAlign:"right" }}>{notifLimit}</span>
             </div>
           )}
@@ -2763,6 +2765,21 @@ function App() {
       </div>
 
       {/* Portal travel is now handled inline inside the POI popup card */}
+
+      {/* ── Map delete confirmation modal ── */}
+      {mapDeleteConfirm && (()=>{ const mName = maps.find(m=>m.id===mapDeleteConfirm)?.name || "this map"; return (
+        <div style={{ position:"fixed",inset:0,zIndex:9000,display:"flex",alignItems:"center",justifyContent:"center",padding:16,background:"rgba(10,5,20,0.75)" }} onClick={()=>setMapDeleteConfirm(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:T.bg,border:`2px solid ${T.danger}`,borderRadius:14,padding:"24px 24px 20px",maxWidth:360,width:"100%",boxShadow:"0 12px 48px rgba(0,0,0,0.6)" }}>
+            <div style={{ fontFamily:T.fHead,fontSize:15,fontWeight:700,color:T.danger,marginBottom:8 }}>⚠️ Delete Map</div>
+            <div style={{ fontSize:13,color:T.ink,marginBottom:6 }}>Delete <strong>"{mName}"</strong>?</div>
+            <div style={{ fontSize:12,color:T.muted,marginBottom:18,lineHeight:1.5 }}>All POIs, zones, overlays, and NPCs on this map will be permanently removed.</div>
+            <div style={{ display:"flex",gap:10 }}>
+              <button onClick={()=>deleteMap(mapDeleteConfirm)} style={{ flex:1,padding:"9px 0",borderRadius:20,border:"none",background:T.danger,color:"#fff",fontFamily:T.fHead,fontSize:13,fontWeight:700,cursor:"pointer" }}>Delete Forever</button>
+              <button onClick={()=>setMapDeleteConfirm(null)} style={{ flex:1,padding:"9px 0",borderRadius:20,border:`1px solid ${T.border}`,background:"transparent",color:T.muted,fontSize:13,cursor:"pointer" }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      ); })()}
 
       {/* ── Campaign delete confirmation modal ── */}
       {campDeleteConfirm && (
@@ -3061,20 +3078,6 @@ function MarkerFormModal({ form, onSave, onEdit, onCancel }) {
   );
 }
 
-function AnnotationModal({ form, onSave, onDelete, onCancel }) {
-  const [content, setContent] = useState(form.ann?.content||"");
-  return (
-    <Modal title={form.ann?"Edit Note":"New Note"} onClose={onCancel} width={360}>
-      <Field label="Note text"><textarea value={content} onChange={e=>setContent(e.target.value)} rows={4} style={IS} autoFocus={!isTouchDevice} placeholder="GM note visible on map..." /></Field>
-      <div style={{ display:"flex",gap:8 }}>
-        <Btn variant="primary" onClick={()=>onSave(form,form.ann?.type||"text",content)} style={{ flex:1 }}>Save</Btn>
-        {form.ann&&<Btn variant="danger" onClick={()=>onDelete(form.ann.id)}>Delete</Btn>}
-        <Btn onClick={onCancel}>Cancel</Btn>
-      </div>
-    </Modal>
-  );
-}
-
 // ── Global CSS injections ──────────────────────────────────────────────────────
 (function injectStyles() {
   const s = document.createElement("style");
@@ -3111,6 +3114,7 @@ function AnnotationModal({ form, onSave, onDelete, onCancel }) {
       from { opacity: 0; transform: translateX(36px); }
       to   { opacity: 1; transform: translateX(0); }
     }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #B8A88A; border-radius: 3px; }
