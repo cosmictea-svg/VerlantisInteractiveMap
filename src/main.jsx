@@ -149,13 +149,13 @@ const CATEGORIES = [
   { id: "merchant",   label: "Merchants",         color: "#FFD700" },
   { id: "entertain",  label: "Entertainment",     color: "#9B59B6" },
   { id: "guild",      label: "Guilds",            color: "#C0C0C0" },
-  { id: "inn",        label: "Inns / Taverns",    color: "#2ECC71" },
+  { id: "inn",        label: "Inns / Taverns",    color: "#E8A317" },
   { id: "craft",      label: "Craftsmen",         color: "#E67E22" },
   { id: "government", label: "Government",        color: "#3498DB" },
   { id: "public",     label: "Public Services",   color: "#90CAF9" },
   { id: "security",   label: "Security",          color: "#E74C3C" },
   { id: "religion",   label: "Religion",          color: "#00BCD4" },
-  { id: "landmark",   label: "Landmark / Nature", color: "#4CAF50" },
+  { id: "landmark",   label: "Landmark / Nature", color: "#2E7D32" },
   { id: "sewer",      label: "Sewer",             color: "#795548" },
   { id: "arena",      label: "Arena",             color: "#FF5722" },
   { id: "jail",       label: "Jail",              color: "#546E7A" },
@@ -442,6 +442,7 @@ function App() {
   const [portalConfirm, setPortalConfirm] = useState(null); // { poi, targetMap }
   const [announcements, setAnnouncements] = useState([]);
   const [notifLog, setNotifLog] = useState([]);
+  const [notifLimit, setNotifLimit] = useState(() => { try { return parseInt(localStorage.getItem("notif_limit")||"20")||20; } catch { return 20; } });
   const [toasts, setToasts] = useState([]);
   const [showBell, setShowBell] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -465,6 +466,8 @@ function App() {
   const npcDragState = useRef(null);
   const soundVolumeRef = useRef(0.5);
   const npcsRef = useRef([]);
+  const pendingFocusRef = useRef(null); // { x, y } applied after map image loads
+  const notifLimitRef = useRef(20);
 
   useEffect(() => { placingRef.current = placingMode; }, [placingMode]);
   useEffect(() => { transformRef.current = transform; }, [transform]);
@@ -473,6 +476,7 @@ function App() {
   useEffect(() => { sessionRef.current = session; }, [session]);
   useEffect(() => { zonesRef.current = zones; }, [zones]);
   useEffect(() => { soundVolumeRef.current = soundVolume; localStorage.setItem("sound_volume", String(soundVolume)); }, [soundVolume]);
+  useEffect(() => { notifLimitRef.current = notifLimit; localStorage.setItem("notif_limit", String(notifLimit)); }, [notifLimit]);
   useEffect(() => { npcsRef.current = npcs; }, [npcs]);
   // Restore per-user overlay opacity/visibility and master zone opacity from localStorage
   useEffect(() => {
@@ -608,17 +612,24 @@ function App() {
       },
       onNotifLog: (payload) => {
         if (payload.eventType === "INSERT") {
-          setNotifLog(p => p.find(x => x.id === payload.new.id) ? p : [payload.new, ...p]);
-          // Only show toast + sound for players (GM triggered the event, they don't need it)
+          setNotifLog(prev => {
+            if (prev.find(x => x.id === payload.new.id)) return prev;
+            const next = [payload.new, ...prev];
+            // Trim to limit (client side — GM's logNotif handles DB deletion for its own inserts)
+            return next.slice(0, notifLimitRef.current);
+          });
           if (memberRole !== "gm" && payload.new.type !== "announcement") {
             setUnreadCount(c => c + 1);
             playSound(payload.new.type);
             const label = payload.new.type === "poi_revealed" ? `📍 ${payload.new.title} revealed`
                         : payload.new.type === "poi_hidden"   ? `🙈 ${payload.new.title} hidden`
+                        : payload.new.type === "marker_placed"? `📌 ${payload.new.message || payload.new.title}`
+                        : payload.new.type === "npc_moved"    ? `👤 ${payload.new.message || payload.new.title}`
                         : payload.new.message || payload.new.title || "Update";
             addToast(label, payload.new.type);
           }
         }
+        if (payload.eventType === "DELETE") setNotifLog(p => p.filter(x => x.id !== payload.old?.id));
       },
       onMap: (payload) => {
         if (payload.eventType === "INSERT") setMaps(p => p.find(x => x.id === payload.new.id) ? p : [...p, payload.new]);
@@ -790,7 +801,7 @@ function App() {
   async function saveZone(form, imageFile) {
     let image_url = form.clearImage ? null : (form.zone?.image_url || null);
     if (imageFile) { try { image_url = await uploadToStorage(session.access_token, imageFile); } catch { image_url = await readFile(imageFile); } }
-    const body = { name: form.name || "Zone", points: form.points, fill_color: form.fill_color || "#3498DB", image_url, opacity: form.opacity ?? 80, revealed: form.revealed || false, image_scale: form.image_scale ?? 100, image_repeat: form.image_repeat ?? false };
+    const body = { name: form.name || "Zone", points: form.points, fill_color: form.fill_color || "#3498DB", image_url, opacity: form.opacity ?? 80, revealed: form.revealed || false, image_scale: form.image_scale ?? 100, image_repeat: form.image_repeat ?? false, broadcast_location: form.broadcast_location ?? true };
     try {
       if (form.zone) {
         await dbUpdate(session.access_token, "zones", form.zone.id, body);
@@ -904,7 +915,18 @@ function App() {
   function resetView() { const fit = fitToContainer(imgSize.w, imgSize.h); setTransform(fit); setFitScale(fit.scale); }
   function onImgLoad(e) {
     const w = e.target.naturalWidth, h = e.target.naturalHeight;
-    setImgSize({ w, h }); const fit = fitToContainer(w, h); setTransform(fit); setFitScale(fit.scale);
+    setImgSize({ w, h });
+    const fit = fitToContainer(w, h);
+    setFitScale(fit.scale);
+    if (pendingFocusRef.current) {
+      const { x, y } = pendingFocusRef.current;
+      pendingFocusRef.current = null;
+      const targetScale = fit.scale * 2.5;
+      const rect = mapRef.current?.getBoundingClientRect() || { width: 800, height: 500 };
+      setTransform({ scale: targetScale, x: rect.width/2 - x*targetScale, y: rect.height/2 - y*targetScale });
+    } else {
+      setTransform(fit);
+    }
   }
   function toMapCoords(cx, cy) {
     const rect = getContainerRect(); const t = transformRef.current;
@@ -1092,8 +1114,10 @@ function App() {
         const wasRevealed = form.poi.revealed;
         if (body.revealed !== wasRevealed) {
           const label = body.name || form.poi.name || "A location";
-          if (body.revealed) logNotif("poi_revealed", label, `${label} has been revealed on the map`, form.poi.id);
-          else logNotif("poi_hidden", label, `${label} has been hidden`, form.poi.id);
+          const zCtx = getZoneContext(form.poi.x, form.poi.y, zonesRef.current.filter(z=>z.map_id===form.poi.map_id));
+          const coords = { x: form.poi.x, y: form.poi.y, mapId: form.poi.map_id };
+          if (body.revealed) logNotif("poi_revealed", label, zCtx ? `${label} revealed (${zCtx})` : `${label} has been revealed`, form.poi.id, coords);
+          else logNotif("poi_hidden", label, `${label} has been hidden`, form.poi.id, coords);
         }
       } else {
         const [np] = await dbInsert(session.access_token, "pois", { ...body, campaign_id: activeCampaign.id, map_id: activeMapId, x: form.x, y: form.y });
@@ -1116,12 +1140,14 @@ function App() {
       setPois(prev=>prev.map(p=>p.id===id?{...p,revealed:!current}:p));
       const poi = pois.find(p=>p.id===id);
       const label = poi?.name || "A location";
+      const zCtx = poi ? getZoneContext(poi.x, poi.y, zonesRef.current.filter(z=>z.map_id===poi.map_id)) : null;
+      const coords = poi ? { x:poi.x, y:poi.y, mapId:poi.map_id } : null;
       if (!current) {
-        logNotif("poi_revealed", label, `${label} has been revealed on the map`, id);
-        if (!isGM) { addToast(`📍 ${label} has been revealed`, "poi_revealed"); playSound("poi_revealed"); }
+        logNotif("poi_revealed", label, zCtx ? `${label} revealed (${zCtx})` : `${label} has been revealed`, id, coords);
+        if (!isGM) { addToast(`📍 ${label} revealed${zCtx?" ("+zCtx+")":""}`, "poi_revealed"); playSound("poi_revealed"); }
       } else {
-        logNotif("poi_hidden", label, `${label} has been hidden`, id);
-        if (!isGM) { addToast(`🙈 ${label} has been hidden`, "poi_hidden"); }
+        logNotif("poi_hidden", label, `${label} has been hidden`, id, coords);
+        if (!isGM) { addToast(`🙈 ${label} hidden`, "poi_hidden"); }
       }
     } catch(e) { setError(e.message); }
   }
@@ -1137,6 +1163,11 @@ function App() {
         x: markerForm.x, y: markerForm.y
       });
       setMarkers(prev=>[...prev,nm]); setMarkerForm(null);
+      // Notify everyone of new marker placement
+      const displayName = members.find(m=>m.user_id===user.id)?.display_name || user.user_metadata?.full_name || "A player";
+      const zCtx = getZoneContext(markerForm.x, markerForm.y, zonesRef.current.filter(z=>z.map_id===activeMapId));
+      const markerMsg = zCtx ? `${displayName} placed a marker ${zCtx}` : `${displayName} placed a marker`;
+      logNotif("marker_placed", label||`${displayName}'s Marker`, markerMsg, nm.id, { x:markerForm.x, y:markerForm.y, mapId:activeMapId });
     } catch(e) { setError(e.message); }
   }
   async function editMarker(marker, label, description) {
@@ -1192,6 +1223,38 @@ function App() {
   function goBack() { const prev=mapStack[mapStack.length-1]; setMapStack(s=>s.slice(0,-1)); setActiveMapId(prev||null); setTransform({x:0,y:0,scale:1}); setImgSize({w:0,h:0}); }
   function goHome() { setMapStack([]); const main=maps.find(m=>m.is_main)||maps[0]; if(main){setActiveMapId(main.id);setTransform({x:0,y:0,scale:1});setImgSize({w:0,h:0});} }
 
+  // ── Notification helpers ──
+  function pointInPolygon(x, y, points) {
+    let inside = false;
+    for (let i=0, j=points.length-1; i<points.length; j=i++) {
+      const xi=points[i].x, yi=points[i].y, xj=points[j].x, yj=points[j].y;
+      if (((yi>y)!==(yj>y)) && (x<(xj-xi)*(y-yi)/(yj-yi)+xi)) inside=!inside;
+    }
+    return inside;
+  }
+  function getZoneContext(x, y, zoneList) {
+    const hits = zoneList.filter(z => z.broadcast_location!==false && z.revealed && z.points?.length>=3 && pointInPolygon(x,y,z.points));
+    if (!hits.length) return null;
+    if (hits.length===1) return `in ${hits[0].name||"an unnamed zone"}`;
+    if (hits.length===2) return `between ${hits[0].name||"Zone"} & ${hits[1].name||"Zone"}`;
+    return `between multiple zones`;
+  }
+  function focusOnNotif(notif) {
+    if (notif.x==null || notif.y==null) return;
+    setShowBell(false);
+    setTab("map");
+    if (notif.map_id && notif.map_id !== activeMapId) {
+      setMapStack([]);
+      setActiveMapId(notif.map_id);
+      setTransform({x:0,y:0,scale:1}); setImgSize({w:0,h:0});
+      pendingFocusRef.current = { x: notif.x, y: notif.y };
+    } else {
+      const targetScale = Math.max(fitScale*2.5, 1);
+      const rect = mapRef.current?.getBoundingClientRect()||{width:800,height:500};
+      setTransform({ scale:targetScale, x:rect.width/2-notif.x*targetScale, y:rect.height/2-notif.y*targetScale });
+    }
+  }
+
   // ── Sound ──
   function playSound(type) {
     if (soundVolumeRef.current <= 0) return;
@@ -1229,9 +1292,22 @@ function App() {
   }
 
   // ── Notification log helper ──
-  function logNotif(type, title, message, relatedId) {
+  function logNotif(type, title, message, relatedId, coords) {
     if (!activeCampaign || !session) return;
-    dbInsert(session.access_token, "notification_log", { campaign_id: activeCampaign.id, type, title, message, related_id: relatedId }).catch(() => {});
+    const row = { campaign_id: activeCampaign.id, type, title, message, related_id: relatedId, map_id: coords?.mapId||activeMapId, x: coords?.x??null, y: coords?.y??null };
+    dbInsert(session.access_token, "notification_log", row).then(([inserted]) => {
+      // Trim oldest entries beyond the limit
+      const lim = notifLimitRef.current;
+      setNotifLog(prev => {
+        const next = prev.find(n=>n.id===inserted.id)?prev:[inserted,...prev];
+        if (next.length > lim) {
+          const excess = next.slice(lim);
+          excess.forEach(n => dbDelete(session.access_token, "notification_log", n.id).catch(()=>{}));
+          return next.slice(0, lim);
+        }
+        return next;
+      });
+    }).catch(()=>{});
   }
 
   // ── NPC CRUD ──
@@ -1276,7 +1352,12 @@ function App() {
       } else {
         dbUpdate(session.access_token,"npcs",npcId,{x:mapX,y:mapY}).then(()=>{
           const n=npcsRef.current.find(n=>n.id===npcId);
-          if(n) logNotif("npc_moved", n.show_name?`${n.name} spotted`:"NPC sighted", `${n.show_name?n.name:"An NPC"} has been sighted in a new location`, npcId);
+          if(n) {
+            const zCtx = getZoneContext(mapX, mapY, zonesRef.current.filter(z=>z.map_id===n.map_id));
+            const npcTitle = n.show_name?`${n.name} spotted`:"NPC sighted";
+            const npcMsg = zCtx ? `${n.show_name?n.name:"An NPC"} has been sighted ${zCtx}` : `${n.show_name?n.name:"An NPC"} has been sighted in a new location`;
+            logNotif("npc_moved", npcTitle, npcMsg, npcId, { x:mapX, y:mapY, mapId:n.map_id });
+          }
         }).catch(console.error);
       }
     }
@@ -2215,20 +2296,38 @@ function App() {
 
       {/* Bell — notification history panel */}
       {showBell && (
-        <div style={{ position:"fixed",top:48,right:8,zIndex:3000,width:Math.min(320,window.innerWidth-16),background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:10,boxShadow:"0 8px 32px rgba(26,16,53,0.25)",overflow:"hidden" }}>
-          <div style={{ display:"flex",alignItems:"center",padding:"10px 14px",borderBottom:`1px solid ${T.border}`,background:T.header }}>
+        <div style={{ position:"fixed",top:48,right:8,zIndex:3000,width:Math.min(340,window.innerWidth-16),background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:10,boxShadow:"0 8px 32px rgba(26,16,53,0.25)",overflow:"hidden",display:"flex",flexDirection:"column",maxHeight:"75vh" }}>
+          <div style={{ display:"flex",alignItems:"center",padding:"10px 14px",borderBottom:`1px solid ${T.border}`,background:T.header,flexShrink:0 }}>
             <span style={{ fontFamily:T.fHead,fontSize:13,fontWeight:600,color:T.headerFg,flex:1 }}>Notifications</span>
-            <button onClick={()=>setShowBell(false)} style={{ background:"none",border:"none",color:T.headerFg,cursor:"pointer",fontSize:16,padding:0 }}>✕</button>
+            <button onClick={()=>setShowBell(false)} style={{ background:"none",border:"none",color:T.headerFg,cursor:"pointer",fontSize:16,padding:0,lineHeight:1 }}>✕</button>
           </div>
-          <div style={{ maxHeight:360,overflowY:"auto",padding:"6px 0" }}>
+          {isGM && (
+            <div style={{ display:"flex",alignItems:"center",gap:8,padding:"6px 14px",borderBottom:`0.5px solid ${T.border}`,background:T.surface,flexShrink:0 }}>
+              <span style={{ fontSize:11,color:T.muted,whiteSpace:"nowrap" }}>Keep last</span>
+              <input type="range" min={5} max={40} step={1} value={notifLimit} onChange={e=>setNotifLimit(Number(e.target.value))} style={{ flex:1 }} />
+              <span style={{ fontSize:11,color:T.muted,minWidth:24,textAlign:"right" }}>{notifLimit}</span>
+            </div>
+          )}
+          <div style={{ overflowY:"auto",flex:1,padding:"4px 0" }}>
             {notifLog.length===0 && <p style={{ padding:"10px 14px",color:T.muted,fontSize:13,fontStyle:"italic" }}>No notifications yet.</p>}
-            {notifLog.map(n=>(
-              <div key={n.id} style={{ padding:"8px 14px",borderBottom:`0.5px solid ${T.border}` }}>
-                <div style={{ fontSize:12,fontWeight:500,color:T.ink }}>{n.title||"Notification"}</div>
-                {n.message && <div style={{ fontSize:11,color:T.muted,marginTop:2 }}>{n.message}</div>}
-                <div style={{ fontSize:10,color:T.muted,marginTop:3 }}>{new Date(n.created_at).toLocaleDateString(undefined,{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}</div>
-              </div>
-            ))}
+            {notifLog.map(n=>{
+              const icon = n.type==="announcement"?"📜":n.type==="poi_revealed"?"📍":n.type==="poi_hidden"?"🙈":n.type==="npc_moved"?"👤":n.type==="marker_placed"?"📌":"🔔";
+              const canFocus = n.x!=null && n.y!=null;
+              return (
+                <div key={n.id}
+                  onClick={canFocus ? ()=>focusOnNotif(n) : undefined}
+                  style={{ display:"flex",gap:10,padding:"9px 14px",borderBottom:`0.5px solid ${T.border}`,cursor:canFocus?"pointer":"default",background:"transparent",transition:"background 0.12s" }}
+                  onMouseEnter={e=>{if(canFocus)e.currentTarget.style.background=T.surface}}
+                  onMouseLeave={e=>{e.currentTarget.style.background="transparent"}}>
+                  <span style={{ fontSize:16,flexShrink:0,lineHeight:1.4 }}>{icon}</span>
+                  <div style={{ flex:1,minWidth:0 }}>
+                    <div style={{ fontSize:12,fontWeight:600,color:T.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{n.title||"Notification"}</div>
+                    {n.message && <div style={{ fontSize:11,color:T.muted,marginTop:1,lineHeight:1.4 }}>{n.message}</div>}
+                    <div style={{ fontSize:10,color:T.muted,marginTop:3 }}>{new Date(n.created_at).toLocaleDateString(undefined,{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}{canFocus&&<span style={{ marginLeft:6,color:T.gold,fontSize:9 }}>tap to focus</span>}</div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -2322,6 +2421,7 @@ function ZoneFormModal({ form, onSave, onDelete, onAddPoint, onMovePoints, onClo
   const [clearImage, setClearImage] = useState(false);
   const [imageScale, setImageScale] = useState(form.zone?.image_scale ?? 100);
   const [imageRepeat, setImageRepeat] = useState(form.zone?.image_repeat ?? false);
+  const [broadcastLocation, setBroadcastLocation] = useState(form.zone?.broadcast_location ?? true);
   async function handleImage(f) { setImageFile(f); setClearImage(false); setImagePreview(await readFile(f)); }
   function removePoint(i) { if (points.length <= 3) return; setPoints(prev => prev.filter((_,idx) => idx !== i)); }
   return (
@@ -2391,8 +2491,15 @@ function ZoneFormModal({ form, onSave, onDelete, onAddPoint, onMovePoints, onClo
           </div>
         )}
       </Field>
-      <div style={{ display:"flex",gap:8,flexWrap:"wrap",marginTop:8 }}>
-        <Btn variant="primary" onClick={()=>onSave({...form,name,fill_color:fillColor,opacity,revealed,points,clearImage,image_scale:imageScale,image_repeat:imageRepeat},imageFile)} style={{ flex:1 }}>Save</Btn>
+      <label style={{ display:"flex",alignItems:"center",gap:8,fontSize:12,marginBottom:12,cursor:"pointer" }}>
+        <input type="checkbox" checked={broadcastLocation} onChange={e=>setBroadcastLocation(e.target.checked)} />
+        <span>
+          <strong>Broadcast as location</strong>
+          <span style={{ color:"#888",fontWeight:400 }}> — notifications will say "in [this zone]" when items appear here</span>
+        </span>
+      </label>
+      <div style={{ display:"flex",gap:8,flexWrap:"wrap" }}>
+        <Btn variant="primary" onClick={()=>onSave({...form,name,fill_color:fillColor,opacity,revealed,points,clearImage,image_scale:imageScale,image_repeat:imageRepeat,broadcast_location:broadcastLocation},imageFile)} style={{ flex:1 }}>Save</Btn>
         {isEdit && <Btn variant="danger" onClick={()=>onDelete(form.zone.id)}>Delete Zone</Btn>}
       </div>
     </Modal>
