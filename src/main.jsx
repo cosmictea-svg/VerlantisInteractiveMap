@@ -1083,16 +1083,25 @@ function App() {
   // ── POI drag ──
   function startPOIDrag(e, poi) {
     e.stopPropagation();
-    const startCx = e.touches ? e.touches[0].clientX : e.clientX;
-    const startCy = e.touches ? e.touches[0].clientY : e.clientY;
+    // Guard: don't allow drag if the map image hasn't loaded yet (scale would be wrong)
+    if (imgSizeRef.current.w === 0) return;
+    const touch0 = e.touches?.[0];
+    const startCx = touch0 ? touch0.clientX : e.clientX;
+    const startCy = touch0 ? touch0.clientY : e.clientY;
+    const touchId = touch0 ? touch0.identifier : null; // track by id, not array index
     const scaleAtStart = transformRef.current.scale;
-    poiDragState.current = { poiId: poi.id, originX: poi.x, originY: poi.y, startCx, startCy, scaleAtStart, moved: false, mapX: poi.x, mapY: poi.y };
+    poiDragState.current = { poiId: poi.id, originX: poi.x, originY: poi.y, startCx, startCy, touchId, scaleAtStart, moved: false, mapX: poi.x, mapY: poi.y };
     function onMove(ev) {
       if (!poiDragState.current) return;
-      const cx = ev.touches ? ev.touches[0].clientX : ev.clientX;
-      const cy = ev.touches ? ev.touches[0].clientY : ev.clientY;
+      // Always use the same touch finger by identifier, not by index
+      const touch = ev.touches
+        ? Array.from(ev.touches).find(t => t.identifier === poiDragState.current.touchId) ?? ev.touches[0]
+        : null;
+      const cx = touch ? touch.clientX : ev.clientX;
+      const cy = touch ? touch.clientY : ev.clientY;
       const dx = cx - poiDragState.current.startCx, dy = cy - poiDragState.current.startCy;
-      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) poiDragState.current.moved = true;
+      // Euclidean threshold (8px) consistent with marker drag — prevents accidental saves from finger wobble
+      if (Math.sqrt(dx * dx + dy * dy) > 8) poiDragState.current.moved = true;
       const nx = poiDragState.current.originX + dx / poiDragState.current.scaleAtStart;
       const ny = poiDragState.current.originY + dy / poiDragState.current.scaleAtStart;
       poiDragState.current.mapX = nx; poiDragState.current.mapY = ny;
@@ -1109,7 +1118,14 @@ function App() {
         const p = pois.find(p => p.id === poiId);
         if (p) setPoiForm({ poi: p, name: p.name, description: p.description, revealed: p.revealed, category: p.category || "other", size: p.size || "large" });
       } else {
-        dbUpdate(session.access_token, "pois", poiId, { x: mapX, y: mapY }).catch(console.error);
+        // Validate position is within map bounds before saving — catches any remaining edge cases
+        const { w, h } = imgSizeRef.current;
+        if (w > 0 && mapX >= 0 && mapX <= w && mapY >= 0 && mapY <= h) {
+          dbUpdate(sessionRef.current.access_token, "pois", poiId, { x: mapX, y: mapY }).catch(console.error);
+        } else {
+          // Out-of-bounds: revert silently so the POI snaps back
+          setPois(prev => prev.map(p => p.id === poiId ? { ...p, x: originX, y: originY } : p));
+        }
       }
     }
     window.addEventListener("mousemove", onMove); window.addEventListener("mouseup", onUp);
@@ -1117,19 +1133,24 @@ function App() {
   }
 
   // ── Marker drag (owner only) ──
-  // Fixed: uses distance threshold (>8px) so a clean tap reliably opens the card
   function startMarkerDrag(e, marker) {
     e.stopPropagation();
-    const startCx = e.touches ? e.touches[0].clientX : e.clientX;
-    const startCy = e.touches ? e.touches[0].clientY : e.clientY;
+    if (imgSizeRef.current.w === 0) return; // don't drag while map is loading
+    const touch0 = e.touches?.[0];
+    const startCx = touch0 ? touch0.clientX : e.clientX;
+    const startCy = touch0 ? touch0.clientY : e.clientY;
+    const touchId = touch0 ? touch0.identifier : null;
     const scaleAtStart = transformRef.current.scale;
-    markerDragState.current = { markerId: marker.id, originX: marker.x, originY: marker.y, startCx, startCy, scaleAtStart, moved: false, mapX: marker.x, mapY: marker.y };
+    markerDragState.current = { markerId: marker.id, originX: marker.x, originY: marker.y, startCx, startCy, touchId, scaleAtStart, moved: false, mapX: marker.x, mapY: marker.y };
     function onMove(ev) {
       if (!markerDragState.current) return;
-      const cx = ev.touches ? ev.touches[0].clientX : ev.clientX;
-      const cy = ev.touches ? ev.touches[0].clientY : ev.clientY;
+      const touch = ev.touches
+        ? Array.from(ev.touches).find(t => t.identifier === markerDragState.current.touchId) ?? ev.touches[0]
+        : null;
+      const cx = touch ? touch.clientX : ev.clientX;
+      const cy = touch ? touch.clientY : ev.clientY;
       const dx = cx - markerDragState.current.startCx, dy = cy - markerDragState.current.startCy;
-      // Distance threshold (8px) rather than per-axis so diagonal micro-movements don't cancel taps
+      // Euclidean threshold (8px) — diagonal micro-movements on mobile won't cancel taps
       if (Math.sqrt(dx * dx + dy * dy) > 8) markerDragState.current.moved = true;
       const nx = markerDragState.current.originX + dx / markerDragState.current.scaleAtStart;
       const ny = markerDragState.current.originY + dy / markerDragState.current.scaleAtStart;
@@ -1146,7 +1167,12 @@ function App() {
         setMarkers(prev => prev.map(m => m.id === markerId ? { ...m, x: originX, y: originY } : m));
         if (openMarkerCard === markerId) { closeMarkerCard(); } else { setOpenMarkerCard(markerId); }
       } else {
-        dbUpdate(session.access_token, "markers", markerId, { x: mapX, y: mapY }).catch(console.error);
+        const { w, h } = imgSizeRef.current;
+        if (w > 0 && mapX >= 0 && mapX <= w && mapY >= 0 && mapY <= h) {
+          dbUpdate(sessionRef.current.access_token, "markers", markerId, { x: mapX, y: mapY }).catch(console.error);
+        } else {
+          setMarkers(prev => prev.map(m => m.id === markerId ? { ...m, x: originX, y: originY } : m));
+        }
       }
     }
     window.addEventListener("mousemove", onMove); window.addEventListener("mouseup", onUp);
