@@ -1,5 +1,5 @@
 // Verlantis Interactive Map — credential test commit
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { createRoot } from "react-dom/client";
 
 const SUPA_URL = "https://iqmaumupuftguhurnsdt.supabase.co";
@@ -315,7 +315,7 @@ function POIPin({ poi, scale, isGM, onTap, onDragStart, resolvedIconUrl, poiOpac
 }
 
 // ── Profile Tab ───────────────────────────────────────────────────────────────
-function ProfileTab({ user, members, myColor, takenColors, isGM, onColorChange, onSaveDisplayName, soundVolume, onVolumeChange, markers, activeMapId, markerLimit, onMarkerLimitChange, onKickPlayer }) {
+function ProfileTab({ user, members, myColor, takenColors, isGM, onColorChange, onSaveDisplayName, soundVolume, onVolumeChange, markers, activeMapId, markerLimit, onMarkerLimitChange, onKickPlayer, onLeaveCampaign }) {
   const me = members.find(m => m.user_id === user.id);
   const [displayName, setDisplayName] = useState(me?.display_name || "");
   const [saved, setSaved] = useState(false);
@@ -387,7 +387,14 @@ function ProfileTab({ user, members, myColor, takenColors, isGM, onColorChange, 
         <div style={{ fontFamily:T.fHead,fontWeight:600,fontSize:13,color:T.ink,marginBottom:8,letterSpacing:"0.03em" }}>Account</div>
         <div style={{ fontSize:13,color:T.ink,fontWeight:500 }}>{user.user_metadata?.full_name || "—"}</div>
         <div style={{ fontSize:12,color:T.muted,marginTop:2 }}>{user.email}</div>
-        <div style={{ fontSize:11,color:T.muted,marginTop:6,padding:"3px 10px",background:isGM?`${T.gold}20`:T.bg,borderRadius:20,display:"inline-block",border:`1px solid ${isGM?`${T.gold}44`:T.border}`,color:isGM?T.goldDim:T.muted,fontWeight:600 }}>{isGM ? "Game Master" : "Player"}</div>
+        <div style={{ display:"flex",alignItems:"center",gap:10,marginTop:8,flexWrap:"wrap" }}>
+          <div style={{ fontSize:11,color:T.muted,padding:"3px 10px",background:isGM?`${T.gold}20`:T.bg,borderRadius:20,border:`1px solid ${isGM?`${T.gold}44`:T.border}`,color:isGM?T.goldDim:T.muted,fontWeight:600 }}>{isGM ? "👑 Game Master" : "⚔ Player"}</div>
+          {!isGM && onLeaveCampaign && (
+            <Btn size="sm" variant="danger" onClick={()=>{ if(window.confirm("Leave this campaign? Your markers will be removed.")) onLeaveCampaign(); }}>
+              Leave Campaign
+            </Btn>
+          )}
+        </div>
       </div>
 
       {/* Campaign roster — visible to everyone */}
@@ -759,8 +766,27 @@ function App() {
       await fetch(`${SUPA_URL}/rest/v1/campaign_members?campaign_id=eq.${activeCampaign.id}&user_id=eq.${userId}`, {
         method: "DELETE", headers: hdrs(session.access_token)
       });
+      // DB trigger (trg_clean_on_member_remove) deletes the player's markers automatically.
       setMembers(prev => prev.filter(m => m.user_id !== userId));
+      setMarkers(prev => prev.filter(m => m.user_id !== userId));
     } catch(e) { setError(e.message); }
+  }
+
+  async function leaveCampaign() {
+    if (!activeCampaign) return;
+    try {
+      const res = await fetch(`${SUPA_URL}/rest/v1/rpc/leave_campaign`, {
+        method: "POST", headers: hdrs(session.access_token),
+        body: JSON.stringify({ p_campaign_id: activeCampaign.id })
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Could not leave campaign."); }
+      // Return to campaign list
+      if (realtimeRef.current) realtimeRef.current.unsubscribe();
+      setActiveCampaign(null); setMemberRole(""); setMembers([]); setMaps([]); setPois([]);
+      setMarkers([]); setZones([]); setNpcs([]); setOverlays([]); setAnnotations([]);
+      setAnnouncements([]); setNotifLog([]); setTab("map");
+      await loadCampaigns();
+    } catch(e) { setError(e.message || "Could not leave campaign."); }
   }
 
   async function saveDisplayName(name) {
@@ -935,17 +961,18 @@ function App() {
   }
 
   const isGM = memberRole === "gm";
-  const currentMap = maps.find(m => m.id === activeMapId);
-  const mapPOIs = pois.filter(p => p.map_id === activeMapId && (isGM || p.revealed));
-  const mapMarkers = markers.filter(m => m.map_id === activeMapId);
-  const mapAnnotations = annotations.filter(a => a.map_id === activeMapId && (isGM || a.visible));
-  const myMarkers = markers.filter(m => m.map_id === activeMapId && m.user_id === user?.id);
-  const takenColors = members.filter(m => m.user_id !== user?.id && m.player_color).map(m => m.player_color);
-  const mapOverlays = overlays.filter(o => o.map_id === activeMapId);
-  const mapZones = zones.filter(z => z.map_id === activeMapId);
-  const mapNPCs = npcs.filter(n => n.map_id === activeMapId && (isGM || n.is_visible_to_players));
-  const accessibleMaps = maps.filter(m => isGM || m.is_main || m.player_accessible);
-  const mainMap = maps.find(m => m.is_main) || maps[0];
+  // ── Memoised derived data — only recompute when their dependencies change ──
+  const currentMap     = useMemo(() => maps.find(m => m.id === activeMapId),                                          [maps, activeMapId]);
+  const mapPOIs        = useMemo(() => pois.filter(p => p.map_id === activeMapId && (isGM || p.revealed)),            [pois, activeMapId, isGM]);
+  const mapMarkers     = useMemo(() => markers.filter(m => m.map_id === activeMapId),                                 [markers, activeMapId]);
+  const mapAnnotations = useMemo(() => annotations.filter(a => a.map_id === activeMapId && (isGM || a.visible)),      [annotations, activeMapId, isGM]);
+  const myMarkers      = useMemo(() => markers.filter(m => m.map_id === activeMapId && m.user_id === user?.id),       [markers, activeMapId, user?.id]);
+  const takenColors    = useMemo(() => members.filter(m => m.user_id !== user?.id && m.player_color).map(m => m.player_color), [members, user?.id]);
+  const mapOverlays    = useMemo(() => overlays.filter(o => o.map_id === activeMapId),                                [overlays, activeMapId]);
+  const mapZones       = useMemo(() => zones.filter(z => z.map_id === activeMapId),                                   [zones, activeMapId]);
+  const mapNPCs        = useMemo(() => npcs.filter(n => n.map_id === activeMapId && (isGM || n.is_visible_to_players)), [npcs, activeMapId, isGM]);
+  const accessibleMaps = useMemo(() => maps.filter(m => isGM || m.is_main || m.player_accessible),                   [maps, isGM]);
+  const mainMap        = useMemo(() => maps.find(m => m.is_main) || maps[0],                                          [maps]);
   // POIs fade out as user zooms toward the fit scale; fully visible at 2× fit zoom
   const poiOpacity = fitScale > 0 ? Math.min(1, Math.max(0, (transform.scale / fitScale) - 1)) : 1;
 
@@ -1441,25 +1468,29 @@ function App() {
   }
 
   // ── Keyboard shortcuts ──
+  // Store all values the handler reads in a ref so the listener only binds once.
+  const keyStateRef = useRef({});
+  keyStateRef.current = { tab, poiForm, markerForm, zoneForm, npcForm, announceForm, showFilter, showBell, placingMode, portalConfirm };
   useEffect(() => {
     function onKey(e) {
       if (e.target.tagName==="INPUT"||e.target.tagName==="TEXTAREA"||e.target.tagName==="SELECT") return;
+      const s = keyStateRef.current;
       if (e.key==="Escape") {
-        if (portalConfirm) { setPortalConfirm(null); return; }
-        if (poiForm) { setPoiForm(null); return; }
-        if (markerForm) { setMarkerForm(null); return; }
-        if (zoneForm) { setZoneForm(null); return; }
-        if (npcForm) { setNpcForm(null); return; }
-        if (announceForm) { setAnnounceForm(null); return; }
-        if (showFilter) { setShowFilter(false); return; }
-        if (showBell) { setShowBell(false); return; }
-        if (placingMode) { setPlacingMode(null); setPlacingZonePoints(null); return; }
+        if (s.portalConfirm) { setPortalConfirm(null); return; }
+        if (s.poiForm) { setPoiForm(null); return; }
+        if (s.markerForm) { setMarkerForm(null); return; }
+        if (s.zoneForm) { setZoneForm(null); return; }
+        if (s.npcForm) { setNpcForm(null); return; }
+        if (s.announceForm) { setAnnounceForm(null); return; }
+        if (s.showFilter) { setShowFilter(false); return; }
+        if (s.showBell) { setShowBell(false); return; }
+        if (s.placingMode) { setPlacingMode(null); setPlacingZonePoints(null); return; }
       }
-      if ((e.key==="f"||e.key==="F") && tab==="map") { e.preventDefault(); resetView(); }
+      if ((e.key==="f"||e.key==="F") && s.tab==="map") { e.preventDefault(); resetView(); }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [tab, poiForm, markerForm, zoneForm, npcForm, announceForm, showFilter, showBell, placingMode, portalConfirm]);
+  }, []); // intentional empty deps — reads live values via keyStateRef
 
   // Card positions
   const openPOI = mapPOIs.find(p=>p.id===openPOICard);
@@ -2399,6 +2430,7 @@ function App() {
             markerLimit={markerLimit}
             onMarkerLimitChange={v=>{ setMarkerLimit(v); updateMarkerLimit(v); }}
             onKickPlayer={kickPlayer}
+            onLeaveCampaign={leaveCampaign}
           />
         </div>
       )}
