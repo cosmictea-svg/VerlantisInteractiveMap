@@ -921,7 +921,14 @@ function App() {
     try {
       const camps = await dbSelect(session.access_token, "campaigns", `id=eq.${joinCode.trim()}`);
       if (!camps.length) { setError("Campaign not found. Check the ID and try again."); return; }
-      await dbUpsert(session.access_token, "campaign_members", { campaign_id: camps[0].id, user_id: user.id, role: "player" }, "campaign_id,user_id");
+      // Use a SECURITY DEFINER RPC so kicked players (whose row was deleted) can rejoin
+      // without hitting RLS restrictions on the campaign_members upsert.
+      const rpcRes = await fetch(`${SUPA_URL}/rest/v1/rpc/join_campaign`, {
+        method: "POST",
+        headers: { ...hdrs(session.access_token) },
+        body: JSON.stringify({ p_campaign_id: camps[0].id })
+      });
+      if (!rpcRes.ok) { const e = await rpcRes.json(); throw new Error(e.message || "Could not join campaign."); }
       setJoinCode(""); setShowJoinModal(false);
       await loadCampaigns(); loadCampaignData(camps[0], "player");
     } catch(e) { setError(e.message || "Could not join campaign."); }
