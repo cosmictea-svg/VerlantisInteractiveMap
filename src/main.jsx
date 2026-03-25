@@ -202,23 +202,23 @@ function getZoneBBox(points) {
 function getCatLabel(id) { return CATEGORIES.find(c => c.id === id)?.label || "Others"; }
 function getSizeScale(id) { return POI_SIZES.find(s => s.id === id)?.scale ?? 1.0; }
 
-const IS = { width: "100%", padding: "6px 10px", borderRadius: 6, border: `1px solid ${T.border}`, fontSize: 13, background: "#fffbf2", color: T.ink, boxSizing: "border-box", fontFamily: T.fBody };
+const IS = { width: "100%", padding: "7px 11px", borderRadius: 8, border: `1px solid ${T.border}`, fontSize: 13, background: "#fffbf2", color: T.ink, boxSizing: "border-box", fontFamily: T.fBody };
 
 function Btn({ style, variant, size, onClick, children, disabled }) {
-  const base = { padding: size === "sm" ? "4px 10px" : "6px 14px", fontSize: size === "sm" ? 12 : 13, borderRadius: 6, border: `1px solid ${T.border}`, background: T.bg, cursor: "pointer", fontWeight: 500, color: T.ink, fontFamily: T.fBody };
+  const base = { padding: size === "sm" ? "5px 12px" : "7px 16px", fontSize: size === "sm" ? 12 : 13, borderRadius: 8, border: `1px solid ${T.border}`, background: T.bg, cursor: disabled ? "default" : "pointer", fontWeight: 500, color: T.ink, fontFamily: T.fBody, lineHeight: 1.35 };
   const v = variant === "primary" ? { background: T.purple, color: T.headerFg, border: "none" }
           : variant === "danger"  ? { background: T.danger, color: "#fff", border: "none" } : {};
   return <button onClick={onClick} disabled={disabled} style={{ ...base, ...v, ...style, opacity: disabled ? 0.4 : 1 }}>{children}</button>;
 }
 function Modal({ title, onClose, children, width = 420 }) {
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(26,16,53,0.6)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-      <div style={{ background: T.bg, borderRadius: 10, border: `1.5px solid ${T.border}`, boxShadow: "0 8px 32px rgba(26,16,53,0.3)", width, maxWidth: "96%", maxHeight: "90vh", overflow: "auto", padding: 20 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, paddingBottom: 10, borderBottom: `1px solid ${T.border}` }}>
-          <span style={{ fontWeight: 600, fontSize: 15, fontFamily: T.fHead, color: T.ink, letterSpacing: "0.04em" }}>{title}</span>
-          {onClose && <Btn size="sm" onClick={onClose}>Close</Btn>}
+    <div style={{ position:"fixed",inset:0,background:"rgba(26,16,53,0.65)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:16 }}>
+      <div style={{ background:T.bg,borderRadius:12,border:`1.5px solid ${T.border}`,boxShadow:"0 16px 48px rgba(26,16,53,0.38)",width,maxWidth:"96%",maxHeight:"90vh",display:"flex",flexDirection:"column",overflow:"hidden" }}>
+        <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 20px",borderBottom:`1.5px solid ${T.border}`,background:T.surface,borderRadius:"10px 10px 0 0",flexShrink:0 }}>
+          <span style={{ fontWeight:700,fontSize:15,fontFamily:T.fHead,color:T.ink,letterSpacing:"0.05em" }}>{title}</span>
+          {onClose && <button onClick={onClose} style={{ background:"none",border:"none",cursor:"pointer",fontSize:18,color:T.muted,padding:"0 0 0 10px",lineHeight:1 }}>✕</button>}
         </div>
-        {children}
+        <div style={{ padding:20,overflowY:"auto",flex:1 }}>{children}</div>
       </div>
     </div>
   );
@@ -327,57 +327,67 @@ function ProfileTab({ user, members, myColor, takenColors, isGM, onColorChange, 
   }
 
   return (
-    <div style={{ maxWidth: 460 }}>
-      <div style={{ fontWeight: 500, fontSize: 15, marginBottom: 16 }}>Your Profile</div>
+    <div style={{ maxWidth: 480 }}>
+      <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:16,color:T.ink,marginBottom:20,letterSpacing:"0.04em" }}>Your Profile</div>
 
-      <Field label="Display Name">
-        <div style={{ display: "flex", gap: 8 }}>
-          <input
-            value={displayName}
-            onChange={e => { setDisplayName(e.target.value); setSaved(false); }}
-            style={{ ...IS, flex: 1 }}
-            placeholder={user.user_metadata?.full_name || user.email}
-            onKeyDown={e => { if (e.key === "Enter") handleSave(); }}
-          />
-          <Btn variant="primary" onClick={handleSave}>{saved ? "Saved ✓" : "Save"}</Btn>
-        </div>
-        <div style={{ fontSize: 11, color: "#888", marginTop: 4 }}>Shown on your map markers and in the players list.</div>
-      </Field>
-
-      {!isGM && (
-        <Field label="Your Colour">
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 4 }}>
-            {PLAYER_COLORS.map(c => {
-              const isTaken = takenColors.includes(c);
-              const isSelected = myColor === c;
-              return (
-                <div key={c} onClick={() => !isTaken && onColorChange(c)}
-                  title={isTaken ? "Taken by another player" : c}
-                  style={{ width: 34, height: 34, borderRadius: "50%", background: c, border: isSelected ? "3px solid #3C3489" : isTaken ? "2px dashed #ccc" : "2px solid #ddd", cursor: isTaken ? "not-allowed" : "pointer", opacity: isTaken ? 0.35 : 1, boxSizing: "border-box", position: "relative" }}>
-                  {isTaken && <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: "rgba(0,0,0,0.4)" }}>✕</div>}
-                  {isSelected && <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: "white", textShadow: "0 0 3px rgba(0,0,0,0.6)" }}>✓</div>}
-                </div>
-              );
-            })}
+      {/* Display name */}
+      <div style={{ padding:"14px 16px",background:T.surface,borderRadius:12,border:`1px solid ${T.border}`,marginBottom:16 }}>
+        <Field label="Display Name">
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              value={displayName}
+              onChange={e => { setDisplayName(e.target.value); setSaved(false); }}
+              style={{ ...IS, flex: 1 }}
+              placeholder={user.user_metadata?.full_name || user.email}
+              onKeyDown={e => { if (e.key === "Enter") handleSave(); }}
+            />
+            <Btn variant="primary" onClick={handleSave}>{saved ? "✓ Saved" : "Save"}</Btn>
           </div>
-          {myColor && <div style={{ fontSize: 11, color: "#888", marginTop: 6 }}>Current colour: <span style={{ fontWeight: 600, color: myColor === "#FFFFFF" ? "#aaa" : myColor }}>{myColor}</span></div>}
+          <div style={{ fontSize: 11, color: T.muted, marginTop: 5 }}>Shown on your map markers and in the players list.</div>
         </Field>
+      </div>
+
+      {/* Colour picker — players only */}
+      {!isGM && (
+        <div style={{ padding:"14px 16px",background:T.surface,borderRadius:12,border:`1px solid ${T.border}`,marginBottom:16 }}>
+          <Field label="Your Colour">
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }}>
+              {PLAYER_COLORS.map(c => {
+                const isTaken = takenColors.includes(c);
+                const isSelected = myColor === c;
+                return (
+                  <div key={c} onClick={() => !isTaken && onColorChange(c)}
+                    title={isTaken ? "Taken by another player" : c}
+                    style={{ width: 34, height: 34, borderRadius: "50%", background: c, border: isSelected ? `3px solid ${T.purple}` : isTaken ? "2px dashed #ccc" : `2px solid ${T.border}`, cursor: isTaken ? "not-allowed" : "pointer", opacity: isTaken ? 0.3 : 1, boxSizing: "border-box", position: "relative" }}>
+                    {isTaken && <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: "rgba(0,0,0,0.4)" }}>✕</div>}
+                    {isSelected && <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: "white", textShadow: "0 0 4px rgba(0,0,0,0.7)" }}>✓</div>}
+                  </div>
+                );
+              })}
+            </div>
+            {myColor && <div style={{ fontSize: 11, color: T.muted, marginTop: 8 }}>Selected: <span style={{ fontWeight: 700, color: myColor === "#FFFFFF" ? "#aaa" : myColor }}>{myColor}</span></div>}
+          </Field>
+        </div>
       )}
 
-      <Field label="Sound Effects Volume">
-        <div style={{ display:"flex",alignItems:"center",gap:10 }}>
-          <span style={{ fontSize:16 }}>{soundVolume===0?"🔇":soundVolume<0.4?"🔉":"🔊"}</span>
-          <input type="range" min={0} max={1} step={0.05} value={soundVolume} onChange={e=>onVolumeChange(Number(e.target.value))} style={{ flex:1 }} />
-          <span style={{ fontSize:12,color:T.muted,minWidth:36 }}>{Math.round(soundVolume*100)}%</span>
-        </div>
-        <div style={{ fontSize:11,color:T.muted,marginTop:3 }}>Plays on announcements, revealed POIs, and NPC movements.</div>
-      </Field>
+      {/* Sound volume */}
+      <div style={{ padding:"14px 16px",background:T.surface,borderRadius:12,border:`1px solid ${T.border}`,marginBottom:16 }}>
+        <Field label="Sound Effects Volume">
+          <div style={{ display:"flex",alignItems:"center",gap:10,marginTop:4 }}>
+            <span style={{ fontSize:18 }}>{soundVolume===0?"🔇":soundVolume<0.4?"🔉":"🔊"}</span>
+            <input type="range" min={0} max={1} step={0.05} value={soundVolume} onChange={e=>onVolumeChange(Number(e.target.value))} style={{ flex:1 }} />
+            <span style={{ fontSize:12,color:T.muted,minWidth:40,textAlign:"right" }}>{Math.round(soundVolume*100)}%</span>
+          </div>
+          <div style={{ fontSize:11,color:T.muted,marginTop:5 }}>Plays on announcements, revealed POIs, and NPC movements.</div>
+        </Field>
+      </div>
 
-      <div style={{ marginTop:16,padding:"12px 14px",background:T.surface,borderRadius:10,fontSize:12,color:T.muted,border:`1px solid ${T.border}` }}>
-        <div style={{ fontWeight:500,marginBottom:4,color:T.ink }}>Account</div>
-        <div style={{ color:T.ink }}>{user.user_metadata?.full_name || "—"}</div>
-        <div style={{ color:T.muted }}>{user.email}</div>
-        <div style={{ fontSize:11,color:T.muted,marginTop:4 }}>{isGM ? "Game Master" : "Player"}</div>
+      {/* Account info */}
+      <div style={{ padding:"14px 16px",background:T.surface,borderRadius:12,border:`1px solid ${T.border}` }}>
+        <div style={{ fontFamily:T.fHead,fontWeight:600,fontSize:13,color:T.ink,marginBottom:8,letterSpacing:"0.03em" }}>Account</div>
+        <div style={{ fontSize:13,color:T.ink,fontWeight:500 }}>{user.user_metadata?.full_name || "—"}</div>
+        <div style={{ fontSize:12,color:T.muted,marginTop:2 }}>{user.email}</div>
+        <div style={{ fontSize:11,color:T.muted,marginTop:6,padding:"3px 10px",background:isGM?`${T.gold}20`:T.bg,borderRadius:20,display:"inline-block",border:`1px solid ${isGM?`${T.gold}44`:T.border}`,color:isGM?T.goldDim:T.muted,fontWeight:600 }}>{isGM ? "Game Master" : "Player"}</div>
       </div>
     </div>
   );
@@ -403,6 +413,7 @@ function App() {
   const [tab, setTab] = useState("map");
   const [libSubTab, setLibSubTab] = useState("maps");
   const [placingMode, setPlacingMode] = useState(null);
+  // Note: ovSubTab removed — overlays/zones management merged into Library tab
   const [poiForm, setPoiForm] = useState(null);
   const [markerForm, setMarkerForm] = useState(null);
   const [annotationForm, setAnnotationForm] = useState(null);
@@ -425,7 +436,6 @@ function App() {
   const [overlays, setOverlays] = useState([]);
   const [zones, setZones] = useState([]);
   const [overlaySettings, setOverlaySettings] = useState({});
-  const [ovSubTab, setOvSubTab] = useState("layers");
   const [placingZonePoints, setPlacingZonePoints] = useState(null);
   const [zoneForm, setZoneForm] = useState(null);
   const [masterZoneOpacity, setMasterZoneOpacity] = useState(100);
@@ -1429,18 +1439,23 @@ function App() {
   const poiCardPos = openPOI ? getCardPos(openPOI.x, openPOI.y) : null;
   const markerCardPos = openMarker ? getCardPos(openMarker.x, openMarker.y) : null;
   const sortedLibPOIs = [...pois].sort((a,b)=>libSort==="name"?(a.name||"").localeCompare(b.name||""):(a.category||"").localeCompare(b.category||""));
-  // Profile tab is available to everyone; library and overlays are GM-only
-  const tabs = ["map", "info", ...(isGM ? ["library", "overlays"] : []), "profile"];
+  // Profile tab is available to everyone; library is GM-only (overlays/zones merged into library)
+  const tabs = ["map", "info", ...(isGM ? ["library"] : []), "profile"];
+  const TAB_LABELS = { map: "🗺 Map", info: "📜 Info", library: "📚 Library", profile: "👤 Profile" };
   const buildVersion = (typeof __BUILD_DATE__ !== "undefined" && typeof __COMMIT__ !== "undefined") ? `v${__BUILD_DATE__}-${__COMMIT__}` : "vdev";
 
   if (loading) return <div style={{ display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",fontFamily:T.fHead,color:T.muted,fontSize:16,background:T.bg,letterSpacing:"0.1em" }}>Loading...</div>;
 
   if (!user) return (
-    <div style={{ fontFamily:T.fBody,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"100vh",gap:18,padding:32,background:T.bg }}>
-      <div style={{ fontSize:52, filter:"drop-shadow(0 2px 8px rgba(201,168,76,0.4))" }}>🗺</div>
-      <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:26,color:T.ink,letterSpacing:"0.08em",textAlign:"center" }}>Verlantis Interactive Map</div>
-      <div style={{ color:T.muted,fontSize:14,textAlign:"center",maxWidth:320,fontStyle:"italic" }}>Sign in with your Google account to access your campaigns.</div>
-      <button onClick={signInWithGoogle} style={{ display:"flex",alignItems:"center",gap:10,padding:"11px 24px",fontSize:14,borderRadius:8,border:`1.5px solid ${T.border}`,background:T.surface,cursor:"pointer",fontWeight:500,color:T.ink,fontFamily:T.fBody,boxShadow:"0 2px 8px rgba(26,16,53,0.1)" }}>
+    <div style={{ fontFamily:T.fBody,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"100vh",gap:20,padding:32,background:T.bg }}>
+      {/* Cartography-style decorative header */}
+      <div style={{ fontSize:64,filter:"drop-shadow(0 3px 12px rgba(201,168,76,0.45))",marginBottom:4 }}>🗺</div>
+      <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:28,color:T.ink,letterSpacing:"0.1em",textAlign:"center",lineHeight:1.2 }}>Verlantis</div>
+      <div style={{ fontFamily:T.fHead,fontWeight:400,fontSize:14,color:T.goldDim,letterSpacing:"0.18em",textTransform:"uppercase",marginTop:-12 }}>Interactive Map</div>
+      <div style={{ width:60,height:1,background:`linear-gradient(to right, transparent, ${T.gold}, transparent)`,margin:"4px 0" }} />
+      <div style={{ color:T.muted,fontSize:13,textAlign:"center",maxWidth:300,fontStyle:"italic",lineHeight:1.7 }}>Sign in with your Google account to access your campaigns.</div>
+      <button onClick={signInWithGoogle}
+        style={{ display:"flex",alignItems:"center",gap:10,padding:"12px 28px",fontSize:14,borderRadius:30,border:`1.5px solid ${T.border}`,background:T.surface,cursor:"pointer",fontWeight:600,color:T.ink,fontFamily:T.fBody,boxShadow:"0 3px 16px rgba(26,16,53,0.12)",marginTop:4 }}>
         <img src="https://www.google.com/favicon.ico" width={18} height={18} alt="" />
         Sign in with Google
       </button>
@@ -1448,23 +1463,38 @@ function App() {
   );
 
   if (!activeCampaign) return (
-    <div style={{ fontFamily:T.fBody,padding:24,maxWidth:520,margin:"0 auto",minHeight:"100vh",background:T.bg }}>
+    <div style={{ fontFamily:T.fBody,padding:24,maxWidth:540,margin:"0 auto",minHeight:"100vh",background:T.bg }}>
+      {/* Page header */}
       <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:24,paddingBottom:16,borderBottom:`1px solid ${T.border}` }}>
-        <span style={{ fontFamily:T.fHead,fontWeight:700,fontSize:18,flex:1,color:T.ink,letterSpacing:"0.05em" }}>Your Campaigns</span>
-        <span style={{ fontSize:12,color:T.muted }}>{user.user_metadata?.full_name||user.email}</span>
+        <div style={{ flex:1 }}>
+          <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:20,color:T.ink,letterSpacing:"0.06em" }}>Verlantis</div>
+          <div style={{ fontSize:11,color:T.goldDim,letterSpacing:"0.12em",textTransform:"uppercase",fontFamily:T.fHead }}>Interactive Map</div>
+        </div>
+        <span style={{ fontSize:12,color:T.muted,overflow:"hidden",textOverflow:"ellipsis",maxWidth:140,whiteSpace:"nowrap" }}>{user.user_metadata?.full_name||user.email}</span>
         <Btn size="sm" onClick={async()=>{await signOut(session.access_token);setUser(null);setSession(null);}}>Sign out</Btn>
       </div>
-      {error && <div style={{ background:"#f5d5d5",color:T.danger,padding:"8px 12px",borderRadius:8,marginBottom:12,fontSize:13,border:`1px solid ${T.danger}44` }}>{error}<button onClick={()=>setError("")} style={{ marginLeft:8,border:"none",background:"none",cursor:"pointer",color:T.danger }}>✕</button></div>}
-      {campaigns.length===0 && <p style={{ color:T.muted,fontSize:13,marginBottom:16,fontStyle:"italic" }}>No campaigns yet. Create one or join with a campaign ID.</p>}
+      {error && <div style={{ background:"#f5d5d5",color:T.danger,padding:"9px 14px",borderRadius:10,marginBottom:14,fontSize:13,border:`1px solid ${T.danger}44` }}>{error}<button onClick={()=>setError("")} style={{ marginLeft:8,border:"none",background:"none",cursor:"pointer",color:T.danger }}>✕</button></div>}
+      {campaigns.length===0 && <p style={{ color:T.muted,fontSize:13,marginBottom:16,fontStyle:"italic" }}>No campaigns yet. Create one or join with a campaign ID from your GM.</p>}
       {campaigns.map(c=>(
-        <div key={c.id} onClick={()=>loadCampaignData(c,c.myRole)} style={{ padding:"14px 16px",background:T.surface,borderRadius:10,marginBottom:8,cursor:"pointer",border:`1px solid ${T.border}`,boxShadow:"0 1px 4px rgba(26,16,53,0.08)" }}>
-          <div style={{ fontFamily:T.fHead,fontWeight:600,fontSize:15,color:T.ink,letterSpacing:"0.03em" }}>{c.name}</div>
-          {c.sub_header && <div style={{ fontSize:12,color:T.muted,fontStyle:"italic",marginTop:2 }}>{c.sub_header}</div>}
-          <div style={{ fontSize:11,color:T.muted,marginTop:4 }}>{c.myRole==="gm"?"Game Master":"Player"} · ID: {c.id.slice(0,8)}...</div>
+        <div key={c.id} onClick={()=>loadCampaignData(c,c.myRole)}
+          style={{ padding:"16px 18px",background:T.surface,borderRadius:12,marginBottom:10,cursor:"pointer",border:`1.5px solid ${T.border}`,boxShadow:"0 2px 8px rgba(26,16,53,0.07)",transition:"border-color 0.15s" }}
+          onMouseEnter={e=>e.currentTarget.style.borderColor=T.gold}
+          onMouseLeave={e=>e.currentTarget.style.borderColor=T.border}>
+          <div style={{ display:"flex",alignItems:"center",gap:10 }}>
+            <div style={{ width:36,height:36,borderRadius:"50%",background:c.myRole==="gm"?`${T.gold}22`:`${T.purple}22`,border:`1.5px solid ${c.myRole==="gm"?T.gold:T.purple}55`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0 }}>
+              {c.myRole==="gm"?"👑":"⚔"}
+            </div>
+            <div style={{ flex:1,minWidth:0 }}>
+              <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:15,color:T.ink,letterSpacing:"0.03em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{c.name}</div>
+              {c.sub_header && <div style={{ fontSize:12,color:T.goldDim,fontStyle:"italic",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{c.sub_header}</div>}
+              <div style={{ fontSize:11,color:T.muted,marginTop:3 }}>{c.myRole==="gm"?"Game Master":"Player"}</div>
+            </div>
+            <span style={{ fontSize:18,color:T.muted }}>›</span>
+          </div>
         </div>
       ))}
-      <div style={{ display:"flex",gap:8,marginTop:16 }}>
-        <Btn variant="primary" onClick={()=>setShowCampaignModal(true)} style={{ flex:1 }}>+ Create Campaign</Btn>
+      <div style={{ display:"flex",gap:10,marginTop:18 }}>
+        <Btn variant="primary" onClick={()=>setShowCampaignModal(true)} style={{ flex:1 }}>＋ Create Campaign</Btn>
         <Btn onClick={()=>setShowJoinModal(true)} style={{ flex:1 }}>Join Campaign</Btn>
       </div>
       {showCampaignModal && (
@@ -1495,31 +1525,42 @@ function App() {
   return (
     <div style={{ fontFamily:T.fBody,fontSize:14,color:T.ink,display:"flex",flexDirection:"column",height:"100vh",background:T.bg }}>
       {/* Header */}
-      <div style={{ display:"flex",alignItems:"center",gap:8,padding:"8px 14px",borderBottom:`1px solid ${T.border}`,background:T.header,flexWrap:"wrap" }}>
-        <button onClick={()=>{setActiveCampaign(null);localStorage.removeItem("sb_last_campaign");if(realtimeRef.current)realtimeRef.current.unsubscribe();}} style={{ background:"none",border:"none",cursor:"pointer",fontSize:18,padding:0,color:T.headerFg }}>←</button>
-        <span style={{ fontFamily:T.fHead,fontWeight:600,fontSize:14,flex:1,color:T.headerFg,letterSpacing:"0.06em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{activeCampaign.name}</span>
+      <div style={{ display:"flex",alignItems:"center",gap:10,padding:"0 14px",minHeight:52,borderBottom:`2px solid ${T.gold}44`,background:T.header,flexShrink:0 }}>
+        {/* Back to campaign list */}
+        <button onClick={()=>{setActiveCampaign(null);localStorage.removeItem("sb_last_campaign");if(realtimeRef.current)realtimeRef.current.unsubscribe();}}
+          title="All Campaigns"
+          style={{ background:"none",border:"none",cursor:"pointer",fontSize:20,padding:"12px 6px 12px 0",color:T.headerFg,lineHeight:1,flexShrink:0 }}>←</button>
+        {/* Campaign name + subtitle */}
+        <div style={{ flex:1,minWidth:0 }}>
+          <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:15,color:T.headerFg,letterSpacing:"0.06em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",lineHeight:1.2 }}>{activeCampaign.name}</div>
+          {activeCampaign.sub_header && <div style={{ fontSize:10,color:`${T.headerFg}88`,letterSpacing:"0.02em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:1 }}>{activeCampaign.sub_header}</div>}
+        </div>
+        {/* Portal navigation buttons */}
         {mapStack.length>0 && <>
-          <Btn size="sm" onClick={goBack} style={{ background:"transparent",color:T.headerFg,borderColor:T.headerFg+"66" }}>↩ Back</Btn>
-          {mapStack.length>1 && <Btn size="sm" onClick={goHome} style={{ background:"transparent",color:T.gold,borderColor:T.gold+"66",fontSize:10 }}>⌂ Main</Btn>}
+          <button onClick={goBack} style={{ padding:"5px 12px",borderRadius:20,border:`1px solid ${T.headerFg}44`,background:"transparent",color:T.headerFg,fontSize:11,cursor:"pointer",fontFamily:T.fBody,flexShrink:0 }}>↩ Back</button>
+          {mapStack.length>1 && <button onClick={goHome} style={{ padding:"5px 12px",borderRadius:20,border:`1px solid ${T.gold}55`,background:"transparent",color:T.gold,fontSize:11,cursor:"pointer",fontFamily:T.fBody,flexShrink:0 }}>⌂ Main</button>}
         </>}
-        <span style={{ fontSize:11,padding:"2px 9px",borderRadius:20,background:isGM?`${T.gold}33`:`${T.headerFg}22`,color:isGM?T.gold:T.headerFg,fontWeight:600,border:`1px solid ${isGM?T.gold:T.headerFg+"44"}`,fontFamily:T.fBody }}>{isGM?"GM":"Player"}</span>
-        {/* Bell notification icon */}
-        <button onClick={()=>{setShowBell(b=>!b);setUnreadCount(0);}} style={{ position:"relative",background:"none",border:"none",cursor:"pointer",color:T.headerFg,fontSize:16,padding:"2px 4px",flexShrink:0 }} title="Announcements & Notifications">
+        {/* Role badge */}
+        <span style={{ fontSize:10,padding:"3px 10px",borderRadius:20,background:isGM?`${T.gold}30`:`${T.headerFg}18`,color:isGM?T.gold:`${T.headerFg}cc`,fontWeight:700,border:`1px solid ${isGM?`${T.gold}55`:`${T.headerFg}30`}`,fontFamily:T.fHead,letterSpacing:"0.06em",flexShrink:0 }}>{isGM?"GM":"Player"}</span>
+        {/* Bell */}
+        <button onClick={()=>{setShowBell(b=>!b);setUnreadCount(0);}}
+          style={{ position:"relative",background:"none",border:"none",cursor:"pointer",color:T.headerFg,fontSize:18,padding:"4px 2px",flexShrink:0,lineHeight:1 }} title="Notifications">
           🔔
-          {unreadCount>0 && <span style={{ position:"absolute",top:-2,right:-2,background:T.danger,color:"#fff",fontSize:9,fontWeight:700,borderRadius:"50%",width:14,height:14,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1 }}>{unreadCount>9?"9+":unreadCount}</span>}
+          {unreadCount>0 && <span style={{ position:"absolute",top:-1,right:-2,background:T.danger,color:"#fff",fontSize:9,fontWeight:700,borderRadius:"50%",minWidth:14,height:14,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1,padding:"0 2px" }}>{unreadCount>9?"9+":unreadCount}</span>}
         </button>
-        {!isGM && (
-          <div onClick={()=>setTab("profile")} title="Edit your profile"
-            style={{ width:18,height:18,borderRadius:"50%",background:myColor||"#ccc",border:`2px solid ${T.gold}`,cursor:"pointer",flexShrink:0 }} />
-        )}
-        <span style={{ fontSize:11,color:T.headerFg+"99",maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{user.user_metadata?.full_name||user.email}</span>
-        <span style={{ fontSize:10,color:T.headerFg+"55",whiteSpace:"nowrap" }}>{buildVersion}</span>
+        {/* Profile dot — everyone gets one */}
+        <div onClick={()=>setTab("profile")} title="Your profile"
+          style={{ width:30,height:30,borderRadius:"50%",background:myColor||`${T.headerFg}33`,border:`2px solid ${myColor?T.gold:`${T.headerFg}44`}`,cursor:"pointer",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,color:myColor?"transparent":T.headerFg,fontWeight:700 }}>
+          {!myColor&&"?"}
+        </div>
+        <span style={{ fontSize:9,color:`${T.headerFg}40`,whiteSpace:"nowrap",display:"none" }}>{buildVersion}</span>
       </div>
 
       {error && <div style={{ background:"#f5d5d5",color:T.danger,padding:"5px 14px",fontSize:12,borderBottom:`1px solid ${T.danger}44` }}>{error}<button onClick={()=>setError("")} style={{ marginLeft:8,border:"none",background:"none",cursor:"pointer",color:T.danger }}>✕</button></div>}
       {isGM && (
-        <div style={{ display:"flex",alignItems:"center",gap:8,padding:"3px 14px",background:`${T.gold}18`,fontSize:11,color:T.goldDim,borderBottom:`1px solid ${T.border}` }}>
-          <span>Campaign ID for players: <strong>{activeCampaign.id}</strong></span>
+        <div style={{ display:"flex",alignItems:"center",gap:8,padding:"4px 14px",background:`${T.gold}12`,fontSize:11,color:T.goldDim,borderBottom:`1px solid ${T.border}` }}>
+          <span style={{ color:T.muted }}>Invite code:</span>
+          <code style={{ fontFamily:"monospace",fontSize:11,background:T.surface,color:T.ink,padding:"1px 8px",borderRadius:6,border:`1px solid ${T.border}`,letterSpacing:"0.02em" }}>{activeCampaign.id}</code>
           <button onClick={()=>{
             const copy = () => { navigator.clipboard.writeText(activeCampaign.id).catch(()=>{}); };
             try { copy(); } catch {
@@ -1528,76 +1569,97 @@ function App() {
               el.select(); document.execCommand("copy"); document.body.removeChild(el);
             }
             setCopiedCode(true); setTimeout(()=>setCopiedCode(false), 2000);
-          }} style={{ padding:"1px 8px",borderRadius:6,border:`1px solid ${T.border}`,background:copiedCode?`${T.gold}22`:T.bg,color:copiedCode?T.goldDim:T.muted,fontSize:11,cursor:"pointer",flexShrink:0,fontWeight:copiedCode?600:400,fontFamily:T.fBody }}>
-            {copiedCode ? "Copied ✓" : "Copy"}
+          }} style={{ padding:"2px 10px",borderRadius:20,border:`1px solid ${T.border}`,background:copiedCode?`${T.gold}22`:T.bg,color:copiedCode?T.goldDim:T.muted,fontSize:11,cursor:"pointer",flexShrink:0,fontWeight:copiedCode?700:400,fontFamily:T.fBody }}>
+            {copiedCode ? "✓ Copied" : "Copy"}
           </button>
         </div>
       )}
 
       {/* Tabs */}
-      <div style={{ display:"flex",borderBottom:`1px solid ${T.border}`,padding:"0 14px",background:T.surface }}>
+      <div style={{ display:"flex",borderBottom:`1px solid ${T.border}`,padding:"0 10px",background:T.surface,overflowX:"auto" }}>
         {tabs.map(t=>(
-          <button key={t} onClick={()=>setTab(t)} style={{ padding:"7px 12px",border:"none",borderBottom:tab===t?`2px solid ${T.gold}`:"2px solid transparent",background:"transparent",cursor:"pointer",fontSize:12,fontWeight:tab===t?600:400,color:tab===t?T.goldDim:T.muted,textTransform:"capitalize",fontFamily:T.fBody,letterSpacing:"0.02em" }}>{t}</button>
+          <button key={t} onClick={()=>setTab(t)}
+            style={{ padding:"10px 14px",border:"none",borderBottom:tab===t?`2.5px solid ${T.gold}`:"2.5px solid transparent",background:"transparent",cursor:"pointer",fontSize:13,fontWeight:tab===t?700:400,color:tab===t?T.goldDim:T.muted,fontFamily:T.fBody,letterSpacing:"0.01em",whiteSpace:"nowrap" }}>
+            {TAB_LABELS[t]||t}
+          </button>
         ))}
       </div>
 
       {/* MAP TAB */}
       {tab==="map" && (
         <div style={{ flex:1,display:"flex",flexDirection:"column",minHeight:0,position:"relative" }}>
-          <div style={{ display:"flex",gap:6,padding:"7px 14px",borderBottom:`1px solid ${T.border}`,background:T.surface,flexWrap:"wrap",alignItems:"center" }}>
-            {isGM && <>
-              <Btn size="sm" onClick={()=>setPlacingMode(p=>p==="poi"?null:"poi")} style={{ background:placingMode==="poi"?`${T.gold}33`:undefined,borderColor:placingMode==="poi"?T.gold:undefined }}>+ POI</Btn>
-              <Btn size="sm" onClick={()=>setNpcForm({npc:null,name:"",status:"Alive",border_color:"#C9A84C",aura_radius:80,show_name:true,show_status:true,show_aura:true,is_visible_to_players:false,x:200,y:200})}>+ NPC</Btn>
-            </>}
-            <Btn size="sm" onClick={()=>{
-              if (!myColor && !isGM) { setShowColorPicker(true); return; }
-              setPlacingMode(p=>p==="marker"?null:"marker");
-            }} style={{ background:placingMode==="marker"?`${T.gold}33`:undefined,borderColor:placingMode==="marker"?T.gold:undefined }}>
-              + Marker {!isGM && myMarkers.length >= markerLimit ? `(${myMarkers.length}/${markerLimit} full)` : !isGM ? `(${myMarkers.length}/${markerLimit})` : ""}
-            </Btn>
-            <Btn size="sm" onClick={resetView}>Fit (F)</Btn>
-            {accessibleMaps.length > 1 && (
-              <select value={activeMapId||""} onChange={e=>{
-                const target = maps.find(m=>m.id===e.target.value);
-                if (!isGM && target && !target.is_main && !target.player_accessible) {
-                  addToast("🔒 The GM has locked access to this area.", "denied"); return;
-                }
-                setActiveMapId(e.target.value); setTransform({x:0,y:0,scale:1}); setImgSize({w:0,h:0}); setMapStack([]);
-              }} style={{ fontSize:11,padding:"3px 8px",borderRadius:6,border:`1px solid ${T.border}`,background:T.bg,color:T.ink,fontFamily:T.fBody,maxWidth:130 }}>
-                {accessibleMaps.map(m=><option key={m.id} value={m.id}>{m.name}{m.is_main?" ★":""}</option>)}
-              </select>
-            )}
-            {placingMode && placingMode !== "zone" && placingMode !== "addpoint" && <span style={{ fontSize:11,color:T.purple,padding:"2px 8px",background:`${T.purple}15`,borderRadius:20,border:`1px solid ${T.purple}44` }}>Tap map to place {placingMode}</span>}
-            {placingMode === "zone" && (
-              <span style={{ display:"flex",alignItems:"center",gap:6,flexWrap:"wrap" }}>
-                <span style={{ fontSize:11,color:"#185FA5",padding:"2px 8px",background:"#E6F1FB",borderRadius:20 }}>Zone: {placingZonePoints?.length || 0} points</span>
-                {(placingZonePoints?.length || 0) >= 3 && (
-                  <Btn size="sm" variant="primary" onClick={()=>{ setPlacingMode(null); setZoneForm({ zone:null, name:"", fill_color:"#3498DB", opacity:80, revealed:false, points:placingZonePoints }); setPlacingZonePoints(null); }}>Close Zone ✓</Btn>
-                )}
-                <Btn size="sm" onClick={()=>{ setPlacingMode(null); setPlacingZonePoints(null); }}>Cancel</Btn>
-              </span>
-            )}
-            {placingMode === "addpoint" && (
-              <span style={{ display:"flex",alignItems:"center",gap:6 }}>
-                <span style={{ fontSize:11,color:"#E67E22",padding:"2px 8px",background:"#FEF3E2",borderRadius:20 }}>Click map to add point</span>
-                <Btn size="sm" onClick={()=>{ setPlacingMode(null); addPointZoneRef.current = null; }}>Cancel</Btn>
-              </span>
-            )}
-            {editingZonePoints && (
-              <span style={{ display:"flex",alignItems:"center",gap:6 }}>
-                <span style={{ fontSize:11,color:"#9B59B6",padding:"2px 8px",background:"#F5EEF8",borderRadius:20 }}>Drag waypoints to reposition</span>
-                <Btn size="sm" variant="primary" onClick={saveZonePoints}>Save</Btn>
-                <Btn size="sm" onClick={cancelZonePointEdit}>Cancel</Btn>
-              </span>
-            )}
-          </div>
-          <div style={{ display:"flex",alignItems:"center",gap:8,padding:"4px 14px",borderBottom:`1px solid ${T.border}`,background:T.bg }}>
-            <span style={{ fontSize:11,color:T.muted,whiteSpace:"nowrap" }}>Zoom speed</span>
-            <input type="range" min={0.1} max={2} step={0.1} value={scrollSens} onChange={e=>setScrollSens(Number(e.target.value))} style={{ flex:1,maxWidth:120 }} />
-            <span style={{ fontSize:11,color:T.muted,minWidth:24 }}>{scrollSens.toFixed(1)}</span>
-            <button onClick={()=>setShowFilter(f=>!f)} style={{ marginLeft:"auto",padding:"2px 10px",borderRadius:6,border:`1px solid ${showFilter?T.gold:T.border}`,background:showFilter?T.purple:T.bg,color:showFilter?T.headerFg:T.muted,fontSize:11,cursor:"pointer",flexShrink:0,fontFamily:T.fBody }}>
-              ☰ Filter (Esc)
-            </button>
+          {/* ── Map toolbar ── */}
+          <div style={{ display:"flex",flexDirection:"column",borderBottom:`1px solid ${T.border}`,background:T.surface,flexShrink:0 }}>
+            {/* Row 1: action buttons + map selector + filter */}
+            <div style={{ display:"flex",gap:6,padding:"8px 14px",alignItems:"center",flexWrap:"wrap" }}>
+              {/* Placement actions */}
+              <div style={{ display:"flex",gap:4,flexShrink:0 }}>
+                {isGM && <>
+                  <Btn size="sm" onClick={()=>setPlacingMode(p=>p==="poi"?null:"poi")} style={{ background:placingMode==="poi"?`${T.gold}22`:undefined,borderColor:placingMode==="poi"?T.gold:undefined }}>＋ POI</Btn>
+                  <Btn size="sm" onClick={()=>setNpcForm({npc:null,name:"",status:"Alive",border_color:"#C9A84C",aura_radius:80,show_name:true,show_status:true,show_aura:true,is_visible_to_players:false,x:200,y:200})}>＋ NPC</Btn>
+                </>}
+                <Btn size="sm" onClick={()=>{
+                  if (!myColor && !isGM) { setShowColorPicker(true); return; }
+                  setPlacingMode(p=>p==="marker"?null:"marker");
+                }} style={{ background:placingMode==="marker"?`${T.gold}22`:undefined,borderColor:placingMode==="marker"?T.gold:undefined }}>
+                  ＋ Marker{!isGM ? ` (${myMarkers.length}/${markerLimit}${myMarkers.length>=markerLimit?" full":""})` : ""}
+                </Btn>
+              </div>
+              {/* Visual separator */}
+              <div style={{ width:1,height:20,background:T.border,flexShrink:0 }} />
+              {/* View controls */}
+              <Btn size="sm" onClick={resetView} style={{ flexShrink:0 }}>Fit ⟳ (F)</Btn>
+              {accessibleMaps.length > 1 && (
+                <select value={activeMapId||""} onChange={e=>{
+                  const target = maps.find(m=>m.id===e.target.value);
+                  if (!isGM && target && !target.is_main && !target.player_accessible) {
+                    addToast("🔒 The GM has locked access to this area.", "denied"); return;
+                  }
+                  setActiveMapId(e.target.value); setTransform({x:0,y:0,scale:1}); setImgSize({w:0,h:0}); setMapStack([]);
+                }} style={{ fontSize:12,padding:"4px 8px",borderRadius:8,border:`1px solid ${T.border}`,background:T.bg,color:T.ink,fontFamily:T.fBody,maxWidth:140,flexShrink:0 }}>
+                  {accessibleMaps.map(m=><option key={m.id} value={m.id}>{m.name}{m.is_main?" ★":""}</option>)}
+                </select>
+              )}
+              {/* Spacer */}
+              <div style={{ flex:1 }} />
+              {/* Filter toggle */}
+              <button onClick={()=>setShowFilter(f=>!f)}
+                style={{ padding:"5px 12px",borderRadius:8,border:`1px solid ${showFilter?T.gold:T.border}`,background:showFilter?T.purple:T.bg,color:showFilter?T.headerFg:T.muted,fontSize:12,cursor:"pointer",flexShrink:0,fontFamily:T.fBody }}>
+                ☰ Filter
+              </button>
+            </div>
+            {/* Row 2: zoom speed + active mode status */}
+            <div style={{ display:"flex",alignItems:"center",gap:8,padding:"4px 14px 7px",flexWrap:"wrap" }}>
+              <span style={{ fontSize:11,color:T.muted,whiteSpace:"nowrap",flexShrink:0 }}>Zoom</span>
+              <input type="range" min={0.1} max={2} step={0.1} value={scrollSens} onChange={e=>setScrollSens(Number(e.target.value))} style={{ width:90,flexShrink:0 }} />
+              <span style={{ fontSize:11,color:T.muted,minWidth:22,flexShrink:0 }}>{scrollSens.toFixed(1)}×</span>
+              {/* Placing mode indicators */}
+              {placingMode && placingMode !== "zone" && placingMode !== "addpoint" && !editingZonePoints && (
+                <span style={{ fontSize:11,color:T.purple,padding:"2px 10px",background:`${T.purple}12`,borderRadius:20,border:`1px solid ${T.purple}33` }}>Tap map to place {placingMode}</span>
+              )}
+              {placingMode === "zone" && (
+                <span style={{ display:"flex",alignItems:"center",gap:6,flexWrap:"wrap" }}>
+                  <span style={{ fontSize:11,color:T.purple,padding:"2px 10px",background:`${T.purple}12`,borderRadius:20 }}>Zone: {placingZonePoints?.length || 0} pts</span>
+                  {(placingZonePoints?.length || 0) >= 3 && (
+                    <Btn size="sm" variant="primary" onClick={()=>{ setPlacingMode(null); setZoneForm({ zone:null, name:"", fill_color:"#3498DB", opacity:80, revealed:false, points:placingZonePoints }); setPlacingZonePoints(null); }}>Close Zone ✓</Btn>
+                  )}
+                  <Btn size="sm" onClick={()=>{ setPlacingMode(null); setPlacingZonePoints(null); }}>Cancel</Btn>
+                </span>
+              )}
+              {placingMode === "addpoint" && (
+                <span style={{ display:"flex",alignItems:"center",gap:6 }}>
+                  <span style={{ fontSize:11,color:"#E67E22",padding:"2px 10px",background:"#FEF3E2",borderRadius:20 }}>Tap map to add point</span>
+                  <Btn size="sm" onClick={()=>{ setPlacingMode(null); addPointZoneRef.current = null; }}>Cancel</Btn>
+                </span>
+              )}
+              {editingZonePoints && (
+                <span style={{ display:"flex",alignItems:"center",gap:6 }}>
+                  <span style={{ fontSize:11,color:"#9B59B6",padding:"2px 10px",background:"#F5EEF8",borderRadius:20 }}>Drag waypoints to reposition</span>
+                  <Btn size="sm" variant="primary" onClick={saveZonePoints}>Save</Btn>
+                  <Btn size="sm" onClick={cancelZonePointEdit}>Cancel</Btn>
+                </span>
+              )}
+            </div>
           </div>
           {/* ── Personal visibility filter dropdown ── */}
           {showFilter && (()=>{
@@ -1690,36 +1752,36 @@ function App() {
 
           {/* ── Layers & Zones quick controls — visible to everyone on the map page ── */}
           {(mapOverlays.length > 0 || mapZones.filter(z => isGM || z.revealed).length > 0) && (
-            <div style={{ borderBottom:"0.5px solid #ddd",background:"#fafafa" }}>
+            <div style={{ borderBottom:`1px solid ${T.border}`,background:T.bg }}>
               <button onClick={()=>setShowLayerControls(p=>!p)}
-                style={{ display:"flex",alignItems:"center",gap:6,width:"100%",padding:"4px 14px",background:"none",border:"none",cursor:"pointer",fontSize:11,color:"#555",fontWeight:500,textAlign:"left" }}>
-                <span style={{ flex:1 }}>Layers &amp; Zones</span>
-                <span>{showLayerControls ? "▲" : "▼"}</span>
+                style={{ display:"flex",alignItems:"center",gap:6,width:"100%",padding:"6px 14px",background:"none",border:"none",cursor:"pointer",fontSize:11,color:T.muted,fontWeight:600,textAlign:"left",fontFamily:T.fBody }}>
+                <span style={{ flex:1,color:T.ink }}>🗂 Layers &amp; Zones</span>
+                <span style={{ color:T.muted }}>{showLayerControls ? "▲" : "▼"}</span>
               </button>
               {showLayerControls && (
-                <div style={{ padding:"4px 14px 10px" }}>
-                  {/* Master zone opacity — affects ALL zones for this user only */}
+                <div style={{ padding:"4px 14px 12px",display:"flex",flexDirection:"column",gap:8 }}>
+                  {/* Master zone opacity */}
                   {mapZones.filter(z => isGM || z.revealed).length > 0 && (
-                    <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:8,paddingBottom:8,borderBottom:mapOverlays.length>0?"0.5px solid #eee":"none" }}>
-                      <span style={{ fontSize:11,color:"#555",minWidth:72,fontWeight:500,whiteSpace:"nowrap" }}>All Zones</span>
+                    <div style={{ display:"flex",alignItems:"center",gap:8,paddingBottom:8,borderBottom:mapOverlays.length>0?`0.5px solid ${T.border}`:"none" }}>
+                      <span style={{ fontSize:11,color:T.muted,minWidth:80,fontWeight:600,whiteSpace:"nowrap" }}>All Zones</span>
                       <input type="range" min={0} max={100} value={masterZoneOpacity}
                         onChange={e=>{ const v=Number(e.target.value); setMasterZoneOpacity(v); if(activeCampaign) localStorage.setItem(`zone_master_${activeCampaign.id}`,String(v)); }}
                         style={{ flex:1,maxWidth:160 }} />
-                      <span style={{ fontSize:11,color:"#888",minWidth:32 }}>{masterZoneOpacity}%</span>
+                      <span style={{ fontSize:11,color:T.muted,minWidth:36 }}>{masterZoneOpacity}%</span>
                     </div>
                   )}
                   {/* Per-layer opacity + visibility */}
                   {mapOverlays.map(ov=>{
                     const s = overlaySettings[ov.id] || { opacity:80, visible:true };
                     return (
-                      <div key={ov.id} style={{ display:"flex",alignItems:"center",gap:8,marginBottom:4 }}>
-                        <span style={{ fontSize:11,color:"#555",minWidth:72,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{ov.name}</span>
+                      <div key={ov.id} style={{ display:"flex",alignItems:"center",gap:8 }}>
+                        <span style={{ fontSize:11,color:T.ink,minWidth:80,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontWeight:500 }}>{ov.name}</span>
                         <input type="range" min={1} max={100} value={s.opacity}
                           onChange={e=>setOverlaySetting(ov.id,"opacity",Number(e.target.value))}
                           style={{ flex:1,maxWidth:160 }} />
-                        <span style={{ fontSize:11,color:"#888",minWidth:32 }}>{s.opacity}%</span>
+                        <span style={{ fontSize:11,color:T.muted,minWidth:36 }}>{s.opacity}%</span>
                         <button onClick={()=>setOverlaySetting(ov.id,"visible",!s.visible)}
-                          style={{ fontSize:11,padding:"2px 8px",borderRadius:6,border:"none",background:s.visible?"#EAF3DE":"#f0f0f0",color:s.visible?"#3B6D11":"#888",cursor:"pointer",flexShrink:0 }}>
+                          style={{ fontSize:11,padding:"3px 10px",borderRadius:20,border:"none",background:s.visible?"#EAF3DE":"#F0F0F0",color:s.visible?"#3B6D11":"#888",cursor:"pointer",flexShrink:0,fontWeight:500 }}>
                           {s.visible?"On":"Off"}
                         </button>
                       </div>
@@ -1951,48 +2013,52 @@ function App() {
             )}
 
             {/* POI popup */}
-            {openPOI && poiCardPos && (
+            {openPOI && poiCardPos && (()=>{
+              const cc = getCatColor(openPOI.category);
+              return (
               <div onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
-                style={{ position:"absolute",left:poiCardPos.left,top:poiCardPos.top,width:poiCardPos.cardW,background:"white",borderRadius:10,border:`2px solid ${getCatColor(openPOI.category)}`,zIndex:100,overflow:"hidden",boxSizing:"border-box" }}>
-                <div style={{ display:"flex",alignItems:"center",gap:8,padding:"8px 10px 6px",borderBottom:"0.5px solid #eee" }}>
-                  <div style={{ width:32,height:32,borderRadius:"50%",border:`2px solid ${getCatColor(openPOI.category)}`,overflow:"hidden",flexShrink:0,background:getCatColor(openPOI.category)+"33",display:"flex",alignItems:"center",justifyContent:"center" }}>
-                    {(openPOI.icon_url||categoryIcons[openPOI.category])?<img src={openPOI.icon_url||categoryIcons[openPOI.category]} alt="" draggable={false} style={{ width:"100%",height:"100%",objectFit:"contain" }} />:<span style={{ fontSize:14,fontWeight:700,color:getCatColor(openPOI.category) }}>?</span>}
+                style={{ position:"absolute",left:poiCardPos.left,top:poiCardPos.top,width:poiCardPos.cardW,background:T.bg,borderRadius:12,border:`1.5px solid ${cc}`,zIndex:100,overflow:"hidden",boxSizing:"border-box",boxShadow:"0 6px 24px rgba(26,16,53,0.22)" }}>
+                {/* Coloured header strip */}
+                <div style={{ display:"flex",alignItems:"center",gap:10,padding:"10px 12px 8px",borderBottom:`1px solid ${cc}33`,background:cc+"18" }}>
+                  <div style={{ width:34,height:34,borderRadius:"50%",border:`2px solid ${cc}`,overflow:"hidden",flexShrink:0,background:cc+"28",display:"flex",alignItems:"center",justifyContent:"center" }}>
+                    {(openPOI.icon_url||categoryIcons[openPOI.category])?<img src={openPOI.icon_url||categoryIcons[openPOI.category]} alt="" draggable={false} style={{ width:"100%",height:"100%",objectFit:"contain" }} />:<span style={{ fontSize:14,fontWeight:700,color:cc }}>?</span>}
                   </div>
-                  <div style={{ flex:1,overflow:"hidden" }}>
-                    <div style={{ fontWeight:500,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{openPOI.name}</div>
-                    <div style={{ fontSize:10,color:getCatColor(openPOI.category),fontWeight:500 }}>{getCatLabel(openPOI.category)}</div>
+                  <div style={{ flex:1,minWidth:0 }}>
+                    <div style={{ fontWeight:700,fontSize:13,color:T.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontFamily:T.fHead }}>{openPOI.name}</div>
+                    <div style={{ fontSize:10,color:cc,fontWeight:600,marginTop:1 }}>{getCatLabel(openPOI.category)}</div>
                   </div>
                 </div>
                 <div onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()}
-                  style={{ padding:"7px 10px",fontSize:12,color:"#555",lineHeight:1.5,maxHeight:110,overflowY:"auto",touchAction:"pan-y" }}>
-                  {openPOI.description||<span style={{ color:"#aaa",fontStyle:"italic" }}>No description.</span>}
+                  style={{ padding:"9px 12px",fontSize:12,color:T.muted,lineHeight:1.6,maxHeight:110,overflowY:"auto",touchAction:"pan-y" }}>
+                  {openPOI.description||<span style={{ fontStyle:"italic" }}>No description.</span>}
                 </div>
-                <div style={{ padding:"4px 10px 8px",textAlign:"right" }}>
+                <div style={{ padding:"6px 12px 10px",textAlign:"right",borderTop:`0.5px solid ${T.border}` }}>
                   <Btn size="sm" onClick={()=>setOpenPOICard(null)}>Close</Btn>
                 </div>
               </div>
-            )}
+              );
+            })()}
 
             {/* Marker popup */}
             {openMarker && markerCardPos && (() => {
               const openMarkerColor = openMarkerMember?.player_color || openMarker.player_color || "#378ADD";
               return (
               <div onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
-                style={{ position:"absolute",left:markerCardPos.left,top:markerCardPos.top,width:markerCardPos.cardW,background:"white",borderRadius:10,border:`2px solid ${openMarkerColor}`,zIndex:100,overflow:"hidden",boxSizing:"border-box" }}>
-                <div style={{ display:"flex",alignItems:"center",gap:8,padding:"8px 10px 6px",borderBottom:"0.5px solid #eee" }}>
-                  <div style={{ width:28,height:28,borderRadius:"50% 50% 50% 0",transform:"rotate(-45deg)",background:openMarkerColor,border:"2px solid #eee",flexShrink:0 }} />
-                  <div style={{ flex:1,overflow:"hidden" }}>
-                    <div style={{ fontWeight:500,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{openMarker.label||"Marker"}</div>
-                    <div style={{ fontSize:10,color:"#888" }}>{openMarkerMember?.display_name || openMarker.user_name?.split(" ")[0] || "Player"}</div>
+                style={{ position:"absolute",left:markerCardPos.left,top:markerCardPos.top,width:markerCardPos.cardW,background:T.bg,borderRadius:12,border:`1.5px solid ${openMarkerColor}`,zIndex:100,overflow:"hidden",boxSizing:"border-box",boxShadow:"0 6px 24px rgba(26,16,53,0.22)" }}>
+                <div style={{ display:"flex",alignItems:"center",gap:10,padding:"10px 12px 8px",borderBottom:`1px solid ${openMarkerColor}33`,background:openMarkerColor+"18" }}>
+                  <div style={{ width:28,height:28,borderRadius:"50% 50% 50% 0",transform:"rotate(-45deg)",background:openMarkerColor,border:`2px solid ${T.bg}`,flexShrink:0 }} />
+                  <div style={{ flex:1,minWidth:0 }}>
+                    <div style={{ fontWeight:700,fontSize:13,color:T.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontFamily:T.fHead }}>{openMarker.label||"Marker"}</div>
+                    <div style={{ fontSize:10,color:T.muted,marginTop:1 }}>{openMarkerMember?.display_name || openMarker.user_name?.split(" ")[0] || "Player"}</div>
                   </div>
                 </div>
                 {openMarker.description && (
                   <div onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()}
-                    style={{ padding:"7px 10px",fontSize:12,color:"#555",lineHeight:1.5,maxHeight:80,overflowY:"auto",touchAction:"pan-y" }}>
+                    style={{ padding:"9px 12px",fontSize:12,color:T.muted,lineHeight:1.6,maxHeight:80,overflowY:"auto",touchAction:"pan-y" }}>
                     {openMarker.description}
                   </div>
                 )}
-                <div style={{ padding:"4px 10px 8px",display:"flex",gap:6,justifyContent:"flex-end" }}>
+                <div style={{ padding:"6px 12px 10px",display:"flex",gap:6,justifyContent:"flex-end",borderTop:`0.5px solid ${T.border}` }}>
                   {openMarker.user_id === user.id && <>
                     <Btn size="sm" onClick={()=>{ setMarkerForm({ marker: openMarker }); setOpenMarkerCard(null); }}>Edit</Btn>
                     <Btn size="sm" variant="danger" onClick={()=>deleteMarker(openMarker.id)}>Delete</Btn>
@@ -2005,51 +2071,58 @@ function App() {
             })()}
           </div>
 
-          <div style={{ padding:"4px 14px",borderTop:"0.5px solid #ddd",display:"flex",gap:12,fontSize:10,color:"#888",flexWrap:"wrap" }}>
+          <div style={{ padding:"5px 14px",borderTop:`0.5px solid ${T.border}`,display:"flex",gap:10,fontSize:10,color:T.muted,flexWrap:"wrap",background:T.surface }}>
             <span>Tap POI or marker to view</span>
-            {isGM && <span style={{ color:"#185FA5" }}>GM: drag POI to move · — — dashed = hidden</span>}
-            <span>Drag your own marker to move it</span>
+            {isGM && <span style={{ color:T.goldDim }}>GM: drag POI/NPC to move · dashed = hidden</span>}
+            <span>Drag your own marker to reposition</span>
           </div>
         </div>
       )}
 
       {/* INFO TAB */}
       {tab==="info" && (
-        <div style={{ flex:1,overflowY:"auto",padding:16 }}>
-          {campInfoEdit === null ? <>
-            <h2 style={{ margin:"0 0 4px",fontSize:20,fontWeight:700,fontFamily:T.fHead,color:T.ink }}>{activeCampaign?.name}</h2>
-            {activeCampaign?.sub_header && <div style={{ fontSize:13,color:T.muted,fontStyle:"italic",marginBottom:8 }}>{activeCampaign.sub_header}</div>}
-            {activeCampaign?.description
-              ? <p style={{ fontSize:13,color:T.ink,lineHeight:1.7,marginTop:10,whiteSpace:"pre-wrap" }}>{activeCampaign.description}</p>
-              : <p style={{ color:T.muted,fontSize:13,fontStyle:"italic",marginTop:10 }}>{isGM ? "No description yet. Click Edit to add one." : "No campaign description has been added yet."}</p>
-            }
-            {isGM && <Btn size="sm" onClick={()=>setCampInfoEdit({ name:activeCampaign?.name||"", sub_header:activeCampaign?.sub_header||"", description:activeCampaign?.description||"" })} style={{ marginTop:16 }}>✎ Edit Campaign Info</Btn>}
-          </> : <>
-            <h3 style={{ margin:"0 0 14px",fontSize:15,fontWeight:600,fontFamily:T.fHead,color:T.ink }}>Edit Campaign Info</h3>
-            <Field label="Campaign Name"><input value={campInfoEdit.name} onChange={e=>setCampInfoEdit(p=>({...p,name:e.target.value}))} style={IS} /></Field>
-            <Field label="Sub Header (optional)"><input value={campInfoEdit.sub_header} onChange={e=>setCampInfoEdit(p=>({...p,sub_header:e.target.value}))} placeholder="e.g. A dark fantasy adventure..." style={IS} /></Field>
-            <Field label="Description (optional)"><textarea value={campInfoEdit.description} onChange={e=>setCampInfoEdit(p=>({...p,description:e.target.value}))} rows={6} placeholder="Describe the campaign setting..." style={{ ...IS,resize:"vertical",lineHeight:1.6 }} /></Field>
-            <div style={{ display:"flex",gap:8 }}>
-              <Btn variant="primary" onClick={saveCampaignInfo}>Save</Btn>
-              <Btn onClick={()=>setCampInfoEdit(null)}>Cancel</Btn>
+        <div style={{ flex:1,overflowY:"auto",padding:"20px 16px" }}>
+          {campInfoEdit === null ? (
+            <div style={{ maxWidth:560 }}>
+              {/* Campaign title block */}
+              <div style={{ padding:"16px 20px",background:T.surface,borderRadius:12,border:`1.5px solid ${T.border}`,marginBottom:20 }}>
+                <h2 style={{ margin:"0 0 4px",fontSize:20,fontWeight:700,fontFamily:T.fHead,color:T.ink,letterSpacing:"0.03em" }}>{activeCampaign?.name}</h2>
+                {activeCampaign?.sub_header && <div style={{ fontSize:13,color:T.goldDim,fontStyle:"italic",marginBottom:10,fontFamily:T.fBody }}>{activeCampaign.sub_header}</div>}
+                {activeCampaign?.description
+                  ? <p style={{ fontSize:13,color:T.ink,lineHeight:1.8,marginTop:8,whiteSpace:"pre-wrap",margin:0 }}>{activeCampaign.description}</p>
+                  : <p style={{ color:T.muted,fontSize:13,fontStyle:"italic",margin:0 }}>{isGM ? "No description yet — click Edit to add one." : "No campaign description has been added yet."}</p>
+                }
+                {isGM && <Btn size="sm" onClick={()=>setCampInfoEdit({ name:activeCampaign?.name||"", sub_header:activeCampaign?.sub_header||"", description:activeCampaign?.description||"" })} style={{ marginTop:14 }}>✎ Edit Campaign Info</Btn>}
+              </div>
             </div>
-          </>}
+          ) : (
+            <div style={{ maxWidth:560 }}>
+              <h3 style={{ margin:"0 0 16px",fontSize:15,fontWeight:700,fontFamily:T.fHead,color:T.ink,letterSpacing:"0.04em" }}>Edit Campaign Info</h3>
+              <Field label="Campaign Name"><input value={campInfoEdit.name} onChange={e=>setCampInfoEdit(p=>({...p,name:e.target.value}))} style={IS} /></Field>
+              <Field label="Sub Header"><input value={campInfoEdit.sub_header} onChange={e=>setCampInfoEdit(p=>({...p,sub_header:e.target.value}))} placeholder="e.g. A dark fantasy adventure..." style={IS} /></Field>
+              <Field label="Description"><textarea value={campInfoEdit.description} onChange={e=>setCampInfoEdit(p=>({...p,description:e.target.value}))} rows={6} placeholder="Describe the campaign setting..." style={{ ...IS,resize:"vertical",lineHeight:1.7 }} /></Field>
+              <div style={{ display:"flex",gap:8 }}>
+                <Btn variant="primary" onClick={saveCampaignInfo}>Save Changes</Btn>
+                <Btn onClick={()=>setCampInfoEdit(null)}>Cancel</Btn>
+              </div>
+            </div>
+          )}
 
           {/* Announcements */}
-          <div style={{ marginTop:24,borderTop:`1px solid ${T.border}`,paddingTop:16 }}>
-            <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:12 }}>
-              <span style={{ fontFamily:T.fHead,fontWeight:600,fontSize:14,color:T.ink }}>📜 Announcements</span>
-              {isGM && <Btn size="sm" variant="primary" onClick={()=>setAnnounceForm({announcement:null,title:"",sub_header:"",message:""})}>+ New</Btn>}
+          <div style={{ maxWidth:560,marginTop:campInfoEdit?20:0,borderTop:campInfoEdit?`1px solid ${T.border}`:"none",paddingTop:campInfoEdit?20:0 }}>
+            <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:14 }}>
+              <span style={{ fontFamily:T.fHead,fontWeight:700,fontSize:15,color:T.ink }}>📜 Announcements</span>
+              {isGM && <Btn size="sm" variant="primary" onClick={()=>setAnnounceForm({announcement:null,title:"",sub_header:"",message:""})}>＋ New</Btn>}
             </div>
             {announcements.length===0 && <p style={{ color:T.muted,fontSize:13,fontStyle:"italic" }}>No announcements yet.</p>}
             {announcements.map(a=>(
-              <div key={a.id} style={{ padding:"10px 14px",background:T.surface,borderRadius:8,marginBottom:8,border:`1px solid ${T.border}` }}>
-                <div style={{ display:"flex",alignItems:"flex-start",gap:8 }}>
-                  <div style={{ flex:1 }}>
-                    <div style={{ fontFamily:T.fHead,fontWeight:600,fontSize:13,color:T.ink }}>{a.title||"(No title)"}</div>
-                    {a.sub_header && <div style={{ fontSize:11,color:T.muted,fontStyle:"italic",marginTop:1 }}>{a.sub_header}</div>}
-                    {a.message && <div style={{ fontSize:12,color:T.ink,lineHeight:1.6,marginTop:6,whiteSpace:"pre-wrap" }}>{a.message}</div>}
-                    <div style={{ fontSize:10,color:T.muted,marginTop:6 }}>{new Date(a.created_at).toLocaleDateString(undefined,{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}</div>
+              <div key={a.id} style={{ padding:"12px 16px",background:T.surface,borderRadius:10,marginBottom:10,border:`1px solid ${T.border}`,boxShadow:"0 1px 4px rgba(26,16,53,0.06)" }}>
+                <div style={{ display:"flex",alignItems:"flex-start",gap:10 }}>
+                  <div style={{ flex:1,minWidth:0 }}>
+                    <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:13,color:T.ink }}>{a.title||"(No title)"}</div>
+                    {a.sub_header && <div style={{ fontSize:11,color:T.goldDim,fontStyle:"italic",marginTop:2 }}>{a.sub_header}</div>}
+                    {a.message && <div style={{ fontSize:12,color:T.ink,lineHeight:1.7,marginTop:8,whiteSpace:"pre-wrap" }}>{a.message}</div>}
+                    <div style={{ fontSize:10,color:T.muted,marginTop:8 }}>{new Date(a.created_at).toLocaleDateString(undefined,{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}</div>
                   </div>
                   {isGM && <div style={{ display:"flex",gap:4,flexShrink:0 }}>
                     <Btn size="sm" onClick={()=>setAnnounceForm({announcement:a,title:a.title,sub_header:a.sub_header||"",message:a.message||""})}>✎</Btn>
@@ -2062,106 +2135,46 @@ function App() {
         </div>
       )}
 
-      {/* LIBRARY TAB */}
+      {/* LIBRARY TAB — GM only; alphabetical sub-tabs */}
       {tab==="library" && isGM && (
         <div style={{ display:"flex",flexDirection:"column",flex:1,minHeight:0 }}>
-          <div style={{ display:"flex",borderBottom:`1px solid ${T.border}`,padding:"0 14px",background:T.surface }}>
-            {["maps","pois","npcs","categories","players"].map(st=>(
-              <button key={st} onClick={()=>setLibSubTab(st)} style={{ padding:"6px 12px",border:"none",borderBottom:libSubTab===st?`2px solid ${T.gold}`:"2px solid transparent",background:"transparent",cursor:"pointer",fontSize:12,fontWeight:libSubTab===st?600:400,color:libSubTab===st?T.goldDim:T.muted,textTransform:"capitalize",fontFamily:T.fBody }}>{st}</button>
+          {/* Sub-tab bar — alphabetical: Categories, Layers, Maps, NPCs, Players, POIs, Zones */}
+          <div style={{ display:"flex",borderBottom:`1px solid ${T.border}`,padding:"0 10px",background:T.surface,overflowX:"auto" }}>
+            {[
+              { id:"categories", label:"Categories" },
+              { id:"layers",     label:"Layers" },
+              { id:"maps",       label:"Maps" },
+              { id:"npcs",       label:"NPCs" },
+              { id:"players",    label:"Players" },
+              { id:"pois",       label:"POIs" },
+              { id:"zones",      label:"Zones" },
+            ].map(({ id, label })=>(
+              <button key={id} onClick={()=>setLibSubTab(id)}
+                style={{ padding:"8px 13px",border:"none",borderBottom:libSubTab===id?`2.5px solid ${T.gold}`:"2.5px solid transparent",background:"transparent",cursor:"pointer",fontSize:12,fontWeight:libSubTab===id?700:400,color:libSubTab===id?T.goldDim:T.muted,fontFamily:T.fBody,whiteSpace:"nowrap" }}>
+                {label}
+              </button>
             ))}
           </div>
-          <div style={{ flex:1,overflowY:"auto",padding:14 }}>
-            {libSubTab==="maps" && <>
-              <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:12 }}>
-                <span style={{ fontWeight:500 }}>Maps</span>
-                <FilePicker label="+ Upload" onFile={uploadMap} />
-              </div>
-              {maps.length===0 && <p style={{ color:T.muted,fontSize:13 }}>No maps yet.</p>}
-              <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:10 }}>
-                {maps.map(m=>(
-                  <div key={m.id} style={{ border:m.is_main?`2px solid ${T.gold}`:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden",background:T.surface }}>
-                    <img src={m.src} alt={m.name} style={{ width:"100%",height:75,objectFit:"cover",display:"block" }} />
-                    <div style={{ padding:"6px 8px" }}>
-                      <div style={{ fontSize:12,fontWeight:500,marginBottom:5,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{m.name}</div>
-                      <div style={{ display:"flex",gap:4,flexWrap:"wrap" }}>
-                        {m.is_main?<span style={{ fontSize:10,color:T.goldDim,fontWeight:600,fontFamily:T.fHead }}>★ Main</span>:<Btn size="sm" variant="primary" onClick={()=>setMainMap(m.id)}>Set Main</Btn>}
-                        {!m.is_main && <button onClick={()=>toggleMapAccess(m.id,m.player_accessible)}
-                          style={{ padding:"2px 6px",fontSize:10,borderRadius:6,border:"none",background:m.player_accessible?"#EAF3DE":"#f0f0f0",color:m.player_accessible?"#3B6D11":"#888",cursor:"pointer",fontWeight:500 }}>
-                          {m.player_accessible?"Unlocked":"Locked"}
-                        </button>}
-                        <Btn size="sm" variant="danger" onClick={()=>deleteMap(m.id)}>Del</Btn>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </>}
 
-            {libSubTab==="pois" && <>
-              <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:10,flexWrap:"wrap" }}>
-                <span style={{ fontWeight:500 }}>POIs</span>
-                <button onClick={()=>setLibSort("name")} style={{ fontSize:11,padding:"2px 8px",borderRadius:20,border:`1px solid ${T.border}`,background:libSort==="name"?T.purple:T.bg,color:libSort==="name"?T.headerFg:T.muted,cursor:"pointer",fontFamily:T.fBody }}>Name</button>
-                <button onClick={()=>setLibSort("type")} style={{ fontSize:11,padding:"2px 8px",borderRadius:20,border:`1px solid ${T.border}`,background:libSort==="type"?T.purple:T.bg,color:libSort==="type"?T.headerFg:T.muted,cursor:"pointer",fontFamily:T.fBody }}>Type</button>
-              </div>
-              {sortedLibPOIs.length===0 && <p style={{ color:"#888",fontSize:12 }}>No POIs yet.</p>}
-              {sortedLibPOIs.map(p=>{
-                const cc=getCatColor(p.category);
-                const iconUrl = p.icon_url || categoryIcons[p.category] || "";
-                return (
-                  <div key={p.id} style={{ display:"flex",alignItems:"center",gap:8,padding:"7px 10px",background:T.surface,borderRadius:8,marginBottom:6 }}>
-                    <div style={{ width:30,height:30,borderRadius:"50%",border:`2px ${p.revealed?"solid":"dashed"} ${cc}`,overflow:"hidden",flexShrink:0,background:cc+"33",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer" }}
-                      onClick={()=>setPoiForm({poi:p,name:p.name,description:p.description,revealed:p.revealed,category:p.category||"other",size:p.size||"large"})}>
-                      {iconUrl?<img src={iconUrl} alt="" draggable={false} style={{ width:"100%",height:"100%",objectFit:"contain" }} />:<span style={{ fontSize:12,fontWeight:700,color:cc }}>?</span>}
-                    </div>
-                    <div style={{ flex:1,overflow:"hidden",cursor:"pointer" }} onClick={()=>setPoiForm({poi:p,name:p.name,description:p.description,revealed:p.revealed,category:p.category||"other",size:p.size||"large"})}>
-                      <div style={{ fontSize:12,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{p.name}</div>
-                      <div style={{ fontSize:10,color:cc,fontWeight:500 }}>{getCatLabel(p.category)}</div>
-                    </div>
-                    <button onClick={()=>togglePOIReveal(p.id,p.revealed)}
-                      style={{ padding:"3px 8px",borderRadius:10,border:"none",background:p.revealed?"#EAF3DE":"#FEF3E2",color:p.revealed?"#3B6D11":"#854F0B",fontSize:11,fontWeight:500,cursor:"pointer",flexShrink:0 }}>
-                      {p.revealed?"Shown":"Hidden"}
-                    </button>
-                  </div>
-                );
-              })}
-            </>}
+          <div style={{ flex:1,overflowY:"auto",padding:"16px 14px" }}>
 
-            {libSubTab==="npcs" && <>
-              <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:12,flexWrap:"wrap" }}>
-                <span style={{ fontWeight:500 }}>VIP NPCs</span>
-                <Btn size="sm" variant="primary" onClick={()=>{setNpcForm({npc:null,name:"",status:"Alive",border_color:"#C9A84C",aura_radius:80,show_name:true,show_status:true,show_aura:true,is_visible_to_players:false,x:200,y:200});setTab("map");}}>+ Add NPC</Btn>
-              </div>
-              <p style={{ fontSize:12,color:T.muted,marginBottom:10 }}>NPC nodes are placed on the map. Drag them to update their location. Individual fields can be hidden to show "???" to players.</p>
-              {npcs.filter(n=>n.map_id===activeMapId).length===0 && <p style={{ color:T.muted,fontSize:13 }}>No NPCs on this map yet.</p>}
-              {npcs.filter(n=>n.map_id===activeMapId).map(npc=>(
-                <div key={npc.id} style={{ display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:T.surface,borderRadius:8,marginBottom:6,border:`1px solid ${T.border}` }}>
-                  <div style={{ width:24,height:24,borderRadius:"50%",background:`${npc.border_color}33`,border:`2px solid ${npc.border_color}`,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12 }}>👤</div>
-                  <div style={{ flex:1,minWidth:0 }}>
-                    <div style={{ fontSize:13,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{npc.name}</div>
-                    <div style={{ fontSize:11,color:T.muted }}>{npc.status} · aura {npc.aura_radius}px</div>
-                  </div>
-                  <button onClick={()=>{ const n=npcs.find(x=>x.id===npc.id); if(n){setNpcForm({npc:n,...n});setTab("map");} }}
-                    style={{ padding:"3px 8px",borderRadius:10,border:"none",background:npc.is_visible_to_players?"#EAF3DE":"#FEF3E2",color:npc.is_visible_to_players?"#3B6D11":"#854F0B",fontSize:11,fontWeight:500,cursor:"pointer",flexShrink:0 }}>
-                    {npc.is_visible_to_players?"Revealed":"Hidden"}
-                  </button>
-                  <Btn size="sm" onClick={()=>{const n=npcs.find(x=>x.id===npc.id);if(n) setNpcForm({npc:n,...n});}}>Edit</Btn>
-                </div>
-              ))}
-            </>}
-
+            {/* ── CATEGORIES ── */}
             {libSubTab==="categories" && <>
-              <div style={{ marginBottom:12 }}>
-                <span style={{ fontWeight:500 }}>Category Icons</span>
-                <p style={{ fontSize:12,color:"#888",marginTop:4 }}>Assign a default icon per category. POIs without a custom icon use this automatically.</p>
+              <div style={{ marginBottom:14 }}>
+                <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:14,color:T.ink,marginBottom:4 }}>Category Icons</div>
+                <p style={{ fontSize:12,color:T.muted,margin:0 }}>Assign a default icon per category. POIs without a custom icon use this automatically.</p>
               </div>
               {CATEGORIES.map(cat=>{
                 const iconUrl = categoryIcons[cat.id];
                 return (
-                  <div key={cat.id} style={{ display:"flex",alignItems:"center",gap:10,padding:"8px 10px",background:T.surface,borderRadius:8,marginBottom:8 }}>
-                    <div style={{ width:36,height:36,borderRadius:"50%",border:`2px solid ${cat.color}`,overflow:"hidden",flexShrink:0,background:cat.color+"33",display:"flex",alignItems:"center",justifyContent:"center" }}>
-                      {iconUrl?<img src={iconUrl} alt="" draggable={false} style={{ width:"100%",height:"100%",objectFit:"contain" }} />:<span style={{ fontSize:13,fontWeight:700,color:cat.color==="#EEEEEE"?"#aaa":cat.color }}>?</span>}
+                  <div key={cat.id} style={{ display:"flex",alignItems:"center",gap:12,padding:"10px 12px",background:T.surface,borderRadius:10,marginBottom:8,border:`1px solid ${T.border}` }}>
+                    <div style={{ width:38,height:38,borderRadius:"50%",border:`2.5px solid ${cat.color}`,overflow:"hidden",flexShrink:0,background:cat.color+"28",display:"flex",alignItems:"center",justifyContent:"center" }}>
+                      {iconUrl?<img src={iconUrl} alt="" draggable={false} style={{ width:"100%",height:"100%",objectFit:"contain" }} />:<span style={{ fontSize:13,fontWeight:700,color:cat.color }}>?</span>}
                     </div>
-                    <span style={{ flex:1,fontSize:13,fontWeight:500 }}>{cat.label}</span>
+                    <div style={{ flex:1,minWidth:0 }}>
+                      <div style={{ fontSize:13,fontWeight:600,color:T.ink }}>{cat.label}</div>
+                      <div style={{ width:28,height:6,borderRadius:3,background:cat.color,marginTop:3 }} />
+                    </div>
                     <div style={{ display:"flex",gap:6 }}>
                       <FilePicker label={iconUrl?"Replace":"Upload"} onFile={f=>saveCategoryIcon(cat.id,f)} />
                       {iconUrl && <Btn size="sm" variant="danger" onClick={()=>removeCategoryIcon(cat.id)}>Clear</Btn>}
@@ -2171,105 +2184,180 @@ function App() {
               })}
             </>}
 
+            {/* ── LAYERS ── */}
+            {libSubTab==="layers" && <>
+              <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:8 }}>
+                <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:14,color:T.ink,flex:1 }}>Image Layers</div>
+                <FilePicker label="＋ Upload Layer" onFile={uploadOverlay} />
+              </div>
+              <p style={{ fontSize:12,color:T.muted,marginBottom:14 }}>Transparent PNG/JPEG images displayed above the map. Control opacity &amp; visibility from the "Layers &amp; Zones" strip on the Map tab.</p>
+              {mapOverlays.length===0 && <p style={{ color:T.muted,fontSize:13,fontStyle:"italic" }}>No layers yet.</p>}
+              {mapOverlays.map(ov=>(
+                <div key={ov.id} style={{ display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:T.surface,borderRadius:10,marginBottom:8,border:`1px solid ${T.border}` }}>
+                  <img src={ov.src} alt={ov.name} style={{ width:44,height:44,objectFit:"cover",borderRadius:8,flexShrink:0,border:`1px solid ${T.border}` }} />
+                  {renamingOverlay?.id === ov.id ? <>
+                    <input autoFocus value={renamingOverlay.name}
+                      onChange={e=>setRenamingOverlay(r=>({...r,name:e.target.value}))}
+                      onKeyDown={e=>{ if(e.key==="Enter") saveOverlayName(); if(e.key==="Escape") setRenamingOverlay(null); }}
+                      style={{ flex:1,...IS,padding:"4px 10px" }} />
+                    <Btn size="sm" variant="primary" onClick={saveOverlayName}>Save</Btn>
+                    <Btn size="sm" onClick={()=>setRenamingOverlay(null)}>Cancel</Btn>
+                  </> : <>
+                    <div style={{ flex:1,fontSize:13,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:T.ink }}>{ov.name}</div>
+                    <Btn size="sm" onClick={()=>setRenamingOverlay({id:ov.id,name:ov.name})}>Rename</Btn>
+                    <Btn size="sm" variant="danger" onClick={()=>deleteOverlay(ov.id)}>Delete</Btn>
+                  </>}
+                </div>
+              ))}
+            </>}
+
+            {/* ── MAPS ── */}
+            {libSubTab==="maps" && <>
+              <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:14 }}>
+                <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:14,color:T.ink,flex:1 }}>Maps</div>
+                <FilePicker label="＋ Upload Map" onFile={uploadMap} />
+              </div>
+              {maps.length===0 && <p style={{ color:T.muted,fontSize:13,fontStyle:"italic" }}>No maps yet. Upload an image to get started.</p>}
+              <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:12 }}>
+                {maps.map(m=>(
+                  <div key={m.id} style={{ border:m.is_main?`2px solid ${T.gold}`:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",background:T.surface,boxShadow:m.is_main?"0 2px 12px rgba(201,168,76,0.18)":"none" }}>
+                    <div style={{ position:"relative" }}>
+                      <img src={m.src} alt={m.name} style={{ width:"100%",height:80,objectFit:"cover",display:"block" }} />
+                      {m.is_main && <div style={{ position:"absolute",top:6,left:6,background:T.gold,color:T.ink,fontSize:9,fontWeight:700,fontFamily:T.fHead,padding:"2px 7px",borderRadius:10,letterSpacing:"0.04em" }}>★ MAIN</div>}
+                    </div>
+                    <div style={{ padding:"8px 10px" }}>
+                      <div style={{ fontSize:12,fontWeight:600,color:T.ink,marginBottom:7,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{m.name}</div>
+                      <div style={{ display:"flex",gap:4,flexWrap:"wrap" }}>
+                        {!m.is_main && <Btn size="sm" variant="primary" onClick={()=>setMainMap(m.id)}>Set Main</Btn>}
+                        {!m.is_main && (
+                          <button onClick={()=>toggleMapAccess(m.id,m.player_accessible)}
+                            style={{ padding:"4px 8px",fontSize:11,borderRadius:8,border:"none",background:m.player_accessible?"#EAF3DE":"#F5F0E8",color:m.player_accessible?"#3B6D11":T.muted,cursor:"pointer",fontWeight:600 }}>
+                            {m.player_accessible?"🔓 Open":"🔒 Locked"}
+                          </button>
+                        )}
+                        <Btn size="sm" variant="danger" onClick={()=>deleteMap(m.id)}>Delete</Btn>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>}
+
+            {/* ── NPCS ── */}
+            {libSubTab==="npcs" && <>
+              <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:8 }}>
+                <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:14,color:T.ink,flex:1 }}>VIP NPCs</div>
+                <Btn size="sm" variant="primary" onClick={()=>{setNpcForm({npc:null,name:"",status:"Alive",border_color:"#C9A84C",aura_radius:80,show_name:true,show_status:true,show_aura:true,is_visible_to_players:false,x:200,y:200});setTab("map");}}>＋ Add NPC</Btn>
+              </div>
+              <p style={{ fontSize:12,color:T.muted,marginBottom:14 }}>NPC nodes appear on the map as draggable icons. Fields can be individually hidden from players (shown as "???").</p>
+              {npcs.filter(n=>n.map_id===activeMapId).length===0 && <p style={{ color:T.muted,fontSize:13,fontStyle:"italic" }}>No NPCs on this map yet.</p>}
+              {npcs.filter(n=>n.map_id===activeMapId).map(npc=>(
+                <div key={npc.id} style={{ display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:T.surface,borderRadius:10,marginBottom:8,border:`1px solid ${T.border}` }}>
+                  <div style={{ width:28,height:28,borderRadius:"50%",background:`${npc.border_color}28`,border:`2.5px solid ${npc.border_color}`,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13 }}>👤</div>
+                  <div style={{ flex:1,minWidth:0 }}>
+                    <div style={{ fontSize:13,fontWeight:600,color:T.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{npc.name}</div>
+                    <div style={{ fontSize:11,color:T.muted }}>{npc.status} · aura {npc.aura_radius}px</div>
+                  </div>
+                  <button onClick={()=>{ const n=npcs.find(x=>x.id===npc.id); if(n){setNpcForm({npc:n,...n});setTab("map");} }}
+                    style={{ padding:"4px 10px",borderRadius:20,border:"none",background:npc.is_visible_to_players?"#EAF3DE":"#FEF3E2",color:npc.is_visible_to_players?"#3B6D11":"#854F0B",fontSize:11,fontWeight:600,cursor:"pointer",flexShrink:0 }}>
+                    {npc.is_visible_to_players?"Revealed":"Hidden"}
+                  </button>
+                  <Btn size="sm" onClick={()=>{const n=npcs.find(x=>x.id===npc.id);if(n) setNpcForm({npc:n,...n});}}>Edit</Btn>
+                </div>
+              ))}
+            </>}
+
+            {/* ── PLAYERS ── */}
             {libSubTab==="players" && <>
-              <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:12,flexWrap:"wrap" }}>
-                <span style={{ fontWeight:500 }}>Players</span>
-                <div style={{ display:"flex",alignItems:"center",gap:8,marginLeft:"auto" }}>
-                  <span style={{ fontSize:12,color:"#666" }}>Marker limit per player:</span>
+              <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:14,flexWrap:"wrap" }}>
+                <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:14,color:T.ink,flex:1 }}>Players</div>
+                <div style={{ display:"flex",alignItems:"center",gap:8 }}>
+                  <span style={{ fontSize:12,color:T.muted }}>Marker limit:</span>
                   <input type="number" min={0} max={50} value={markerLimit}
                     onChange={e=>setMarkerLimit(Number(e.target.value))}
                     onBlur={e=>updateMarkerLimit(Number(e.target.value))}
-                    style={{ ...IS,width:60 }} />
+                    style={{ ...IS,width:64 }} />
                 </div>
               </div>
-              {members.length===0 && <p style={{ color:T.muted,fontSize:13 }}>No members yet.</p>}
+              {members.length===0 && <p style={{ color:T.muted,fontSize:13,fontStyle:"italic" }}>No members yet.</p>}
               {members.map(m=>(
-                <div key={m.user_id} style={{ display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:T.surface,borderRadius:8,marginBottom:6,border:`1px solid ${T.border}` }}>
-                  <div style={{ width:24,height:24,borderRadius:"50%",background:m.player_color||"#ddd",border:`2px solid ${T.border}`,flexShrink:0 }} />
-                  <div style={{ flex:1 }}>
-                    <div style={{ fontSize:13,fontWeight:500,color:T.ink }}>
-                      {m.display_name || (m.role==="gm" ? "Game Master" : m.user_id===user.id ? "You" : "Unknown Player")}
+                <div key={m.user_id} style={{ display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:T.surface,borderRadius:10,marginBottom:8,border:`1px solid ${T.border}` }}>
+                  <div style={{ width:28,height:28,borderRadius:"50%",background:m.player_color||`${T.border}`,border:`2.5px solid ${m.player_color||T.border}`,flexShrink:0 }} />
+                  <div style={{ flex:1,minWidth:0 }}>
+                    <div style={{ fontSize:13,fontWeight:600,color:T.ink }}>
+                      {m.display_name || (m.role==="gm" ? "Game Master" : m.user_id===user.id ? "You" : "Unknown")}
                       {m.user_id===user.id && <span style={{ marginLeft:6,fontSize:10,color:T.muted,fontStyle:"italic" }}>(you)</span>}
                     </div>
-                    <div style={{ fontSize:11,color:T.muted }}>{m.role==="gm"?"Game Master":"Player"} · {markers.filter(mk=>mk.user_id===m.user_id&&mk.map_id===activeMapId).length} markers placed</div>
+                    <div style={{ fontSize:11,color:T.muted }}>{m.role==="gm"?"Game Master":"Player"} · {markers.filter(mk=>mk.user_id===m.user_id&&mk.map_id===activeMapId).length} markers</div>
                   </div>
-                  {m.player_color && <div style={{ fontSize:11,padding:"2px 8px",borderRadius:10,background:m.player_color+"22",color:m.player_color==="#FFFFFF"?"#aaa":m.player_color,border:`1px solid ${m.player_color}`,fontWeight:500 }}>{m.player_color}</div>}
                   {isGM && m.role!=="gm" && m.user_id!==user.id && (
                     <Btn size="sm" variant="danger" onClick={()=>{ if(window.confirm(`Remove ${m.display_name||"this player"} from the campaign?`)) kickPlayer(m.user_id); }}>Kick</Btn>
                   )}
                 </div>
               ))}
             </>}
-          </div>
-        </div>
-      )}
 
-      {/* OVERLAYS TAB — visible to all; GM gets Zones sub-tab too */}
-      {tab==="overlays" && (
-        <div style={{ display:"flex",flexDirection:"column",flex:1,minHeight:0 }}>
-          <div style={{ display:"flex",borderBottom:`1px solid ${T.border}`,padding:"0 14px",background:T.surface }}>
-            {["layers",...(isGM?["zones"]:[])].map(st=>(
-              <button key={st} onClick={()=>setOvSubTab(st)} style={{ padding:"6px 12px",border:"none",borderBottom:ovSubTab===st?`2px solid ${T.gold}`:"2px solid transparent",background:"transparent",cursor:"pointer",fontSize:12,fontWeight:ovSubTab===st?600:400,color:ovSubTab===st?T.goldDim:T.muted,textTransform:"capitalize",fontFamily:T.fBody }}>{st}</button>
-            ))}
-          </div>
-          <div style={{ flex:1,overflowY:"auto",padding:14 }}>
-
-            {/* LAYERS — GM management only; opacity/visibility lives on the map page */}
-            {ovSubTab==="layers" && <>
-              <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:8 }}>
-                <span style={{ fontWeight:500 }}>Image Layers</span>
-                <FilePicker label="+ Upload Layer" onFile={uploadOverlay} />
+            {/* ── POIS ── */}
+            {libSubTab==="pois" && <>
+              <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:14,flexWrap:"wrap" }}>
+                <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:14,color:T.ink,flex:1 }}>Points of Interest</div>
+                <button onClick={()=>setLibSort("name")} style={{ fontSize:12,padding:"4px 10px",borderRadius:20,border:`1px solid ${T.border}`,background:libSort==="name"?T.purple:T.bg,color:libSort==="name"?T.headerFg:T.muted,cursor:"pointer",fontFamily:T.fBody }}>By Name</button>
+                <button onClick={()=>setLibSort("type")} style={{ fontSize:12,padding:"4px 10px",borderRadius:20,border:`1px solid ${T.border}`,background:libSort==="type"?T.purple:T.bg,color:libSort==="type"?T.headerFg:T.muted,cursor:"pointer",fontFamily:T.fBody }}>By Type</button>
               </div>
-              <p style={{ fontSize:12,color:"#888",marginBottom:12 }}>Opacity and visibility controls are on the Map tab (Layers &amp; Zones strip).</p>
-              {mapOverlays.length===0 && <p style={{ color:"#888",fontSize:13 }}>No layers yet. Upload an image to overlay it above the map.</p>}
-              {mapOverlays.map(ov=>(
-                <div key={ov.id} style={{ display:"flex",alignItems:"center",gap:10,padding:"8px 10px",background:T.surface,borderRadius:8,marginBottom:8 }}>
-                  <img src={ov.src} alt={ov.name} style={{ width:40,height:40,objectFit:"cover",borderRadius:4,flexShrink:0,border:"0.5px solid #ddd" }} />
-                  {renamingOverlay?.id === ov.id ? <>
-                    <input autoFocus value={renamingOverlay.name}
-                      onChange={e=>setRenamingOverlay(r=>({...r,name:e.target.value}))}
-                      onKeyDown={e=>{ if(e.key==="Enter") saveOverlayName(); if(e.key==="Escape") setRenamingOverlay(null); }}
-                      style={{ flex:1,fontSize:13,padding:"3px 8px",borderRadius:6,border:"1px solid #3C3489" }} />
-                    <Btn size="sm" variant="primary" onClick={saveOverlayName}>Save</Btn>
-                    <Btn size="sm" onClick={()=>setRenamingOverlay(null)}>Cancel</Btn>
-                  </> : <>
-                    <div style={{ flex:1,fontSize:13,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{ov.name}</div>
-                    <Btn size="sm" onClick={()=>setRenamingOverlay({id:ov.id,name:ov.name})}>✎ Rename</Btn>
-                    <Btn size="sm" variant="danger" onClick={()=>deleteOverlay(ov.id)}>✕ Delete</Btn>
-                  </>}
-                </div>
-              ))}
+              {sortedLibPOIs.length===0 && <p style={{ color:T.muted,fontSize:13,fontStyle:"italic" }}>No POIs yet. Place them on the map using "＋ POI".</p>}
+              {sortedLibPOIs.map(p=>{
+                const cc=getCatColor(p.category);
+                const iconUrl = p.icon_url || categoryIcons[p.category] || "";
+                return (
+                  <div key={p.id} style={{ display:"flex",alignItems:"center",gap:10,padding:"9px 12px",background:T.surface,borderRadius:10,marginBottom:8,border:`1px solid ${T.border}` }}>
+                    <div style={{ width:32,height:32,borderRadius:"50%",border:`2px ${p.revealed?"solid":"dashed"} ${cc}`,overflow:"hidden",flexShrink:0,background:cc+"28",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer" }}
+                      onClick={()=>setPoiForm({poi:p,name:p.name,description:p.description,revealed:p.revealed,category:p.category||"other",size:p.size||"large"})}>
+                      {iconUrl?<img src={iconUrl} alt="" draggable={false} style={{ width:"100%",height:"100%",objectFit:"contain" }} />:<span style={{ fontSize:13,fontWeight:700,color:cc }}>?</span>}
+                    </div>
+                    <div style={{ flex:1,minWidth:0,cursor:"pointer" }} onClick={()=>setPoiForm({poi:p,name:p.name,description:p.description,revealed:p.revealed,category:p.category||"other",size:p.size||"large"})}>
+                      <div style={{ fontSize:13,fontWeight:600,color:T.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{p.name}</div>
+                      <div style={{ fontSize:11,color:cc,fontWeight:500 }}>{getCatLabel(p.category)}</div>
+                    </div>
+                    <button onClick={()=>togglePOIReveal(p.id,p.revealed)}
+                      style={{ padding:"4px 10px",borderRadius:20,border:"none",background:p.revealed?"#EAF3DE":"#FEF3E2",color:p.revealed?"#3B6D11":"#854F0B",fontSize:11,fontWeight:600,cursor:"pointer",flexShrink:0 }}>
+                      {p.revealed?"Shown":"Hidden"}
+                    </button>
+                  </div>
+                );
+              })}
             </>}
 
-            {/* ZONES — GM only */}
-            {ovSubTab==="zones" && isGM && <>
-              <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:12 }}>
-                <span style={{ fontWeight:500 }}>Zones</span>
-                <Btn size="sm" variant="primary" onClick={()=>{ setPlacingMode("zone"); setPlacingZonePoints([]); setTab("map"); }}>+ New Zone</Btn>
+            {/* ── ZONES ── */}
+            {libSubTab==="zones" && <>
+              <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:8 }}>
+                <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:14,color:T.ink,flex:1 }}>Zones</div>
+                <Btn size="sm" variant="primary" onClick={()=>{ setPlacingMode("zone"); setPlacingZonePoints([]); setTab("map"); }}>＋ New Zone</Btn>
               </div>
-              {mapZones.length===0 && <p style={{ color:"#888",fontSize:13 }}>No zones yet. Click "+ New Zone" then tap waypoints on the map (min 3), then click "Close Zone ✓".</p>}
+              <p style={{ fontSize:12,color:T.muted,marginBottom:14 }}>Click "＋ New Zone", tap at least 3 waypoints on the map, then "Close Zone ✓" to finish.</p>
+              {mapZones.length===0 && <p style={{ color:T.muted,fontSize:13,fontStyle:"italic" }}>No zones on this map yet.</p>}
               {mapZones.map(z=>(
-                <div key={z.id} style={{ display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:T.surface,borderRadius:8,marginBottom:6 }}>
-                  <div style={{ width:28,height:28,borderRadius:6,background:z.fill_color,opacity:z.opacity/100,flexShrink:0,border:"1px solid #ccc" }} />
+                <div key={z.id} style={{ display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:T.surface,borderRadius:10,marginBottom:8,border:`1px solid ${T.border}` }}>
+                  <div style={{ width:32,height:32,borderRadius:8,background:z.fill_color,opacity:z.opacity/100,flexShrink:0,border:`1px solid ${T.border}` }} />
                   <div style={{ flex:1,minWidth:0 }}>
-                    <div style={{ fontSize:13,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{z.name||"Unnamed Zone"}</div>
-                    <div style={{ fontSize:11,color:"#888" }}>{z.points.length} points · opacity {z.opacity}%</div>
+                    <div style={{ fontSize:13,fontWeight:600,color:T.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{z.name||"Unnamed Zone"}</div>
+                    <div style={{ fontSize:11,color:T.muted }}>{z.points.length} points · {z.opacity}% opacity</div>
                   </div>
                   <button onClick={()=>toggleZoneReveal(z.id,z.revealed)}
-                    style={{ padding:"3px 8px",borderRadius:10,border:"none",background:z.revealed?"#EAF3DE":"#FEF3E2",color:z.revealed?"#3B6D11":"#854F0B",fontSize:11,fontWeight:500,cursor:"pointer",flexShrink:0 }}>
+                    style={{ padding:"4px 10px",borderRadius:20,border:"none",background:z.revealed?"#EAF3DE":"#FEF3E2",color:z.revealed?"#3B6D11":"#854F0B",fontSize:11,fontWeight:600,cursor:"pointer",flexShrink:0 }}>
                     {z.revealed?"Shown":"Hidden"}
                   </button>
                   <Btn size="sm" onClick={()=>setZoneForm({zone:z,name:z.name,fill_color:z.fill_color,opacity:z.opacity,revealed:z.revealed,points:[...z.points]})}>Edit</Btn>
                 </div>
               ))}
             </>}
+
           </div>
         </div>
       )}
 
       {/* PROFILE TAB */}
       {tab==="profile" && (
-        <div style={{ flex:1,overflowY:"auto",padding:14 }}>
+        <div style={{ flex:1,overflowY:"auto",padding:"20px 16px" }}>
           <ProfileTab
             user={user}
             members={members}
@@ -2296,7 +2384,7 @@ function App() {
 
       {/* Bell — notification history panel */}
       {showBell && (
-        <div style={{ position:"fixed",top:48,right:8,zIndex:3000,width:Math.min(340,window.innerWidth-16),background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:10,boxShadow:"0 8px 32px rgba(26,16,53,0.25)",overflow:"hidden",display:"flex",flexDirection:"column",maxHeight:"75vh" }}>
+        <div style={{ position:"fixed",top:56,right:8,zIndex:3000,width:Math.min(340,window.innerWidth-16),background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:12,boxShadow:"0 12px 40px rgba(26,16,53,0.3)",overflow:"hidden",display:"flex",flexDirection:"column",maxHeight:"75vh" }}>
           <div style={{ display:"flex",alignItems:"center",padding:"10px 14px",borderBottom:`1px solid ${T.border}`,background:T.header,flexShrink:0 }}>
             <span style={{ fontFamily:T.fHead,fontSize:13,fontWeight:600,color:T.headerFg,flex:1 }}>Notifications</span>
             <button onClick={()=>setShowBell(false)} style={{ background:"none",border:"none",color:T.headerFg,cursor:"pointer",fontSize:16,padding:0,lineHeight:1 }}>✕</button>
@@ -2637,6 +2725,9 @@ function AnnotationModal({ form, onSave, onDelete, onCancel }) {
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #B8A88A; border-radius: 3px; }
     ::-webkit-scrollbar-thumb:hover { background: #7A5C10; }
+    button:focus-visible { outline: 2px solid #C9A84C; outline-offset: 2px; }
+    input:focus, textarea:focus, select:focus { outline: 2px solid #C9A84C; outline-offset: 0; border-color: #C9A84C !important; }
+    * { box-sizing: border-box; }
   `;
   document.head.appendChild(s);
 })();
