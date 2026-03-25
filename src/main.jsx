@@ -2,6 +2,9 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { createRoot } from "react-dom/client";
 
+// Detect touch-only devices so we can suppress autoFocus={!isTouchDevice} (prevents keyboard pop-up on mobile)
+const isTouchDevice = typeof window !== "undefined" && ("ontouchstart" in window || navigator.maxTouchPoints > 0);
+
 const SUPA_URL = "https://iqmaumupuftguhurnsdt.supabase.co";
 const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlxbWF1bXVwdWZ0Z3VodXJuc2R0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyNTQ5MjEsImV4cCI6MjA4OTgzMDkyMX0.m7lg88RD_3M3OAqt0g17voz_jbZ0f02w-LocREn5Ffg";
 
@@ -279,8 +282,8 @@ function MarkerPin({ marker, scale, isOwner, isGM, onTap, onDragStart, displayNa
   return (
     <div
       onMouseDown={e => { if (isOwner) { e.stopPropagation(); onDragStart(e, marker); } }}
-      onTouchStart={e => { if (isOwner) { e.stopPropagation(); onDragStart(e, marker); } }}
-      onClick={e => { e.stopPropagation(); onTap(marker); }}
+      onTouchStart={e => { if (isOwner) { e.stopPropagation(); e.preventDefault(); onDragStart(e, marker); } }}
+      onClick={e => { e.stopPropagation(); if (!isOwner) onTap(marker); }}
       style={{ position: "absolute", left: marker.x - size/2, top: marker.y - size, width: size, height: size, cursor: isOwner ? "grab" : "pointer", zIndex: 25 }}
     >
       <div style={{ width: size, height: size, borderRadius: "50% 50% 50% 0", transform: "rotate(-45deg)", background: color, border: `${Math.max(1.5, 2/scale)}px solid white`, boxSizing: "border-box", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -487,6 +490,10 @@ function App() {
   const [annotationForm, setAnnotationForm] = useState(null);
   const [openPOICard, setOpenPOICard] = useState(null);
   const [openMarkerCard, setOpenMarkerCard] = useState(null);
+  const [poiCardClosing, setPoiCardClosing] = useState(null);   // id held during fade-out
+  const [markerCardClosing, setMarkerCardClosing] = useState(null);
+  const poiCloseTimer = useRef(null);
+  const markerCloseTimer = useRef(null);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
   const [isDragging, setIsDragging] = useState(false);
@@ -1137,7 +1144,7 @@ function App() {
       window.removeEventListener("touchmove", onMove); window.removeEventListener("touchend", onUp);
       if (!moved) {
         setMarkers(prev => prev.map(m => m.id === markerId ? { ...m, x: originX, y: originY } : m));
-        setOpenMarkerCard(openMarkerCard === markerId ? null : markerId);
+        if (openMarkerCard === markerId) { closeMarkerCard(); } else { setOpenMarkerCard(markerId); }
       } else {
         dbUpdate(session.access_token, "markers", markerId, { x: mapX, y: mapY }).catch(console.error);
       }
@@ -1578,9 +1585,31 @@ function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []); // intentional empty deps — reads live values via keyStateRef
 
-  // Card positions
-  const openPOI = mapPOIs.find(p=>p.id===openPOICard);
-  const openMarker = mapMarkers.find(m=>m.id===openMarkerCard);
+  // ── Animated card close helpers ──
+  // Keeps the card mounted during a 250ms fade-out before removing it from DOM.
+  function closePOICard() {
+    if (!openPOICard) return;
+    setPoiCardClosing(openPOICard); setOpenPOICard(null);
+    clearTimeout(poiCloseTimer.current);
+    poiCloseTimer.current = setTimeout(() => setPoiCardClosing(null), 260);
+  }
+  function closeMarkerCard() {
+    if (!openMarkerCard) return;
+    setMarkerCardClosing(openMarkerCard); setOpenMarkerCard(null);
+    clearTimeout(markerCloseTimer.current);
+    markerCloseTimer.current = setTimeout(() => setMarkerCardClosing(null), 260);
+  }
+  // Clear the closing ghost if a new card opens before the timer fires
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (openPOICard) { clearTimeout(poiCloseTimer.current); setPoiCardClosing(null); } }, [openPOICard]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (openMarkerCard) { clearTimeout(markerCloseTimer.current); setMarkerCardClosing(null); } }, [openMarkerCard]);
+
+  // Card positions — uses the closing id as fallback so the card stays positioned during fade-out
+  const displayedPOIId = openPOICard || poiCardClosing;
+  const displayedMarkerCardId = openMarkerCard || markerCardClosing;
+  const openPOI = mapPOIs.find(p=>p.id===displayedPOIId);
+  const openMarker = mapMarkers.find(m=>m.id===displayedMarkerCardId);
   const openMarkerMember = openMarker ? members.find(m => m.user_id === openMarker.user_id) : null;
 
   function getCardPos(x, y) {
@@ -1658,7 +1687,7 @@ function App() {
       {showCampaignModal && (
         <Modal title="Create Campaign" onClose={()=>{ setShowCampaignModal(false); setNewCampaignName(""); setNewCampaignSubHeader(""); setNewCampaignDescription(""); }} width={400}>
           <Field label="Campaign Name">
-            <input value={newCampaignName} onChange={e=>setNewCampaignName(e.target.value)} style={IS} placeholder="e.g. The Verlantis Saga" autoFocus onKeyDown={e=>{if(e.key==="Enter")createCampaign();}} />
+            <input value={newCampaignName} onChange={e=>setNewCampaignName(e.target.value)} style={IS} placeholder="e.g. The Verlantis Saga" autoFocus={!isTouchDevice} onKeyDown={e=>{if(e.key==="Enter")createCampaign();}} />
           </Field>
           <Field label="Sub Header (optional)">
             <input value={newCampaignSubHeader} onChange={e=>setNewCampaignSubHeader(e.target.value)} style={IS} placeholder="e.g. A tale of shadows and ancient power..." />
@@ -1673,7 +1702,7 @@ function App() {
       )}
       {showJoinModal && (
         <Modal title="Join Campaign" onClose={()=>setShowJoinModal(false)} width={340}>
-          <Field label="Campaign ID (ask your GM)"><input value={joinCode} onChange={e=>setJoinCode(e.target.value)} style={IS} placeholder="Paste campaign UUID here" autoFocus /></Field>
+          <Field label="Campaign ID (ask your GM)"><input value={joinCode} onChange={e=>setJoinCode(e.target.value)} style={IS} placeholder="Paste campaign UUID here" autoFocus={!isTouchDevice} /></Field>
           <Btn variant="primary" onClick={joinCampaign} style={{ width:"100%" }}>Join</Btn>
         </Modal>
       )}
@@ -1783,7 +1812,7 @@ function App() {
               {(mapOverlays.length > 0 || mapZones.filter(z => isGM || z.revealed).length > 0) && (
                 <button onClick={()=>setShowLayerControls(f=>!f)}
                   style={{ padding:"5px 12px",borderRadius:8,border:`1px solid ${showLayerControls?T.gold:T.border}`,background:showLayerControls?`${T.gold}22`:T.bg,color:showLayerControls?T.goldDim:T.muted,fontSize:12,cursor:"pointer",flexShrink:0,fontFamily:T.fBody }}>
-                  🗂 Layers
+                  🎚 Layer Opacity
                 </button>
               )}
               {/* Filter toggle */}
@@ -1794,7 +1823,7 @@ function App() {
             </div>
             {/* Row 2: zoom speed + active mode status */}
             <div style={{ display:"flex",alignItems:"center",gap:8,padding:"4px 14px 7px",flexWrap:"wrap" }}>
-              <span style={{ fontSize:11,color:T.muted,whiteSpace:"nowrap",flexShrink:0 }}>Zoom</span>
+              <span style={{ fontSize:11,color:T.muted,whiteSpace:"nowrap",flexShrink:0 }}>Zoom Speed</span>
               <input type="range" min={0.1} max={2} step={0.1} value={scrollSens} onChange={e=>setScrollSens(Number(e.target.value))} style={{ width:90,flexShrink:0 }} />
               <span style={{ fontSize:11,color:T.muted,minWidth:22,flexShrink:0 }}>{scrollSens.toFixed(1)}×</span>
               {/* Placing mode indicators */}
@@ -1968,7 +1997,7 @@ function App() {
           <div style={{ flex:1,minHeight:0,position:"relative" }}>
             <div ref={mapRef} style={{ position:"absolute",inset:0,overflow:"hidden",background:"#1a1a2e",cursor:placingMode?"crosshair":isDragging?"grabbing":"grab",touchAction:"none",userSelect:"none" }}
               onMouseDown={onPointerDown} onTouchStart={onPointerDown}
-              onClick={()=>{ if(!dragRef.current.moved){ setOpenPOICard(null); setOpenMarkerCard(null); } }}>
+              onClick={()=>{ if(!dragRef.current.moved){ closePOICard(); closeMarkerCard(); } }}>
               {!currentMap ? (
                 <div style={{ display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",color:"#aaa",gap:8 }}>
                   <span style={{ fontSize:40 }}>🗺</span>
@@ -2122,7 +2151,7 @@ function App() {
                             }
                             setPortalConfirm({ poi, targetMap });
                           }
-                        } else if (!isGM) { setOpenPOICard(openPOICard===poi.id?null:poi.id); }
+                        } else if (!isGM) { if (openPOICard===poi.id) { closePOICard(); } else { closePOICard(); setOpenPOICard(poi.id); } }
                       }}
                       onDragStart={startPOIDrag} />
                   ))}
@@ -2207,12 +2236,13 @@ function App() {
               </div>
             )}
 
-            {/* POI popup */}
+            {/* POI popup — stays mounted during fade-out (poiCardClosing) */}
             {openPOI && poiCardPos && (()=>{
               const cc = getCatColor(openPOI.category);
+              const isClosing = !!poiCardClosing && !openPOICard;
               return (
               <div key={openPOI.id} onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
-                style={{ position:"absolute",left:poiCardPos.left,top:poiCardPos.top,width:poiCardPos.cardW,background:T.bg,borderRadius:12,border:`1.5px solid ${cc}`,zIndex:100,overflow:"hidden",boxSizing:"border-box",boxShadow:"0 6px 24px rgba(26,16,53,0.22)",animation:"popupFadeIn 0.18s ease" }}>
+                style={{ position:"absolute",left:poiCardPos.left,top:poiCardPos.top,width:poiCardPos.cardW,background:T.bg,borderRadius:12,border:`1.5px solid ${cc}`,zIndex:100,overflow:"hidden",boxSizing:"border-box",boxShadow:"0 6px 24px rgba(26,16,53,0.22)",animation:`${isClosing?"popupFadeOut 0.25s":"popupFadeIn 0.3s"} ease forwards`,pointerEvents:isClosing?"none":"all" }}>
                 {/* Coloured header strip */}
                 <div style={{ display:"flex",alignItems:"center",gap:10,padding:"10px 12px 8px",borderBottom:`1px solid ${cc}33`,background:cc+"18" }}>
                   <div style={{ width:34,height:34,borderRadius:"50%",border:`2px solid ${cc}`,overflow:"hidden",flexShrink:0,background:cc+"28",display:"flex",alignItems:"center",justifyContent:"center" }}>
@@ -2228,18 +2258,19 @@ function App() {
                   {openPOI.description||<span style={{ fontStyle:"italic" }}>No description.</span>}
                 </div>
                 <div style={{ padding:"6px 12px 10px",textAlign:"right",borderTop:`0.5px solid ${T.border}` }}>
-                  <Btn size="sm" onClick={()=>setOpenPOICard(null)}>Close</Btn>
+                  <Btn size="sm" onClick={closePOICard}>Close</Btn>
                 </div>
               </div>
               );
             })()}
 
-            {/* Marker popup */}
+            {/* Marker popup — stays mounted during fade-out (markerCardClosing) */}
             {openMarker && markerCardPos && (() => {
               const openMarkerColor = openMarkerMember?.player_color || openMarker.player_color || "#378ADD";
+              const isClosing = !!markerCardClosing && !openMarkerCard;
               return (
               <div key={openMarker.id} onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
-                style={{ position:"absolute",left:markerCardPos.left,top:markerCardPos.top,width:markerCardPos.cardW,background:T.bg,borderRadius:12,border:`1.5px solid ${openMarkerColor}`,zIndex:100,overflow:"hidden",boxSizing:"border-box",boxShadow:"0 6px 24px rgba(26,16,53,0.22)",animation:"popupFadeIn 0.18s ease" }}>
+                style={{ position:"absolute",left:markerCardPos.left,top:markerCardPos.top,width:markerCardPos.cardW,background:T.bg,borderRadius:12,border:`1.5px solid ${openMarkerColor}`,zIndex:100,overflow:"hidden",boxSizing:"border-box",boxShadow:"0 6px 24px rgba(26,16,53,0.22)",animation:`${isClosing?"popupFadeOut 0.25s":"popupFadeIn 0.3s"} ease forwards`,pointerEvents:isClosing?"none":"all" }}>
                 <div style={{ display:"flex",alignItems:"center",gap:10,padding:"10px 12px 8px",borderBottom:`1px solid ${openMarkerColor}33`,background:openMarkerColor+"18" }}>
                   <div style={{ width:28,height:28,borderRadius:"50% 50% 50% 0",transform:"rotate(-45deg)",background:openMarkerColor,border:`2px solid ${T.bg}`,flexShrink:0 }} />
                   <div style={{ flex:1,minWidth:0 }}>
@@ -2255,11 +2286,11 @@ function App() {
                 )}
                 <div style={{ padding:"6px 12px 10px",display:"flex",gap:6,justifyContent:"flex-end",borderTop:`0.5px solid ${T.border}` }}>
                   {openMarker.user_id === user.id && <>
-                    <Btn size="sm" onClick={()=>{ setMarkerForm({ marker: openMarker }); setOpenMarkerCard(null); }}>Edit</Btn>
+                    <Btn size="sm" onClick={()=>{ setMarkerForm({ marker: openMarker }); closeMarkerCard(); }}>Edit</Btn>
                     <Btn size="sm" variant="danger" onClick={()=>deleteMarker(openMarker.id)}>Delete</Btn>
                   </>}
                   {isGM && openMarker.user_id !== user.id && <Btn size="sm" variant="danger" onClick={()=>deleteMarker(openMarker.id)}>Delete</Btn>}
-                  <Btn size="sm" onClick={()=>setOpenMarkerCard(null)}>Close</Btn>
+                  <Btn size="sm" onClick={closeMarkerCard}>Close</Btn>
                 </div>
               </div>
               );
@@ -2390,7 +2421,7 @@ function App() {
                 <div key={ov.id} style={{ display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:T.surface,borderRadius:10,marginBottom:8,border:`1px solid ${T.border}` }}>
                   <img src={ov.src} alt={ov.name} style={{ width:44,height:44,objectFit:"cover",borderRadius:8,flexShrink:0,border:`1px solid ${T.border}` }} />
                   {renamingOverlay?.id === ov.id ? <>
-                    <input autoFocus value={renamingOverlay.name}
+                    <input autoFocus={!isTouchDevice} value={renamingOverlay.name}
                       onChange={e=>setRenamingOverlay(r=>({...r,name:e.target.value}))}
                       onKeyDown={e=>{ if(e.key==="Enter") saveOverlayName(); if(e.key==="Escape") setRenamingOverlay(null); }}
                       style={{ flex:1,...IS,padding:"4px 10px" }} />
@@ -2697,7 +2728,7 @@ function ZoneFormModal({ form, onSave, onDelete, onAddPoint, onMovePoints, onClo
   return (
     <Modal title={isEdit ? "Edit Zone" : "New Zone"} onClose={onClose} width={440}>
       <Field label="Name">
-        <input value={name} onChange={e=>setName(e.target.value)} style={IS} placeholder="e.g. Merchant Quarter" autoFocus />
+        <input value={name} onChange={e=>setName(e.target.value)} style={IS} placeholder="e.g. Merchant Quarter" autoFocus={!isTouchDevice} />
       </Field>
       <Field label="Fill Colour">
         <div style={{ display:"flex",flexWrap:"wrap",gap:8,marginTop:4,alignItems:"center" }}>
@@ -2886,7 +2917,7 @@ function MarkerFormModal({ form, onSave, onEdit, onCancel }) {
   const [description, setDescription] = useState(form.marker?.description||"");
   return (
     <Modal title={isEdit?"Edit Marker":"Place Marker"} onClose={onCancel} width={320}>
-      <Field label="Title"><input value={label} onChange={e=>setLabel(e.target.value)} style={IS} placeholder="e.g. Camp site" autoFocus /></Field>
+      <Field label="Title"><input value={label} onChange={e=>setLabel(e.target.value)} style={IS} placeholder="e.g. Camp site" autoFocus={!isTouchDevice} /></Field>
       <Field label="Description (optional)"><textarea value={description} onChange={e=>setDescription(e.target.value)} rows={3} style={IS} placeholder="Add a note..." /></Field>
       <div style={{ display:"flex",gap:8 }}>
         {isEdit
@@ -2903,7 +2934,7 @@ function AnnotationModal({ form, onSave, onDelete, onCancel }) {
   const [content, setContent] = useState(form.ann?.content||"");
   return (
     <Modal title={form.ann?"Edit Note":"New Note"} onClose={onCancel} width={360}>
-      <Field label="Note text"><textarea value={content} onChange={e=>setContent(e.target.value)} rows={4} style={IS} autoFocus placeholder="GM note visible on map..." /></Field>
+      <Field label="Note text"><textarea value={content} onChange={e=>setContent(e.target.value)} rows={4} style={IS} autoFocus={!isTouchDevice} placeholder="GM note visible on map..." /></Field>
       <div style={{ display:"flex",gap:8 }}>
         <Btn variant="primary" onClick={()=>onSave(form,form.ann?.type||"text",content)} style={{ flex:1 }}>Save</Btn>
         {form.ann&&<Btn variant="danger" onClick={()=>onDelete(form.ann.id)}>Delete</Btn>}
@@ -2927,10 +2958,14 @@ function AnnotationModal({ form, onSave, onDelete, onCancel }) {
       0%   { transform: scale(0.75); opacity: 0.85; }
       100% { transform: scale(2.4);  opacity: 0; }
     }
-    /* Popup card entrance */
+    /* Popup card entrance / exit */
     @keyframes popupFadeIn {
-      from { opacity: 0; transform: translateY(6px) scale(0.97); }
+      from { opacity: 0; transform: translateY(8px) scale(0.95); }
       to   { opacity: 1; transform: translateY(0)   scale(1); }
+    }
+    @keyframes popupFadeOut {
+      from { opacity: 1; transform: translateY(0)   scale(1); }
+      to   { opacity: 0; transform: translateY(6px) scale(0.96); }
     }
     /* Map-switch overlay covering / revealing */
     @keyframes mapOverlayIn  { from { opacity: 0; } to { opacity: 1; } }
@@ -2972,7 +3007,7 @@ function NpcFormModal({ form, onSave, onDelete, onClose }) {
   return (
     <Modal title={isEdit?"Edit NPC":"New NPC"} onClose={onClose} width={400}>
       <Field label="Name">
-        <input value={name} onChange={e=>setName(e.target.value)} style={IS} placeholder="e.g. The Hooded Stranger" autoFocus />
+        <input value={name} onChange={e=>setName(e.target.value)} style={IS} placeholder="e.g. The Hooded Stranger" autoFocus={!isTouchDevice} />
       </Field>
       <Field label="Status">
         <div style={{ display:"flex",gap:6,flexWrap:"wrap" }}>
@@ -3036,7 +3071,7 @@ function AnnouncementModal({ form, onSave, onClose }) {
   return (
     <Modal title={isEdit?"Edit Announcement":"New Announcement"} onClose={onClose} width={420}>
       <Field label="Title">
-        <input value={title} onChange={e=>setTitle(e.target.value)} style={IS} placeholder="e.g. Session Update" autoFocus />
+        <input value={title} onChange={e=>setTitle(e.target.value)} style={IS} placeholder="e.g. Session Update" autoFocus={!isTouchDevice} />
       </Field>
       <Field label="Sub Header (optional)">
         <input value={subHeader} onChange={e=>setSubHeader(e.target.value)} style={IS} placeholder="e.g. An urgent missive from the crown..." />
