@@ -763,18 +763,28 @@ function App() {
       });
       if (!res.ok) throw new Error((await res.json()).message || "Failed to load campaign");
       const d = await res.json();
-      setMaps(d.maps || []); setPois(d.pois || []); setMarkers(d.markers || []);
+      const mapsData = d.maps || [];
+      const main = mapsData.find(m => m.is_main) || mapsData[0];
+      // Pre-fetch the main map's image src before setting any state so the first
+      // render already has the image — eliminates the multi-map flash on load.
+      let mapsWithSrc = mapsData;
+      if (main) {
+        try {
+          const rows = await dbSelect(session.access_token, "maps", `id=eq.${main.id}&select=id,src`);
+          if (rows?.[0]?.src) {
+            mapsWithSrc = mapsData.map(m => m.id === main.id ? { ...m, src: rows[0].src } : m);
+          }
+        } catch { /* non-fatal — image will load via onImgLoad fallback */ }
+      }
+      // All state updates batched atomically in one React render (React 18 auto-batching)
+      setMaps(mapsWithSrc); setPois(d.pois || []); setMarkers(d.markers || []);
       setAnnotations(d.annotations || []); setMembers(d.members || []);
       setOverlays(d.overlays || []); setZones(d.zones || []); setNpcs(d.npcs || []);
       setAnnouncements(d.announcements || []); setNotifLog(d.notification_log || []);
       setCategoryIcons(d.category_icons || {});
       const me = (d.members || []).find(m => m.user_id === user.id);
       setMyColor(me?.player_color || null);
-      const main = (d.maps || []).find(m => m.is_main) || (d.maps || [])[0];
-      if (main) {
-        setActiveMapId(main.id);
-        await loadMapSrc(main.id); // fetch the active map's image src immediately
-      }
+      if (main) setActiveMapId(main.id);
       if (!me?.player_color && role !== "gm") setShowColorPicker(true);
     } catch(e) { setError(e.message); }
   }
@@ -1050,8 +1060,10 @@ function App() {
   function clamp(t, cw, ch, iw, ih) {
     if (!iw || !ih) return t;
     const sw = iw * t.scale, sh = ih * t.scale;
-    const minX = Math.min(0, cw - sw), maxX = Math.max(0, cw - sw);
-    const minY = Math.min(0, ch - sh), maxY = Math.max(0, ch - sh);
+    // Allow panning slightly beyond the map edges for a softer feel
+    const PAD = Math.min(120, Math.min(cw, ch) * 0.15);
+    const minX = Math.min(0, cw - sw) - PAD, maxX = Math.max(0, cw - sw) + PAD;
+    const minY = Math.min(0, ch - sh) - PAD, maxY = Math.max(0, ch - sh) + PAD;
     return { ...t, x: Math.min(maxX, Math.max(minX, t.x)), y: Math.min(maxY, Math.max(minY, t.y)) };
   }
   function getContainerRect() { return mapRef.current?.getBoundingClientRect() || { width: 800, height: 500, left: 0, top: 0 }; }
@@ -2169,13 +2181,8 @@ function App() {
                             // GM tap on portal → open edit form (same as any POI)
                             setPoiForm({ poi, name:poi.name, description:poi.description, revealed:poi.revealed, category:poi.category, size:poi.size||"large", poi_type:poi.poi_type, linked_map_id:poi.linked_map_id });
                           } else {
-                            // Player tap on portal → show confirmation first
-                            const targetMap = maps.find(m=>m.id===poi.linked_map_id);
-                            if (!targetMap) { addToast("⚠ Destination map not found", "error"); return; }
-                            if (!targetMap.is_main && !targetMap.player_accessible) {
-                              addToast("🔒 The GM has locked access to this area.", "denied"); return;
-                            }
-                            setPortalConfirm({ poi, targetMap });
+                            // Player tap on portal → open POI details card; travel button shown inside
+                            if (openPOICard===poi.id) { closePOICard(); } else { closePOICard(); setOpenPOICard(poi.id); }
                           }
                         } else if (!isGM) { if (openPOICard===poi.id) { closePOICard(); } else { closePOICard(); setOpenPOICard(poi.id); } }
                       }}
@@ -2283,6 +2290,22 @@ function App() {
                   style={{ padding:"9px 12px",fontSize:12,color:T.muted,lineHeight:1.6,maxHeight:110,overflowY:"auto",touchAction:"pan-y" }}>
                   {openPOI.description||<span style={{ fontStyle:"italic" }}>No description.</span>}
                 </div>
+                {openPOI.poi_type==="portal" && openPOI.linked_map_id && (()=>{
+                  const tMap = maps.find(m=>m.id===openPOI.linked_map_id);
+                  const locked = tMap && !tMap.is_main && !tMap.player_accessible;
+                  return (
+                    <div style={{ padding:"8px 12px",borderTop:`0.5px solid ${T.border}` }}>
+                      {locked
+                        ? <div style={{ fontSize:11,color:T.muted,fontStyle:"italic",textAlign:"center",padding:"2px 0" }}>🔒 The GM has locked access to this area.</div>
+                        : <button
+                            onClick={()=>{ const m=maps.find(x=>x.id===openPOI.linked_map_id); if(!m){addToast("⚠ Destination map not found","error");return;} switchToMap(m.id,{push:true}); closePOICard(); }}
+                            style={{ width:"100%",padding:"7px 12px",borderRadius:20,border:"none",background:T.purple,color:T.headerFg,fontFamily:T.fHead,fontSize:12,fontWeight:600,cursor:"pointer" }}>
+                            ✦ Travel to {tMap?.name||"…"}
+                          </button>
+                      }
+                    </div>
+                  );
+                })()}
                 <div style={{ padding:"6px 12px 10px",textAlign:"right",borderTop:`0.5px solid ${T.border}` }}>
                   <Btn size="sm" onClick={closePOICard}>Close</Btn>
                 </div>
@@ -2665,37 +2688,7 @@ function App() {
         ))}
       </div>
 
-      {/* Portal confirmation modal */}
-      {portalConfirm && (()=>{
-        const pPOI = portalConfirm.poi;
-        const pIcon = pPOI.icon_url || categoryIcons[pPOI.category] || "";
-        const pColor = getCatColor(pPOI.category);
-        return (
-        <div style={{ position:"fixed",inset:0,zIndex:5000,display:"flex",alignItems:"center",justifyContent:"center",padding:16 }} onClick={()=>setPortalConfirm(null)}>
-          <div onClick={e=>e.stopPropagation()} style={{ background:T.bg,border:`2px solid ${T.gold}`,borderRadius:14,padding:"24px 28px",maxWidth:340,width:"100%",boxShadow:"0 8px 40px rgba(26,16,53,0.45)",textAlign:"center" }}>
-            <div style={{ width:52,height:52,borderRadius:"50%",background:pColor+"33",border:`2px solid ${pColor}`,margin:"0 auto 10px",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden" }}>
-              {pIcon ? <img src={pIcon} alt="" style={{ width:"100%",height:"100%",objectFit:"contain" }} /> : <span style={{ fontSize:24 }}>⛩</span>}
-            </div>
-            <div style={{ fontFamily:T.fHead,fontSize:16,fontWeight:700,color:T.ink,marginBottom:6 }}>{pPOI.name||"Portal"}</div>
-            <div style={{ fontSize:13,color:T.muted,marginBottom:18,lineHeight:1.5 }}>
-              Travel to <strong>{portalConfirm.targetMap.name}</strong>?
-              {portalConfirm.poi.description && <><br/><span style={{ fontStyle:"italic",fontSize:12 }}>{portalConfirm.poi.description}</span></>}
-            </div>
-            <div style={{ display:"flex",gap:10,justifyContent:"center" }}>
-              <button onClick={()=>{
-                switchToMap(portalConfirm.targetMap.id, { push: true });
-                setPortalConfirm(null);
-              }} style={{ padding:"9px 24px",borderRadius:20,border:"none",background:T.purple,color:T.headerFg,fontFamily:T.fHead,fontSize:13,fontWeight:600,cursor:"pointer" }}>
-                ✦ Enter
-              </button>
-              <button onClick={()=>setPortalConfirm(null)} style={{ padding:"9px 24px",borderRadius:20,border:`1px solid ${T.border}`,background:"transparent",color:T.muted,fontFamily:T.fBody,fontSize:13,cursor:"pointer" }}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-        );
-      })()}
+      {/* Portal travel is now handled inline inside the POI popup card */}
 
       {/* NPC form modal */}
       {npcForm && <NpcFormModal form={npcForm} onSave={saveNPC} onDelete={deleteNPC} onClose={()=>setNpcForm(null)} />}
