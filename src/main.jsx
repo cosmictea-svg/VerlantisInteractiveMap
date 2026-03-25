@@ -1,4 +1,5 @@
-// Verlantis Interactive Map — credential test commit
+// Verlantis Interactive Map
+const VERSION = "v1.3 · 25 Mar 2026";
 import { useState, useRef, useEffect, useMemo } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -1720,6 +1721,7 @@ function App() {
         <div style={{ flex:1 }}>
           <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:20,color:T.ink,letterSpacing:"0.06em" }}>Verlantis</div>
           <div style={{ fontSize:11,color:T.goldDim,letterSpacing:"0.12em",textTransform:"uppercase",fontFamily:T.fHead }}>Interactive Map</div>
+          <div style={{ fontSize:9,color:T.muted,letterSpacing:"0.06em",marginTop:1,fontFamily:T.fBody }}>{VERSION}</div>
         </div>
         <span style={{ fontSize:12,color:T.muted,overflow:"hidden",textOverflow:"ellipsis",maxWidth:140,whiteSpace:"nowrap" }}>{user.user_metadata?.full_name||user.email}</span>
         <Btn size="sm" onClick={async()=>{await signOut(session.access_token);setUser(null);setSession(null);}}>Sign out</Btn>
@@ -1798,7 +1800,7 @@ function App() {
         {/* Campaign name + subtitle */}
         <div style={{ flex:1,minWidth:0 }}>
           <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:15,color:T.headerFg,letterSpacing:"0.06em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",lineHeight:1.2 }}>{activeCampaign.name}</div>
-          {activeCampaign.sub_header && <div style={{ fontSize:10,color:`${T.headerFg}88`,letterSpacing:"0.02em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:1 }}>{activeCampaign.sub_header}</div>}
+          <div style={{ fontSize:9,color:`${T.headerFg}55`,letterSpacing:"0.04em",marginTop:1 }}>{VERSION}{activeCampaign.sub_header && ` · ${activeCampaign.sub_header}`}</div>
         </div>
         {/* Portal navigation buttons */}
         {mapStack.length>0 && <>
