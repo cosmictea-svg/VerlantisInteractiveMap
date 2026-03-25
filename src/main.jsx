@@ -1,3 +1,4 @@
+// Verlantis Interactive Map — credential test commit
 import { useState, useRef, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 
