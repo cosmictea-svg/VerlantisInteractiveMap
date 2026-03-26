@@ -1190,6 +1190,7 @@ function App() {
   // ── POI drag ──
   function startPOIDrag(e, poi) {
     e.stopPropagation();
+    if (poi.locked) return;
     // Guard: camera is being panned or pinch-zoomed — don't hijack the touch as a POI drag
     if (dragRef.current.active || isPinchingRef.current) return;
     if (imgSizeRef.current.w === 0) return;
@@ -1243,6 +1244,7 @@ function App() {
   // ── Marker drag (owner only) ──
   function startMarkerDrag(e, marker) {
     e.stopPropagation();
+    if (marker.locked) return;
     if (dragRef.current.active || isPinchingRef.current) return;
     if (imgSizeRef.current.w === 0) return; // don't drag while map is loading
     const touch0 = e.touches?.[0];
@@ -1386,7 +1388,7 @@ function App() {
   async function savePOI(form, iconFile) {
     let icon_url = form.clearIcon ? "" : (form.poi?.icon_url || "");
     if (iconFile) { try { icon_url = await uploadToStorage(session.access_token, iconFile); } catch { icon_url = await readFile(iconFile); } }
-    const body = { name: form.name||"Unnamed POI", description: form.description||"", revealed: form.revealed, category: form.category||"other", size: form.size||"large", icon_url, poi_type: form.poi_type||"standard", linked_map_id: form.linked_map_id||null };
+    const body = { name: form.name||"Unnamed POI", description: form.description||"", revealed: form.revealed, locked: form.locked||false, category: form.category||"other", size: form.size||"large", icon_url, poi_type: form.poi_type||"standard", linked_map_id: form.linked_map_id||null };
     try {
       if (form.poi) {
         await dbUpdate(session.access_token, "pois", form.poi.id, body);
@@ -1432,6 +1434,12 @@ function App() {
       }
     } catch(e) { setError(e.message); }
   }
+  async function togglePOILock(id, current) {
+    try {
+      await dbUpdate(session.access_token, "pois", id, { locked: !current });
+      setPois(prev => prev.map(p => p.id === id ? { ...p, locked: !current } : p));
+    } catch(e) { setError(e.message); }
+  }
   async function saveMarker(label, description) {
     if (!markerForm || !("x" in markerForm)) return;
     if (myMarkers.length >= markerLimit && !isGM) { setError(`Marker limit reached (${markerLimit}). Ask your GM to increase it.`); return; }
@@ -1451,10 +1459,10 @@ function App() {
       logNotif("marker_placed", label||`${displayName}'s Marker`, markerMsg, nm.id, { x:markerForm.x, y:markerForm.y, mapId:activeMapId });
     } catch(e) { setError(e.message); }
   }
-  async function editMarker(marker, label, description) {
+  async function editMarker(marker, label, description, locked) {
     try {
-      await dbUpdate(session.access_token, "markers", marker.id, { label, description });
-      setMarkers(prev=>prev.map(m=>m.id===marker.id?{...m,label,description}:m));
+      await dbUpdate(session.access_token, "markers", marker.id, { label, description, locked: locked||false });
+      setMarkers(prev=>prev.map(m=>m.id===marker.id?{...m,label,description,locked:locked||false}:m));
       setMarkerForm(null);
     } catch(e) { setError(e.message); }
   }
@@ -1648,7 +1656,7 @@ function App() {
 
   // ── NPC CRUD ──
   async function saveNPC(form) {
-    const body = { name: form.name||"Unknown NPC", status: form.status||"Alive", border_color: form.border_color||"#C9A84C", aura_radius: form.aura_radius??80, show_name: form.show_name??true, show_status: form.show_status??true, show_aura: form.show_aura??true, is_visible_to_players: form.is_visible_to_players??false };
+    const body = { name: form.name||"Unknown NPC", status: form.status||"Alive", border_color: form.border_color||"#C9A84C", aura_radius: form.aura_radius??80, show_name: form.show_name??true, show_status: form.show_status??true, show_aura: form.show_aura??true, is_visible_to_players: form.is_visible_to_players??false, locked: form.locked??false };
     try {
       if (form.npc) {
         await dbUpdate(session.access_token, "npcs", form.npc.id, body);
@@ -1665,6 +1673,7 @@ function App() {
   }
   function startNPCDrag(e, npc) {
     e.stopPropagation();
+    if (npc.locked) return;
     if (dragRef.current.active || isPinchingRef.current) return;
     const startCx = e.touches?e.touches[0].clientX:e.clientX, startCy = e.touches?e.touches[0].clientY:e.clientY;
     npcDragState.current = { npcId:npc.id, originX:npc.x, originY:npc.y, startCx, startCy, scaleAtStart:transformRef.current.scale, moved:false, mapX:npc.x, mapY:npc.y };
@@ -2740,6 +2749,12 @@ function App() {
                       style={{ padding:"3px 9px",borderRadius:20,border:"none",background:p.revealed?"#EAF3DE":"#FEF3E2",color:p.revealed?"#3B6D11":"#854F0B",fontSize:11,fontWeight:600,cursor:"pointer",flexShrink:0 }}>
                       {p.revealed?"Shown":"Hidden"}
                     </button>
+                    {/* Lock/unlock position toggle */}
+                    <button onClick={()=>togglePOILock(p.id,p.locked)}
+                      title={p.locked?"Unlock position":"Lock position"}
+                      style={{ padding:"3px 8px",borderRadius:20,border:"none",background:p.locked?"#FEE2E2":"transparent",color:p.locked?"#991B1B":"#aaa",fontSize:13,cursor:"pointer",flexShrink:0,lineHeight:1 }}>
+                      {p.locked?"🔒":"🔓"}
+                    </button>
                     {/* Move button (GM, folder view only) — dropdown rendered at App level to avoid overflow:hidden clipping */}
                     {isGM && showMove && (
                       <button title="Move to folder"
@@ -3280,6 +3295,7 @@ function POIFormModal({ form, categoryIcons, maps, onSave, onDelete, onDuplicate
   const [size, setSize] = useState(form.poi?.size||"large");
   const [poiType, setPoiType] = useState(form.poi?.poi_type||"standard");
   const [linkedMapId, setLinkedMapId] = useState(form.poi?.linked_map_id||"");
+  const [locked, setLocked] = useState(form.poi?.locked||false);
   const [iconFile, setIconFile] = useState(null);
   const [iconPreview, setIconPreview] = useState(form.poi?.icon_url||"");
   const [clearIcon, setClearIcon] = useState(false);
@@ -3344,12 +3360,18 @@ function POIFormModal({ form, categoryIcons, maps, onSave, onDelete, onDuplicate
           </div>
         )}
       </Field>
-      <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:16 }}>
-        <input type="checkbox" checked={revealed} onChange={e=>setRevealed(e.target.checked)} id="rev" />
-        <label htmlFor="rev" style={{ fontSize:13 }}>Revealed to players</label>
+      <div style={{ display:"flex",alignItems:"center",gap:16,marginBottom:16,flexWrap:"wrap" }}>
+        <label style={{ display:"flex",alignItems:"center",gap:8,fontSize:13,cursor:"pointer" }}>
+          <input type="checkbox" checked={revealed} onChange={e=>setRevealed(e.target.checked)} id="rev" />
+          Revealed to players
+        </label>
+        <button onClick={()=>setLocked(l=>!l)} title={locked?"Unlock position (allow dragging)":"Lock position (prevent accidental moves)"}
+          style={{ display:"flex",alignItems:"center",gap:5,padding:"3px 10px",borderRadius:20,border:`1px solid ${locked?"#FCA5A5":"#ddd"}`,background:locked?"#FEE2E2":"transparent",color:locked?"#991B1B":"#888",fontSize:12,cursor:"pointer",fontWeight:locked?600:400 }}>
+          {locked?"🔒 Locked":"🔓 Unlocked"}
+        </button>
       </div>
       <div style={{ display:"flex",gap:8,flexWrap:"wrap" }}>
-        <Btn variant="primary" onClick={()=>onSave({...form,name,description,revealed,category,size,clearIcon,poi_type:poiType,linked_map_id:linkedMapId||null},iconFile)} style={{ flex:1 }}>Save</Btn>
+        <Btn variant="primary" onClick={()=>onSave({...form,name,description,revealed,locked,category,size,clearIcon,poi_type:poiType,linked_map_id:linkedMapId||null},iconFile)} style={{ flex:1 }}>Save</Btn>
         {form.poi&&<Btn onClick={()=>onDuplicate(form.poi)}>Duplicate</Btn>}
         {form.poi&&<Btn variant="danger" onClick={()=>onDelete(form.poi.id)}>Delete</Btn>}
       </div>
@@ -3361,13 +3383,22 @@ function MarkerFormModal({ form, onSave, onEdit, onCancel }) {
   const isEdit = !!form.marker;
   const [label, setLabel] = useState(form.marker?.label||"");
   const [description, setDescription] = useState(form.marker?.description||"");
+  const [locked, setLocked] = useState(form.marker?.locked||false);
   return (
     <Modal title={isEdit?"Edit Marker":"Place Marker"} onClose={onCancel} width={320}>
       <Field label="Title"><input value={label} onChange={e=>setLabel(e.target.value)} style={IS} placeholder="e.g. Camp site" autoFocus={!isTouchDevice} /></Field>
       <Field label="Description (optional)"><textarea value={description} onChange={e=>setDescription(e.target.value)} rows={3} style={IS} placeholder="Add a note..." /></Field>
+      {isEdit && (
+        <div style={{ marginBottom:12 }}>
+          <button onClick={()=>setLocked(l=>!l)} title={locked?"Unlock position":"Lock position"}
+            style={{ display:"flex",alignItems:"center",gap:5,padding:"3px 10px",borderRadius:20,border:`1px solid ${locked?"#FCA5A5":"#ddd"}`,background:locked?"#FEE2E2":"transparent",color:locked?"#991B1B":"#888",fontSize:12,cursor:"pointer",fontWeight:locked?600:400 }}>
+            {locked?"🔒 Locked":"🔓 Unlocked"}
+          </button>
+        </div>
+      )}
       <div style={{ display:"flex",gap:8 }}>
         {isEdit
-          ? <Btn variant="primary" onClick={()=>onEdit(form.marker,label,description)} style={{ flex:1 }}>Save</Btn>
+          ? <Btn variant="primary" onClick={()=>onEdit(form.marker,label,description,locked)} style={{ flex:1 }}>Save</Btn>
           : <Btn variant="primary" onClick={()=>onSave(label,description)} style={{ flex:1 }}>Place Marker</Btn>
         }
         <Btn onClick={onCancel}>Cancel</Btn>
@@ -3437,6 +3468,7 @@ function NpcFormModal({ form, onSave, onDelete, onClose }) {
   const [showStatus, setShowStatus] = useState(form.show_status??true);
   const [showAura, setShowAura] = useState(form.show_aura??true);
   const [visToPlayers, setVisToPlayers] = useState(form.is_visible_to_players??false);
+  const [locked, setLocked] = useState(form.npc?.locked??false);
   return (
     <Modal title={isEdit?"Edit NPC":"New NPC"} onClose={onClose} width={400}>
       <Field label="Name">
@@ -3488,8 +3520,14 @@ function NpcFormModal({ form, onSave, onDelete, onClose }) {
           </label>
         </div>
       </div>
+      <div style={{ marginBottom:12 }}>
+        <button onClick={()=>setLocked(l=>!l)} title={locked?"Unlock position":"Lock position"}
+          style={{ display:"flex",alignItems:"center",gap:5,padding:"3px 10px",borderRadius:20,border:`1px solid ${locked?"#FCA5A5":"#ddd"}`,background:locked?"#FEE2E2":"transparent",color:locked?"#991B1B":"#888",fontSize:12,cursor:"pointer",fontWeight:locked?600:400 }}>
+          {locked?"🔒 Locked":"🔓 Unlocked"}
+        </button>
+      </div>
       <div style={{ display:"flex",gap:8,flexWrap:"wrap" }}>
-        <Btn variant="primary" style={{ flex:1 }} onClick={()=>onSave({...form,name,status,border_color:borderColor,aura_radius:auraRadius,show_name:showName,show_status:showStatus,show_aura:showAura,is_visible_to_players:visToPlayers})}>Save</Btn>
+        <Btn variant="primary" style={{ flex:1 }} onClick={()=>onSave({...form,name,status,border_color:borderColor,aura_radius:auraRadius,show_name:showName,show_status:showStatus,show_aura:showAura,is_visible_to_players:visToPlayers,locked})}>Save</Btn>
         {isEdit && <Btn variant="danger" onClick={()=>onDelete(form.npc.id)}>Delete</Btn>}
       </div>
     </Modal>
