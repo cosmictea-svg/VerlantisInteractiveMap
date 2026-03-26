@@ -1534,6 +1534,17 @@ function App() {
       setPois(prev => prev.map(p => p.folder_id === folder.id ? { ...p, revealed: newState } : p));
     } catch(e) { setError(e.message); }
   }
+  async function toggleFolderLock(folder) {
+    const children = pois.filter(p => p.folder_id === folder.id);
+    if (!children.length) return;
+    const newState = !children.every(p => p.locked);
+    try {
+      await Promise.all(children.filter(p => p.locked !== newState).map(p =>
+        dbUpdate(session.access_token, "pois", p.id, { locked: newState })
+      ));
+      setPois(prev => prev.map(p => p.folder_id === folder.id ? { ...p, locked: newState } : p));
+    } catch(e) { setError(e.message); }
+  }
   async function setMainMap(id) {
     try {
       // Clear all in one call, then set the new main — prevents partial failure leaving two is_main=true
@@ -2803,6 +2814,8 @@ function App() {
                       const isCollapsed = folderCollapsed[folder.id] ?? false;
                       const allShown = children.length>0 && children.every(p=>p.revealed);
                       const someShown = children.some(p=>p.revealed);
+                      const allLocked = children.length>0 && children.every(p=>p.locked);
+                      const someLocked = children.some(p=>p.locked);
                       return (
                         <div key={folder.id} style={{ marginBottom:8,border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden" }}>
                           {/* Folder header */}
@@ -2811,11 +2824,19 @@ function App() {
                             <span style={{ fontSize:11,color:T.muted,display:"inline-block",transition:"transform 0.18s",transform:isCollapsed?"rotate(-90deg)":"rotate(0deg)",lineHeight:1 }}>▾</span>
                             <div style={{ flex:1,fontFamily:T.fHead,fontWeight:600,fontSize:13,color:T.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{folder.name}</div>
                             <span style={{ fontSize:11,color:T.muted,flexShrink:0 }}>{children.length}</span>
-                            {/* Master toggle */}
+                            {/* Master reveal toggle */}
                             {isGM && children.length>0 && (
                               <button onClick={e=>{e.stopPropagation();toggleFolderReveal(folder);}}
                                 style={{ padding:"3px 8px",borderRadius:20,border:"none",background:allShown?"#EAF3DE":someShown?"#FFF8E7":"#FEF3E2",color:allShown?"#3B6D11":someShown?"#7A5500":"#854F0B",fontSize:10,fontWeight:700,cursor:"pointer",flexShrink:0 }}>
                                 {allShown?"All Shown":someShown?"Mixed":"All Hidden"}
+                              </button>
+                            )}
+                            {/* Master lock toggle */}
+                            {isGM && children.length>0 && (
+                              <button onClick={e=>{e.stopPropagation();toggleFolderLock(folder);}}
+                                title={allLocked?"Unlock all":"Lock all"}
+                                style={{ padding:"3px 7px",borderRadius:20,border:"none",background:allLocked?"#FEE2E2":someLocked?"#FFF8E7":"transparent",color:allLocked?"#991B1B":someLocked?"#7A5500":"#aaa",fontSize:12,cursor:"pointer",flexShrink:0,lineHeight:1 }}>
+                                {allLocked?"🔒":someLocked?"🔒︎":"🔓"}
                               </button>
                             )}
                             {isGM && (<>
