@@ -1,4 +1,12 @@
-# Cloudflare Pages cache rules
+# Cloudflare Pages cache + security headers
+
+# Security headers on every route
+/*
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+
 # HTML entry point — always revalidate so mobile browsers pick up new JS bundles
 /*.html
   Cache-Control: no-cache, no-store, must-revalidate
