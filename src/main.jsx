@@ -155,6 +155,8 @@ function createRealtimeChannel(token, campaignId, handlers) {
         const msg = JSON.parse(e.data);
         const payload = msg.payload?.data;
         if (!payload) return;
+        // DEBUG — remove once confirmed working
+        if (payload.table) console.log("[RT raw]", JSON.stringify({ ev: msg.event, tbl: payload.table, type: payload.type, eventType: payload.eventType, hasNew: !!payload.new, hasRecord: !!payload.record }));
         const table = payload.table;
         const eventType = payload.eventType ?? payload.type;          // v2: eventType, v1: type
         const record    = payload.new        ?? payload.record;       // v2: new,       v1: record
