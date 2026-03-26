@@ -598,6 +598,8 @@ function App() {
   const zonePointDragRef = useRef(null);
   const npcDragState = useRef(null);
   const isPinchingRef = useRef(false); // true while 2-finger pinch is active
+  const pendingRevealRef = useRef({ revealed: [], hidden: [] }); // batch notification accumulator
+  const revealTimerRef = useRef(null);
   const soundVolumeRef = useRef(0.5);
   const npcsRef = useRef([]);
   const pendingFocusRef = useRef(null); // { x, y } applied after map image loads
@@ -763,12 +765,17 @@ function App() {
           });
           if (memberRole !== "gm" && payload.new.type !== "announcement") {
             setUnreadCount(c => c + 1);
-            playSound(payload.new.type);
+            const soundType = payload.new.type === "poi_batch_revealed" ? "poi_revealed"
+                            : payload.new.type === "poi_batch_hidden"   ? "poi_hidden"
+                            : payload.new.type;
+            playSound(soundType);
             const catLabel = payload.new.category ? ` · ${getCatLabel(payload.new.category)}` : "";
-            const label = payload.new.type === "poi_revealed" ? `📍 ${payload.new.title} revealed${catLabel}`
-                        : payload.new.type === "poi_hidden"   ? `🙈 ${payload.new.title} hidden`
-                        : payload.new.type === "marker_placed"? `📌 ${payload.new.message || payload.new.title}`
-                        : payload.new.type === "npc_moved"    ? `👤 ${payload.new.message || payload.new.title}`
+            const label = payload.new.type === "poi_revealed"       ? `📍 ${payload.new.title} revealed${catLabel}`
+                        : payload.new.type === "poi_hidden"         ? `🙈 ${payload.new.title} hidden`
+                        : payload.new.type === "poi_batch_revealed"  ? `📍 ${payload.new.message}`
+                        : payload.new.type === "poi_batch_hidden"    ? `🙈 ${payload.new.message}`
+                        : payload.new.type === "marker_placed"      ? `📌 ${payload.new.message || payload.new.title}`
+                        : payload.new.type === "npc_moved"          ? `👤 ${payload.new.message || payload.new.title}`
                         : payload.new.message || payload.new.title || "Update";
             addToast(label, payload.new.type);
           }
@@ -1399,8 +1406,8 @@ function App() {
           const label = body.name || form.poi.name || "A location";
           const zCtx = getZoneContext(form.poi.x, form.poi.y, zonesRef.current.filter(z=>z.map_id===form.poi.map_id));
           const coords = { x: form.poi.x, y: form.poi.y, mapId: form.poi.map_id };
-          if (body.revealed) logNotif("poi_revealed", label, zCtx ? `${label} revealed (${zCtx})` : `${label} has been revealed`, form.poi.id, coords, form.poi.category || form.category);
-          else logNotif("poi_hidden", label, `${label} has been hidden`, form.poi.id, coords);
+          if (body.revealed) scheduleRevealNotif(true, { label, message: zCtx ? `${label} revealed (${zCtx})` : `${label} has been revealed`, id: form.poi.id, coords, category: form.poi.category || form.category });
+          else scheduleRevealNotif(false, { label, message: `${label} has been hidden`, id: form.poi.id, coords });
         }
       } else {
         const [np] = await dbInsert(session.access_token, "pois", { ...body, campaign_id: activeCampaign.id, map_id: activeMapId, x: form.x, y: form.y });
@@ -1426,11 +1433,10 @@ function App() {
       const zCtx = poi ? getZoneContext(poi.x, poi.y, zonesRef.current.filter(z=>z.map_id===poi.map_id)) : null;
       const coords = poi ? { x:poi.x, y:poi.y, mapId:poi.map_id } : null;
       if (!current) {
-        logNotif("poi_revealed", label, zCtx ? `${label} revealed (${zCtx})` : `${label} has been revealed`, id, coords, poi?.category);
-        if (!isGM) { addToast(`📍 ${label} revealed${zCtx?" ("+zCtx+")":""}`, "poi_revealed"); playSound("poi_revealed"); }
+        const message = zCtx ? `${label} revealed (${zCtx})` : `${label} has been revealed`;
+        scheduleRevealNotif(true, { label, message, id, coords, category: poi?.category });
       } else {
-        logNotif("poi_hidden", label, `${label} has been hidden`, id, coords);
-        if (!isGM) { addToast(`🙈 ${label} hidden`, "poi_hidden"); }
+        scheduleRevealNotif(false, { label, message: `${label} has been hidden`, id, coords });
       }
     } catch(e) { setError(e.message); }
   }
@@ -1527,11 +1533,20 @@ function App() {
     const children = pois.filter(p => p.folder_id === folder.id);
     if (!children.length) return;
     const newState = !children.every(p => p.revealed);
+    const changing = children.filter(p => p.revealed !== newState);
     try {
-      await Promise.all(children.filter(p => p.revealed !== newState).map(p =>
-        dbUpdate(session.access_token, "pois", p.id, { revealed: newState })
-      ));
+      await Promise.all(changing.map(p => dbUpdate(session.access_token, "pois", p.id, { revealed: newState })));
       setPois(prev => prev.map(p => p.folder_id === folder.id ? { ...p, revealed: newState } : p));
+      if (changing.length === 1) {
+        const p = changing[0];
+        const label = p.name;
+        if (newState) logNotif("poi_revealed", label, `${label} has been revealed`, p.id, { x:p.x, y:p.y, mapId:p.map_id }, p.category);
+        else          logNotif("poi_hidden",   label, `${label} has been hidden`,   p.id, { x:p.x, y:p.y, mapId:p.map_id });
+      } else if (changing.length > 1) {
+        const n = changing.length;
+        const summary = `${folder.name}: ${n} location${n>1?"s":""} ${newState?"revealed":"hidden"}`;
+        logNotif(newState?"poi_batch_revealed":"poi_batch_hidden", `${n} location${n>1?"s":""} ${newState?"revealed":"hidden"}`, summary, null, null, null);
+      }
     } catch(e) { setError(e.message); }
   }
   async function toggleFolderLock(folder) {
@@ -1663,6 +1678,27 @@ function App() {
         return next;
       });
     }).catch(()=>{});
+  }
+
+  // ── Batched reveal/hide notifications (debounce 600ms, 3+ items → single summary) ──
+  function scheduleRevealNotif(isRevealing, data) {
+    if (isRevealing) pendingRevealRef.current.revealed.push(data);
+    else             pendingRevealRef.current.hidden.push(data);
+    clearTimeout(revealTimerRef.current);
+    revealTimerRef.current = setTimeout(() => {
+      const { revealed, hidden } = pendingRevealRef.current;
+      pendingRevealRef.current = { revealed: [], hidden: [] };
+      if (revealed.length >= 3) {
+        logNotif("poi_batch_revealed", `${revealed.length} locations revealed`, `GM has revealed ${revealed.length} locations`, null, null, null);
+      } else {
+        revealed.forEach(p => logNotif("poi_revealed", p.label, p.message, p.id, p.coords, p.category));
+      }
+      if (hidden.length >= 3) {
+        logNotif("poi_batch_hidden", `${hidden.length} locations hidden`, `GM has hidden ${hidden.length} locations`, null, null, null);
+      } else {
+        hidden.forEach(p => logNotif("poi_hidden", p.label, p.message, p.id, p.coords));
+      }
+    }, 600);
   }
 
   // ── NPC CRUD ──
@@ -3060,7 +3096,7 @@ function App() {
           <div style={{ overflowY:"auto",flex:1,padding:"4px 0" }}>
             {notifLog.length===0 && <p style={{ padding:"10px 14px",color:T.muted,fontSize:13,fontStyle:"italic" }}>No notifications yet.</p>}
             {notifLog.map(n=>{
-              const icon = n.type==="announcement"?"📜":n.type==="poi_revealed"?"📍":n.type==="poi_hidden"?"🙈":n.type==="npc_moved"?"👤":n.type==="marker_placed"?"📌":"🔔";
+              const icon = n.type==="announcement"?"📜":n.type==="poi_revealed"||n.type==="poi_batch_revealed"?"📍":n.type==="poi_hidden"||n.type==="poi_batch_hidden"?"🙈":n.type==="npc_moved"?"👤":n.type==="marker_placed"?"📌":"🔔";
               const canFocus = n.x!=null && n.y!=null;
               return (
                 <div key={n.id}
