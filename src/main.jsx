@@ -155,8 +155,11 @@ function createRealtimeChannel(token, campaignId, handlers) {
         const msg = JSON.parse(e.data);
         const payload = msg.payload?.data;
         if (!payload) return;
-        const { table, type: eventType, record, old_record } = payload;
-        const mapped = { eventType, new: record, old: old_record };
+        const table = payload.table;
+        const eventType = payload.eventType ?? payload.type;          // v2: eventType, v1: type
+        const record    = payload.new        ?? payload.record;       // v2: new,       v1: record
+        const old_rec   = payload.old        ?? payload.old_record;   // v2: old,       v1: old_record
+        const mapped = { eventType, new: record, old: old_rec };
         if (table === "pois") handlers.onPOI(mapped);
         if (table === "markers") handlers.onMarker(mapped);
         if (table === "campaign_members") handlers.onMember?.(mapped);
