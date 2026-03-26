@@ -565,7 +565,7 @@ function App() {
   const [poiLibView, setPoiLibView] = useState("folders");    // "folders" | "name" | "type"
   const [folderForm, setFolderForm] = useState(null);         // null | { folder: obj|null, name: "" }
   const [movingPOI, setMovingPOI] = useState(null);           // poi id whose move-dropdown is open
-  const [moveDropdownPos, setMoveDropdownPos] = useState(null); // { top, right } for fixed dropdown
+  const [moveDropdownPos, setMoveDropdownPos] = useState(null); // { top|bottom, right } for fixed dropdown
   const [campDeleteConfirm, setCampDeleteConfirm] = useState(null); // campaign object to delete, or null
   const [mapDeleteConfirm, setMapDeleteConfirm] = useState(null);   // map id to delete, or null
   const [campaignLoading, setCampaignLoading] = useState(false);
@@ -2726,7 +2726,12 @@ function App() {
                           e.stopPropagation();
                           if(movingPOI===p.id){ setMovingPOI(null); setMoveDropdownPos(null); return; }
                           const rect=e.currentTarget.getBoundingClientRect();
-                          setMoveDropdownPos({ top:rect.bottom+4, right:window.innerWidth-rect.right });
+                          // Flip above the button if less than 220px of space below, clamp right edge to 4px margin
+                          const spaceBelow = window.innerHeight - rect.bottom;
+                          const rightEdge = Math.max(4, window.innerWidth - rect.right);
+                          setMoveDropdownPos(spaceBelow < 220
+                            ? { bottom: window.innerHeight - rect.top + 4, right: rightEdge }
+                            : { top: rect.bottom + 4, right: rightEdge });
                           setMovingPOI(p.id);
                         }}
                         style={{ padding:"4px 8px",borderRadius:6,border:`1px solid ${T.border}`,background:movingPOI===p.id?T.purple:T.surface,color:movingPOI===p.id?T.headerFg:T.muted,fontSize:12,cursor:"pointer",lineHeight:1,flexShrink:0 }}>⇄</button>
@@ -2959,7 +2964,7 @@ function App() {
         const mp = pois.find(p=>p.id===movingPOI);
         if (!mp) return null;
         return (
-          <div style={{ position:"fixed",top:moveDropdownPos.top,right:moveDropdownPos.right,zIndex:9100,background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,padding:"4px 0",minWidth:180,boxShadow:"0 8px 28px rgba(0,0,0,0.3)" }}
+          <div style={{ position:"fixed",...(moveDropdownPos.bottom!=null?{bottom:moveDropdownPos.bottom}:{top:moveDropdownPos.top}),right:moveDropdownPos.right,zIndex:9100,background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,padding:"4px 0",minWidth:180,maxHeight:"60vh",overflowY:"auto",boxShadow:"0 8px 28px rgba(0,0,0,0.3)" }}
             onClick={e=>e.stopPropagation()}>
             <div style={{ fontSize:10,color:T.muted,padding:"5px 14px 7px",fontWeight:700,letterSpacing:"0.07em" }}>MOVE TO FOLDER</div>
             {poiFolders.map(f=>(
