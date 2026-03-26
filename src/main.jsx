@@ -607,6 +607,18 @@ function App() {
   useEffect(() => { placingRef.current = placingMode; }, [placingMode]);
   useEffect(() => { transformRef.current = transform; }, [transform]);
   useEffect(() => { imgSizeRef.current = imgSize; }, [imgSize]);
+  // Keep fitScale current when window resizes (container changes size but fitScale state goes stale)
+  useEffect(() => {
+    if (!imgSize.w || !imgSize.h) return;
+    const recompute = () => {
+      if (!mapRef.current) return;
+      const r = mapRef.current.getBoundingClientRect();
+      if (!r.width || !r.height) return;
+      setFitScale(Math.min(r.width / imgSize.w, r.height / imgSize.h, 1));
+    };
+    window.addEventListener("resize", recompute);
+    return () => window.removeEventListener("resize", recompute);
+  }, [imgSize.w, imgSize.h]);
   useEffect(() => { scrollSensRef.current = scrollSens; }, [scrollSens]);
   useEffect(() => { sessionRef.current = session; }, [session]);
   useEffect(() => { zonesRef.current = zones; }, [zones]);
@@ -1107,7 +1119,10 @@ function App() {
   const accessibleMaps = useMemo(() => maps.filter(m => isGM || m.is_main || m.player_accessible),                   [maps, isGM]);
   const mainMap        = useMemo(() => maps.find(m => m.is_main) || maps[0],                                          [maps]);
   // POIs fade out as user zooms toward the fit scale; fully visible at 2× fit zoom
-  const poiOpacity = fitScale > 0 ? Math.min(1, Math.max(0, (transform.scale / fitScale) - 1)) : 1;
+  // 0 at or below fit zoom, linearly reaches 1 at 2× fit zoom. Explicit ≤ guard handles float drift.
+  const poiOpacity = (fitScale > 0 && imgSize.w > 0)
+    ? (transform.scale <= fitScale ? 0 : Math.min(1, (transform.scale - fitScale) / fitScale))
+    : 1;
 
   // Viewport culling — map-coordinate bounds of what's currently visible on screen.
   // Entities outside this rect are not rendered at all (saves DOM nodes on large maps).
@@ -2862,7 +2877,7 @@ function App() {
                 <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:14,color:T.ink,flex:1 }}>Zones</div>
                 <Btn size="sm" variant="primary" onClick={()=>{ setPlacingMode("zone"); setPlacingZonePoints([]); setTab("map"); }}>＋ New Zone</Btn>
               </div>
-              <p style={{ fontSize:12,color:T.muted,marginBottom:14 }}>Click "＋ New Zone", tap at least 3 waypoints on the map, then "Close Zone ✓" to finish.</p>
+              {/* Instruction text moved to Tutorial button (coming soon) */}
               {mapZones.length===0 && <p style={{ color:T.muted,fontSize:13,fontStyle:"italic" }}>No zones on this map yet.</p>}
               {mapZones.map(z=>(
                 <div key={z.id} style={{ display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:T.surface,borderRadius:10,marginBottom:8,border:`1px solid ${T.border}` }}>
@@ -3128,8 +3143,12 @@ function App() {
         </Modal>
       )}
       {/* Version footer */}
-      <div style={{ padding:"4px 14px",paddingBottom:"max(8px, env(safe-area-inset-bottom))",background:T.surface,borderBottom:`none`,borderTop:`1px solid ${T.border}`,fontSize:10,color:T.muted,textAlign:"center",flexShrink:0,fontFamily:T.fBody }}>
-        {buildVersion} · Verlantis Interactive Map
+      <div style={{ padding:"4px 14px",paddingBottom:"max(8px, env(safe-area-inset-bottom))",background:T.surface,borderTop:`1px solid ${T.border}`,fontSize:10,color:T.muted,display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0,fontFamily:T.fBody }}>
+        <span>{buildVersion}</span>
+        <button onClick={()=>{}} title="Tutorial coming soon"
+          style={{ padding:"3px 10px",borderRadius:20,border:`1px solid ${T.border}`,background:"transparent",color:T.muted,fontSize:10,cursor:"not-allowed",fontFamily:T.fBody,opacity:0.6 }}>
+          ? Tutorial
+        </button>
       </div>
     </div>
   );
