@@ -191,7 +191,7 @@ const CATEGORIES = [
   { id: "arena",      label: "Arena",             color: "#FF5722" },
   { id: "jail",       label: "Jail",              color: "#546E7A" },
   { id: "door",       label: "Door",              color: "#A1887F" },
-  { id: "gate",       label: "Gate / Entry",      color: "#7B9E87" },
+  { id: "gate",       label: "Checkpoints",        color: "#7B9E87" },
   { id: "other",      label: "Others",            color: "#95A5A6" },
 ];
 const POI_SIZES = [
