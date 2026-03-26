@@ -2215,7 +2215,7 @@ function App() {
                   <span style={{ fontSize:13 }}>{isGM?"Go to Library to upload a map.":"Waiting for GM to load a map."}</span>
                 </div>
               ) : (
-                <div style={{ position:"absolute",transform:`translate3d(${transform.x}px,${transform.y}px,0) scale(${transform.scale})`,transformOrigin:"0 0",willChange:"transform" }}>
+                <div style={{ position:"absolute",transform:`translate3d(${Math.round(transform.x)}px,${Math.round(transform.y)}px,0) scale(${transform.scale})`,transformOrigin:"0 0",willChange:"transform" }}>
                   <img src={currentMap.src} alt="map" style={{ display:"block",maxWidth:"none" }} draggable={false} onLoad={onImgLoad} />
                   {/* Overlay image layers — per-user opacity/visibility */}
                   {mapOverlays.map(ov => {
