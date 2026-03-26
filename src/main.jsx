@@ -2,7 +2,7 @@
 const VERSION = (typeof __BUILD_DATE__ !== "undefined" && typeof __COMMIT__ !== "undefined")
   ? `v${__BUILD_DATE__}-${__COMMIT__}`
   : "vdev";
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, memo } from "react";
 import { createRoot } from "react-dom/client";
 
 // Detect touch-only devices so we can suppress autoFocus={!isTouchDevice} (prevents keyboard pop-up on mobile)
@@ -305,7 +305,7 @@ function MarkerPin({ marker, scale, isOwner, isGM, onTap, onDragStart, displayNa
 // ── POI Pin ───────────────────────────────────────────────────────────────────
 // POIPin uses fixed map-coordinate sizes (no scale prop) so React.memo works effectively.
 // Opacity is handled by the parent poiLayerRef div — no re-render needed per zoom step.
-const POIPin = React.memo(function POIPin({ poi, isGM, onTap, onDragStart, resolvedIconUrl }) {
+const POIPin = memo(function POIPin({ poi, isGM, onTap, onDragStart, resolvedIconUrl }) {
   const ss = getSizeScale(poi.size);
   const size = 32 * ss;          // fixed map-coordinate size
   const bw = 2;                  // fixed border width
@@ -607,7 +607,7 @@ function App() {
   const isPinchingRef = useRef(false); // true while 2-finger pinch is active
   const pendingRevealRef = useRef({ revealed: [], hidden: [] }); // batch notification accumulator
   const revealTimerRef = useRef(null);
-  const transformRef = useRef({ x: 0, y: 0, scale: 1 }); // mirrors transform state, writable during gesture
+  // transformRef already declared above — mirrors transform state for use inside gesture handlers
   const mapTransformDivRef = useRef(null);                // ref to the map transform container div
   const poiLayerRef = useRef(null);                       // ref to the POI layer div for direct opacity update
   const fitScaleRef = useRef(0);                          // mirrors fitScale for use inside gesture handler
