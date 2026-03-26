@@ -596,6 +596,7 @@ function App() {
   const addPointZoneRef = useRef(null);
   const zonePointDragRef = useRef(null);
   const npcDragState = useRef(null);
+  const isPinchingRef = useRef(false); // true while 2-finger pinch is active
   const soundVolumeRef = useRef(0.5);
   const npcsRef = useRef([]);
   const pendingFocusRef = useRef(null); // { x, y } applied after map image loads
@@ -1106,7 +1107,7 @@ function App() {
   const accessibleMaps = useMemo(() => maps.filter(m => isGM || m.is_main || m.player_accessible),                   [maps, isGM]);
   const mainMap        = useMemo(() => maps.find(m => m.is_main) || maps[0],                                          [maps]);
   // POIs fade out as user zooms toward the fit scale; fully visible at 2× fit zoom
-  const poiOpacity = fitScale > 0 ? Math.min(1, Math.max(0.15, (transform.scale / fitScale) - 1)) : 1;
+  const poiOpacity = fitScale > 0 ? Math.min(1, Math.max(0, (transform.scale / fitScale) - 1)) : 1;
 
   // Viewport culling — map-coordinate bounds of what's currently visible on screen.
   // Entities outside this rect are not rendered at all (saves DOM nodes on large maps).
@@ -1173,7 +1174,8 @@ function App() {
   // ── POI drag ──
   function startPOIDrag(e, poi) {
     e.stopPropagation();
-    // Guard: don't allow drag if the map image hasn't loaded yet (scale would be wrong)
+    // Guard: camera is being panned or pinch-zoomed — don't hijack the touch as a POI drag
+    if (dragRef.current.active || isPinchingRef.current) return;
     if (imgSizeRef.current.w === 0) return;
     const touch0 = e.touches?.[0];
     const startCx = touch0 ? touch0.clientX : e.clientX;
@@ -1225,6 +1227,7 @@ function App() {
   // ── Marker drag (owner only) ──
   function startMarkerDrag(e, marker) {
     e.stopPropagation();
+    if (dragRef.current.active || isPinchingRef.current) return;
     if (imgSizeRef.current.w === 0) return; // don't drag while map is loading
     const touch0 = e.touches?.[0];
     const startCx = touch0 ? touch0.clientX : e.clientX;
@@ -1347,7 +1350,7 @@ function App() {
       let lastDist = null, isPinching = false;
       function getDist(t) { const dx=t[0].clientX-t[1].clientX,dy=t[0].clientY-t[1].clientY; return Math.sqrt(dx*dx+dy*dy); }
       function getMid(t) { return { x:(t[0].clientX+t[1].clientX)/2,y:(t[0].clientY+t[1].clientY)/2 }; }
-      function onTS(e) { if(e.touches.length===2){isPinching=true;lastDist=getDist(e.touches);dragRef.current.active=false;setIsDragging(false);} }
+      function onTS(e) { if(e.touches.length===2){isPinching=true;isPinchingRef.current=true;lastDist=getDist(e.touches);dragRef.current.active=false;setIsDragging(false);} }
       function onTM(e) {
         if(e.touches.length!==2||!isPinching)return; e.preventDefault();
         const dist=getDist(e.touches); if(!lastDist){lastDist=dist;return;}
@@ -1355,7 +1358,7 @@ function App() {
         const mid=getMid(e.touches); const rect=el.getBoundingClientRect();
         setTransform(t=>{const ns=Math.min(8,Math.max(0.1,t.scale*factor));const sr=ns/t.scale;const mx=mid.x-rect.left,my=mid.y-rect.top;return clamp({scale:ns,x:mx-sr*(mx-t.x),y:my-sr*(my-t.y)},rect.width,rect.height,imgSizeRef.current.w,imgSizeRef.current.h);});
       }
-      function onTE(e){if(e.touches.length<2){isPinching=false;lastDist=null;}}
+      function onTE(e){if(e.touches.length<2){isPinching=false;isPinchingRef.current=false;lastDist=null;}}
       el.addEventListener("touchstart",onTS,{passive:true}); el.addEventListener("touchmove",onTM,{passive:false}); el.addEventListener("touchend",onTE,{passive:true});
       pinchCleanup=()=>{el.removeEventListener("touchstart",onTS);el.removeEventListener("touchmove",onTM);el.removeEventListener("touchend",onTE);};
     }
@@ -1646,6 +1649,7 @@ function App() {
   }
   function startNPCDrag(e, npc) {
     e.stopPropagation();
+    if (dragRef.current.active || isPinchingRef.current) return;
     const startCx = e.touches?e.touches[0].clientX:e.clientX, startCy = e.touches?e.touches[0].clientY:e.clientY;
     npcDragState.current = { npcId:npc.id, originX:npc.x, originY:npc.y, startCx, startCy, scaleAtStart:transformRef.current.scale, moved:false, mapX:npc.x, mapY:npc.y };
     function onMove(ev) {
@@ -1796,7 +1800,7 @@ function App() {
   );
 
   if (!activeCampaign) return (
-    <div style={{ fontFamily:T.fBody,padding:24,maxWidth:540,margin:"0 auto",minHeight:"100vh",background:T.bg }}>
+    <div style={{ fontFamily:T.fBody,padding:24,paddingBottom:"max(24px, env(safe-area-inset-bottom))",maxWidth:540,margin:"0 auto",minHeight:"100dvh",background:T.bg }}>
       {/* Page header */}
       <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:24,paddingBottom:16,borderBottom:`1px solid ${T.border}` }}>
         <div style={{ flex:1 }}>
@@ -1999,7 +2003,7 @@ function App() {
               {(mapOverlays.length > 0 || mapZones.filter(z => isGM || z.revealed).length > 0) && (
                 <button onClick={()=>setShowLayerControls(f=>!f)}
                   style={{ padding:"5px 12px",borderRadius:8,border:`1px solid ${showLayerControls?T.gold:T.border}`,background:showLayerControls?`${T.gold}22`:T.bg,color:showLayerControls?T.goldDim:T.muted,fontSize:12,cursor:"pointer",flexShrink:0,fontFamily:T.fBody }}>
-                  🎚 Layer Opacity
+                  Layer Opacity
                 </button>
               )}
               {/* Filter toggle */}
@@ -2191,7 +2195,7 @@ function App() {
                   <span style={{ fontSize:13 }}>{isGM?"Go to Library to upload a map.":"Waiting for GM to load a map."}</span>
                 </div>
               ) : (
-                <div style={{ position:"absolute",transform:`translate(${transform.x}px,${transform.y}px) scale(${transform.scale})`,transformOrigin:"0 0" }}>
+                <div style={{ position:"absolute",transform:`translate3d(${transform.x}px,${transform.y}px,0) scale(${transform.scale})`,transformOrigin:"0 0",willChange:"transform" }}>
                   <img src={currentMap.src} alt="map" style={{ display:"block",maxWidth:"none" }} draggable={false} onLoad={onImgLoad} />
                   {/* Overlay image layers — per-user opacity/visibility */}
                   {mapOverlays.map(ov => {
@@ -2726,11 +2730,13 @@ function App() {
                           e.stopPropagation();
                           if(movingPOI===p.id){ setMovingPOI(null); setMoveDropdownPos(null); return; }
                           const rect=e.currentTarget.getBoundingClientRect();
-                          // Flip above the button if less than 220px of space below, clamp right edge to 4px margin
-                          const spaceBelow = window.innerHeight - rect.bottom;
-                          const rightEdge = Math.max(4, window.innerWidth - rect.right);
+                          // Use visualViewport on mobile (excludes browser chrome/address bar)
+                          const vph = window.visualViewport?.height ?? window.innerHeight;
+                          const vpw = window.visualViewport?.width ?? window.innerWidth;
+                          const spaceBelow = vph - rect.bottom;
+                          const rightEdge = Math.max(4, vpw - rect.right);
                           setMoveDropdownPos(spaceBelow < 220
-                            ? { bottom: window.innerHeight - rect.top + 4, right: rightEdge }
+                            ? { bottom: vph - rect.top + 4, right: rightEdge }
                             : { top: rect.bottom + 4, right: rightEdge });
                           setMovingPOI(p.id);
                         }}
@@ -3122,7 +3128,7 @@ function App() {
         </Modal>
       )}
       {/* Version footer */}
-      <div style={{ padding:"4px 14px",background:T.surface,borderBottom:`none`,borderTop:`1px solid ${T.border}`,fontSize:10,color:T.muted,textAlign:"center",flexShrink:0,fontFamily:T.fBody }}>
+      <div style={{ padding:"4px 14px",paddingBottom:"max(8px, env(safe-area-inset-bottom))",background:T.surface,borderBottom:`none`,borderTop:`1px solid ${T.border}`,fontSize:10,color:T.muted,textAlign:"center",flexShrink:0,fontFamily:T.fBody }}>
         {buildVersion} · Verlantis Interactive Map
       </div>
     </div>
