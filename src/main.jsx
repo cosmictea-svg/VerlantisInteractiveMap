@@ -331,28 +331,17 @@ function POIPin({ poi, scale, isGM, onTap, onDragStart, resolvedIconUrl, poiOpac
   }
 
   if (isGate) {
-    const w = size * 0.9;
-    const h = size * 1.1;
-    const archR = w / 2; // radius for the semicircle top
-    const pillarW = Math.max(3, w * 0.18);
     return (
       <div
         onMouseDown={e => { if (isGM) { e.stopPropagation(); onDragStart(e, poi); } }}
         onTouchStart={e => { if (isGM) { e.stopPropagation(); onDragStart(e, poi); } }}
         onClick={e => { e.stopPropagation(); onTap(poi); }}
-        style={{ position:"absolute", left:poi.x-w/2, top:poi.y-h, width:w, height:h, cursor:isGM?"grab":"pointer", zIndex:21, opacity:poiOpacity, transition:"opacity 0.15s ease" }}
+        style={{ position:"absolute", left:poi.x-size/2, top:poi.y-size, width:size, height:size, cursor:isGM?"grab":"pointer", zIndex:21, borderRadius:4, border:`${bw}px ${borderStyle} ${cc}`, boxSizing:"border-box", overflow:"hidden", background:cc+"59", opacity:poiOpacity, transition:"opacity 0.15s ease" }}
       >
-        {/* Arch opening (semicircle top, open at bottom) */}
-        <div style={{ position:"absolute", left:0, top:0, right:0, bottom: h * 0.25, borderRadius:`${archR}px ${archR}px 0 0`, border:`${bw}px ${borderStyle} ${cc}`, borderBottom:"none", background:cc+"25", boxSizing:"border-box", pointerEvents:"none" }} />
-        {/* Left pillar */}
-        <div style={{ position:"absolute", left:0, top: h * 0.4, bottom:0, width:pillarW, background:cc, borderRadius:`0 0 2px 2px`, pointerEvents:"none" }} />
-        {/* Right pillar */}
-        <div style={{ position:"absolute", right:0, top: h * 0.4, bottom:0, width:pillarW, background:cc, borderRadius:`0 0 2px 2px`, pointerEvents:"none" }} />
-        {/* Icon or default glyph */}
         {iconUrl
-          ? <img src={iconUrl} alt={poi.name} draggable={false} style={{ position:"absolute", left:pillarW+2, top:2, right:pillarW+2, bottom: h*0.28, objectFit:"contain", pointerEvents:"none" }} />
-          : <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", paddingBottom: h*0.2 }}>
-              <span style={{ fontSize:Math.max(9, size * 0.32), lineHeight:1, pointerEvents:"none" }}>🏛️</span>
+          ? <img src={iconUrl} alt={poi.name} draggable={false} style={{ width:"100%", height:"100%", objectFit:"contain", display:"block", pointerEvents:"none" }} />
+          : <div style={{ width:"100%", height:"100%", display:"flex", alignItems:"center", justifyContent:"center" }}>
+              <span style={{ color:"white", fontWeight:700, fontSize:Math.max(8, 14*ss/scale), lineHeight:1, pointerEvents:"none" }}>⬛</span>
             </div>
         }
       </div>
