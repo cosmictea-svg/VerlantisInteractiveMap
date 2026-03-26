@@ -156,7 +156,6 @@ function createRealtimeChannel(token, campaignId, handlers) {
         const payload = msg.payload?.data;
         if (!payload) return;
         // DEBUG — remove once confirmed working
-        if (payload.table) console.log("[RT raw]", JSON.stringify({ ev: msg.event, tbl: payload.table, type: payload.type, eventType: payload.eventType, hasNew: !!payload.new, hasRecord: !!payload.record, recordId: (payload.new||payload.record)?.id }));
         const table = payload.table;
         const eventType = payload.eventType ?? payload.type;          // v2: eventType, v1: type
         const record    = payload.new        ?? payload.record;       // v2: new,       v1: record
@@ -684,10 +683,12 @@ function App() {
     if (realtimeRef.current) realtimeRef.current.unsubscribe();
     realtimeRef.current = createRealtimeChannel(session.access_token, activeCampaign.id, {
       onPOI: (payload) => {
-        console.log("[onPOI]", payload.eventType, "id:", payload.new?.id, "new:", !!payload.new);
         if (payload.eventType === "INSERT") setPois(p => p.find(x => x.id === payload.new.id) ? p : [...p, payload.new]);
-        if (payload.eventType === "UPDATE") setPois(p => p.map(x => x.id === payload.new.id ? payload.new : x));
-        if (payload.eventType === "DELETE") setPois(p => p.filter(x => x.id !== (payload.old?.id || payload.old_record?.id)));
+        if (payload.eventType === "UPDATE") setPois(p => {
+          const exists = p.find(x => x.id === payload.new.id);
+          return exists ? p.map(x => x.id === payload.new.id ? payload.new : x) : [...p, payload.new];
+        });
+        if (payload.eventType === "DELETE") setPois(p => p.filter(x => x.id !== (payload.old?.id)));
       },
       onMarker: (payload) => {
         if (payload.eventType === "INSERT") setMarkers(m => m.find(x => x.id === payload.new.id) ? m : [...m, payload.new]);
