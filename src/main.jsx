@@ -3060,19 +3060,19 @@ function App() {
         const mp = pois.find(p=>p.id===movingPOI);
         if (!mp) return null;
         return (
-          <div style={{ position:"fixed",...(moveDropdownPos.bottom!=null?{bottom:moveDropdownPos.bottom}:{top:moveDropdownPos.top}),right:moveDropdownPos.right,zIndex:9100,background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,padding:"4px 0",minWidth:180,maxHeight:"60vh",overflowY:"auto",boxShadow:"0 8px 28px rgba(0,0,0,0.3)" }}
+          <div style={{ position:"fixed",...(moveDropdownPos.bottom!=null?{bottom:moveDropdownPos.bottom}:{top:moveDropdownPos.top}),right:moveDropdownPos.right,zIndex:9100,background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,padding:"4px 0",minWidth:160,maxWidth:220,maxHeight:220,overflowY:"auto",boxShadow:"0 8px 28px rgba(0,0,0,0.3)" }}
             onClick={e=>e.stopPropagation()}>
-            <div style={{ fontSize:10,color:T.muted,padding:"5px 14px 7px",fontWeight:700,letterSpacing:"0.07em" }}>MOVE TO FOLDER</div>
+            <div style={{ fontSize:10,color:T.muted,padding:"4px 12px 5px",fontWeight:700,letterSpacing:"0.07em",position:"sticky",top:0,background:T.bg,borderBottom:`0.5px solid ${T.border}` }}>MOVE TO FOLDER</div>
             {poiFolders.map(f=>(
               <button key={f.id} onClick={()=>movePOIToFolder(mp.id,f.id)}
-                style={{ display:"block",width:"100%",textAlign:"left",padding:"8px 14px",border:"none",background:mp.folder_id===f.id?`${T.purple}18`:"transparent",color:mp.folder_id===f.id?T.purple:T.ink,fontSize:12,cursor:"pointer",fontWeight:mp.folder_id===f.id?600:400 }}>
+                style={{ display:"block",width:"100%",textAlign:"left",padding:"6px 12px",border:"none",background:mp.folder_id===f.id?`${T.purple}18`:"transparent",color:mp.folder_id===f.id?T.purple:T.ink,fontSize:12,cursor:"pointer",fontWeight:mp.folder_id===f.id?600:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>
                 {mp.folder_id===f.id?"✓ ":""}{f.name}
               </button>
             ))}
-            {poiFolders.length===0 && <div style={{ padding:"6px 14px",fontSize:12,color:T.muted,fontStyle:"italic" }}>No folders yet — create one first.</div>}
+            {poiFolders.length===0 && <div style={{ padding:"6px 12px",fontSize:12,color:T.muted,fontStyle:"italic" }}>No folders yet.</div>}
             {mp.folder_id && (
               <button onClick={()=>movePOIToFolder(mp.id,null)}
-                style={{ display:"block",width:"100%",textAlign:"left",padding:"8px 14px",border:"none",borderTop:`0.5px solid ${T.border}`,background:"transparent",color:T.danger,fontSize:12,cursor:"pointer",marginTop:2 }}>
+                style={{ display:"block",width:"100%",textAlign:"left",padding:"6px 12px",border:"none",borderTop:`0.5px solid ${T.border}`,background:"transparent",color:T.danger,fontSize:12,cursor:"pointer" }}>
                 ✕ Remove from folder
               </button>
             )}
