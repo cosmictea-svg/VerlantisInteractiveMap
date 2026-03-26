@@ -1938,6 +1938,8 @@ function App() {
         </>}
         {/* Role badge */}
         <span style={{ fontSize:10,padding:"3px 10px",borderRadius:20,background:isGM?`${T.gold}30`:`${T.headerFg}18`,color:isGM?T.gold:`${T.headerFg}cc`,fontWeight:700,border:`1px solid ${isGM?`${T.gold}55`:`${T.headerFg}30`}`,fontFamily:T.fHead,letterSpacing:"0.06em",flexShrink:0 }}>{isGM?"GM":"Player"}</span>
+        {/* Tutorial placeholder */}
+        <button onClick={()=>{}} title="Tutorial coming soon" style={{ background:"none",border:`1px solid ${T.headerFg}33`,borderRadius:20,padding:"3px 9px",color:`${T.headerFg}77`,fontSize:10,cursor:"not-allowed",fontFamily:T.fBody,flexShrink:0 }}>? Tutorial</button>
         {/* Bell */}
         <button onClick={()=>{setShowBell(b=>!b);setUnreadCount(0);}}
           style={{ position:"relative",background:"none",border:"none",cursor:"pointer",color:T.headerFg,fontSize:18,padding:"4px 2px",flexShrink:0,lineHeight:1 }} title="Notifications">
@@ -2510,11 +2512,7 @@ function App() {
             })()}
           </div>
 
-          <div style={{ padding:"5px 14px",borderTop:`0.5px solid ${T.border}`,display:"flex",gap:10,fontSize:10,color:T.muted,flexWrap:"wrap",background:T.surface }}>
-            <span>Tap POI or marker to view</span>
-            {isGM && <span style={{ color:T.goldDim }}>GM: drag POI/NPC to move · dashed = hidden</span>}
-            <span>Drag your own marker to reposition</span>
-          </div>
+          {/* Tutorial hint bar removed — hints moved to ? Tutorial button */}
         </div>
       )}
 
