@@ -564,6 +564,8 @@ function App() {
   const [campInfoEdit, setCampInfoEdit] = useState(null); // { name, sub_header, description } or null
   const [poiFolders, setPoiFolders] = useState([]);
   const [folderCollapsed, setFolderCollapsed] = useState({}); // { folderId: true = collapsed }
+  const [dragOverFolderId, setDragOverFolderId] = useState(null);
+  const folderDragRef = useRef(null); // id of folder being dragged
   const [poiLibView, setPoiLibView] = useState("folders");    // "folders" | "name" | "type"
   const [folderForm, setFolderForm] = useState(null);         // null | { folder: obj|null, name: "" }
   const [movingPOI, setMovingPOI] = useState(null);           // poi id whose move-dropdown is open
@@ -1530,6 +1532,20 @@ function App() {
       setMovingPOI(null); setMoveDropdownPos(null);
     } catch(e) { setError(e.message); }
   }
+  async function reorderFolders(draggedId, targetId) {
+    if (draggedId === targetId) return;
+    const newOrder = [...poiFolders];
+    const fromIdx = newOrder.findIndex(f => f.id === draggedId);
+    const toIdx   = newOrder.findIndex(f => f.id === targetId);
+    if (fromIdx === -1 || toIdx === -1) return;
+    const [moved] = newOrder.splice(fromIdx, 1);
+    newOrder.splice(toIdx, 0, moved);
+    setPoiFolders(newOrder);
+    await Promise.all(newOrder.map((f, i) =>
+      dbUpdate(session.access_token, "poi_folders", f.id, { sort_order: i }).catch(() => {})
+    ));
+  }
+
   async function toggleFolderReveal(folder) {
     const children = pois.filter(p => p.folder_id === folder.id);
     if (!children.length) return;
@@ -2854,10 +2870,20 @@ function App() {
                       const allLocked = children.length>0 && children.every(p=>p.locked);
                       const someLocked = children.some(p=>p.locked);
                       return (
-                        <div key={folder.id} style={{ marginBottom:8,border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden" }}>
+                        <div key={folder.id}
+                          onDragOver={e=>{e.preventDefault();setDragOverFolderId(folder.id);}}
+                          onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setDragOverFolderId(null);}}
+                          onDrop={e=>{e.preventDefault();setDragOverFolderId(null);if(folderDragRef.current&&folderDragRef.current!==folder.id){reorderFolders(folderDragRef.current,folder.id);}folderDragRef.current=null;}}
+                          onDragEnd={()=>{setDragOverFolderId(null);folderDragRef.current=null;}}
+                          style={{ marginBottom:8,border:`1.5px solid ${dragOverFolderId===folder.id?T.purple:T.border}`,borderRadius:10,overflow:"hidden",transition:"border-color 0.15s" }}>
                           {/* Folder header */}
                           <div style={{ display:"flex",alignItems:"center",gap:8,padding:"9px 12px",background:T.surface,cursor:"pointer",userSelect:"none" }}
                             onClick={()=>setFolderCollapsed(prev=>({...prev,[folder.id]:!prev[folder.id]}))}>
+                            {isGM && <span draggable={true}
+                              onDragStart={e=>{e.stopPropagation();folderDragRef.current=folder.id;e.dataTransfer.setData("text/plain",folder.id);e.dataTransfer.effectAllowed="move";}}
+                              onClick={e=>e.stopPropagation()}
+                              title="Drag to reorder"
+                              style={{ cursor:"grab",color:T.muted,fontSize:15,flexShrink:0,lineHeight:1,padding:"0 2px" }}>⠿</span>}
                             <span style={{ fontSize:11,color:T.muted,display:"inline-block",transition:"transform 0.18s",transform:isCollapsed?"rotate(-90deg)":"rotate(0deg)",lineHeight:1 }}>▾</span>
                             <div style={{ flex:1,fontFamily:T.fHead,fontWeight:600,fontSize:13,color:T.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{folder.name}</div>
                             <span style={{ fontSize:11,color:T.muted,flexShrink:0 }}>{children.length}</span>
