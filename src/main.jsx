@@ -565,6 +565,7 @@ function App() {
   const [poiLibView, setPoiLibView] = useState("folders");    // "folders" | "name" | "type"
   const [folderForm, setFolderForm] = useState(null);         // null | { folder: obj|null, name: "" }
   const [movingPOI, setMovingPOI] = useState(null);           // poi id whose move-dropdown is open
+  const [moveDropdownPos, setMoveDropdownPos] = useState(null); // { top, right } for fixed dropdown
   const [campDeleteConfirm, setCampDeleteConfirm] = useState(null); // campaign object to delete, or null
   const [mapDeleteConfirm, setMapDeleteConfirm] = useState(null);   // map id to delete, or null
   const [campaignLoading, setCampaignLoading] = useState(false);
@@ -767,7 +768,8 @@ function App() {
         if (payload.eventType === "DELETE") setMaps(p => p.filter(x => x.id !== payload.old?.id));
       },
       onPOIFolder: (payload) => {
-        if (payload.eventType === "INSERT") setPoiFolders(p => [...p, payload.new]);
+        // Dedup INSERT — saveFolder already adds optimistically, Realtime must not double-add
+        if (payload.eventType === "INSERT") setPoiFolders(p => p.find(x => x.id === payload.new.id) ? p : [...p, payload.new]);
         if (payload.eventType === "UPDATE") setPoiFolders(p => p.map(f => f.id === payload.new.id ? payload.new : f));
         if (payload.eventType === "DELETE") setPoiFolders(p => p.filter(f => f.id !== payload.old?.id));
       },
@@ -1491,7 +1493,7 @@ function App() {
     try {
       await dbUpdate(session.access_token, "pois", poiId, { folder_id: folderId || null });
       setPois(prev => prev.map(p => p.id === poiId ? { ...p, folder_id: folderId || null } : p));
-      setMovingPOI(null);
+      setMovingPOI(null); setMoveDropdownPos(null);
     } catch(e) { setError(e.message); }
   }
   async function toggleFolderReveal(folder) {
@@ -2182,7 +2184,7 @@ function App() {
           <div style={{ flex:1,minHeight:0,position:"relative" }}>
             <div ref={mapRef} style={{ position:"absolute",inset:0,overflow:"hidden",background:"#1a1a2e",cursor:placingMode?"crosshair":isDragging?"grabbing":"grab",touchAction:"none",userSelect:"none" }}
               onMouseDown={onPointerDown} onTouchStart={onPointerDown}
-              onClick={()=>{ setMovingPOI(null); if(!dragRef.current.moved){ closePOICard(); closeMarkerCard(); } }}>
+              onClick={()=>{ setMovingPOI(null); setMoveDropdownPos(null); if(!dragRef.current.moved){ closePOICard(); closeMarkerCard(); } }}>
               {!currentMap ? (
                 <div style={{ display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",color:"#aaa",gap:8 }}>
                   <span style={{ fontSize:40 }}>🗺</span>
@@ -2717,28 +2719,17 @@ function App() {
                       style={{ padding:"3px 9px",borderRadius:20,border:"none",background:p.revealed?"#EAF3DE":"#FEF3E2",color:p.revealed?"#3B6D11":"#854F0B",fontSize:11,fontWeight:600,cursor:"pointer",flexShrink:0 }}>
                       {p.revealed?"Shown":"Hidden"}
                     </button>
-                    {/* Move button (GM, folder view only) */}
+                    {/* Move button (GM, folder view only) — dropdown rendered at App level to avoid overflow:hidden clipping */}
                     {isGM && showMove && (
-                      <div style={{ position:"relative",flexShrink:0 }}>
-                        <button title="Move to folder" onClick={e=>{e.stopPropagation();setMovingPOI(movingPOI===p.id?null:p.id);}}
-                          style={{ padding:"4px 8px",borderRadius:6,border:`1px solid ${T.border}`,background:movingPOI===p.id?T.purple:T.surface,color:movingPOI===p.id?T.headerFg:T.muted,fontSize:12,cursor:"pointer",lineHeight:1 }}>⇄</button>
-                        {movingPOI===p.id && (
-                          <div style={{ position:"absolute",right:0,top:"calc(100% + 4px)",zIndex:300,background:T.bg,border:`1px solid ${T.border}`,borderRadius:8,padding:"4px 0",minWidth:160,boxShadow:"0 6px 20px rgba(0,0,0,0.25)" }}>
-                            <div style={{ fontSize:10,color:T.muted,padding:"4px 12px 6px",fontWeight:700,letterSpacing:"0.06em" }}>MOVE TO FOLDER</div>
-                            {poiFolders.map(f=>(
-                              <button key={f.id} onClick={()=>movePOIToFolder(p.id,f.id)}
-                                style={{ display:"block",width:"100%",textAlign:"left",padding:"7px 12px",border:"none",background:p.folder_id===f.id?`${T.purple}22`:"transparent",color:p.folder_id===f.id?T.purple:T.ink,fontSize:12,cursor:"pointer",fontWeight:p.folder_id===f.id?600:400 }}>
-                                {p.folder_id===f.id?"✓ ":""}{f.name}
-                              </button>
-                            ))}
-                            {poiFolders.length===0 && <div style={{ padding:"6px 12px",fontSize:12,color:T.muted,fontStyle:"italic" }}>No folders yet</div>}
-                            {p.folder_id && <button onClick={()=>movePOIToFolder(p.id,null)}
-                              style={{ display:"block",width:"100%",textAlign:"left",padding:"7px 12px",border:"none",borderTop:`0.5px solid ${T.border}`,background:"transparent",color:T.danger,fontSize:12,cursor:"pointer",marginTop:2 }}>
-                              ✕ Remove from folder
-                            </button>}
-                          </div>
-                        )}
-                      </div>
+                      <button title="Move to folder"
+                        onClick={e=>{
+                          e.stopPropagation();
+                          if(movingPOI===p.id){ setMovingPOI(null); setMoveDropdownPos(null); return; }
+                          const rect=e.currentTarget.getBoundingClientRect();
+                          setMoveDropdownPos({ top:rect.bottom+4, right:window.innerWidth-rect.right });
+                          setMovingPOI(p.id);
+                        }}
+                        style={{ padding:"4px 8px",borderRadius:6,border:`1px solid ${T.border}`,background:movingPOI===p.id?T.purple:T.surface,color:movingPOI===p.id?T.headerFg:T.muted,fontSize:12,cursor:"pointer",lineHeight:1,flexShrink:0 }}>⇄</button>
                     )}
                   </div>
                 );
@@ -2784,10 +2775,12 @@ function App() {
                                 {allShown?"All Shown":someShown?"Mixed":"All Hidden"}
                               </button>
                             )}
-                            {isGM && (
-                              <button onClick={e=>{e.stopPropagation();setFolderForm({folder,name:folder.name});setMovingPOI(null);}}
+                            {isGM && (<>
+                              <button title="Rename folder" onClick={e=>{e.stopPropagation();setFolderForm({folder,name:folder.name});setMovingPOI(null);}}
                                 style={{ padding:"3px 8px",borderRadius:6,border:`1px solid ${T.border}`,background:"transparent",color:T.muted,fontSize:11,cursor:"pointer",flexShrink:0,lineHeight:1 }}>✎</button>
-                            )}
+                              <button title="Delete folder (POIs stay)" onClick={e=>{e.stopPropagation();setFolderForm({folder,name:folder.name,confirmDelete:true});setMovingPOI(null);}}
+                                style={{ padding:"3px 7px",borderRadius:6,border:`1px solid ${T.danger}55`,background:"transparent",color:T.danger,fontSize:11,cursor:"pointer",flexShrink:0,lineHeight:1 }}>🗑</button>
+                            </>)}
                           </div>
                           {/* Children */}
                           {!isCollapsed && children.length===0 && (
@@ -2912,40 +2905,79 @@ function App() {
       {poiForm && <POIFormModal form={poiForm} categoryIcons={categoryIcons} maps={maps} onSave={savePOI} onDelete={deletePOI} onDuplicate={duplicatePOI} onClose={()=>setPoiForm(null)} />}
       {markerForm && <MarkerFormModal form={markerForm} onSave={saveMarker} onEdit={editMarker} onCancel={()=>setMarkerForm(null)} />}
 
-      {/* Folder form modal */}
+      {/* Folder form modal — rename OR confirm-delete */}
       {folderForm && (
         <div style={{ position:"fixed",inset:0,zIndex:9000,display:"flex",alignItems:"center",justifyContent:"center",padding:16,background:"rgba(10,5,20,0.75)" }} onClick={()=>setFolderForm(null)}>
           <div style={{ background:T.surface,borderRadius:16,padding:"22px 22px 18px",maxWidth:340,width:"100%",boxShadow:"0 8px 40px rgba(0,0,0,0.5)",border:`1px solid ${T.border}` }} onClick={e=>e.stopPropagation()}>
-            <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:15,color:T.ink,marginBottom:14 }}>
-              {folderForm.folder?"Edit Folder":"New Folder"}
-            </div>
-            <input
-              autoFocus={!isTouchDevice}
-              value={folderForm.name}
-              onChange={e=>setFolderForm(f=>({...f,name:e.target.value}))}
-              onKeyDown={e=>{ if(e.key==="Enter"&&folderForm.name.trim()) saveFolder(folderForm.name.trim(),folderForm.folder); if(e.key==="Escape") setFolderForm(null); }}
-              placeholder="Folder name…"
-              style={{ ...IS,width:"100%",boxSizing:"border-box",marginBottom:14 }}
-            />
-            <div style={{ display:"flex",gap:8 }}>
-              <button onClick={()=>{ if(folderForm.name.trim()) saveFolder(folderForm.name.trim(),folderForm.folder); }}
-                style={{ flex:1,padding:"9px 0",borderRadius:20,border:"none",background:T.purple,color:T.headerFg,fontFamily:T.fHead,fontSize:13,fontWeight:700,cursor:"pointer",opacity:folderForm.name.trim()?1:0.5 }}>
-                {folderForm.folder?"Save":"Create"}
-              </button>
-              {folderForm.folder && (
+            {folderForm.confirmDelete ? (<>
+              {/* Delete confirmation */}
+              <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:15,color:T.ink,marginBottom:8 }}>Delete Folder?</div>
+              <div style={{ fontSize:13,color:T.muted,marginBottom:20,lineHeight:1.5 }}>
+                "<strong style={{ color:T.ink }}>{folderForm.folder.name}</strong>" will be removed.
+                All {pois.filter(p=>p.folder_id===folderForm.folder.id).length} POI{pois.filter(p=>p.folder_id===folderForm.folder.id).length!==1?"s":""} inside will be moved to <em>Unfiled</em> — nothing is deleted from the map.
+              </div>
+              <div style={{ display:"flex",gap:8 }}>
                 <button onClick={()=>deleteFolder(folderForm.folder.id)}
-                  style={{ padding:"9px 14px",borderRadius:20,border:"none",background:T.danger,color:"#fff",fontFamily:T.fHead,fontSize:13,fontWeight:700,cursor:"pointer" }}>
-                  Delete
+                  style={{ flex:1,padding:"9px 0",borderRadius:20,border:"none",background:T.danger,color:"#fff",fontFamily:T.fHead,fontSize:13,fontWeight:700,cursor:"pointer" }}>
+                  Delete Folder
                 </button>
-              )}
-              <button onClick={()=>setFolderForm(null)}
-                style={{ padding:"9px 14px",borderRadius:20,border:`1px solid ${T.border}`,background:"transparent",color:T.muted,fontSize:13,cursor:"pointer" }}>
-                Cancel
-              </button>
-            </div>
+                <button onClick={()=>setFolderForm(null)}
+                  style={{ padding:"9px 14px",borderRadius:20,border:`1px solid ${T.border}`,background:"transparent",color:T.muted,fontSize:13,cursor:"pointer" }}>
+                  Cancel
+                </button>
+              </div>
+            </>) : (<>
+              {/* Create / rename */}
+              <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:15,color:T.ink,marginBottom:14 }}>
+                {folderForm.folder?"Rename Folder":"New Folder"}
+              </div>
+              <input
+                autoFocus={!isTouchDevice}
+                value={folderForm.name}
+                onChange={e=>setFolderForm(f=>({...f,name:e.target.value}))}
+                onKeyDown={e=>{ if(e.key==="Enter"&&folderForm.name.trim()) saveFolder(folderForm.name.trim(),folderForm.folder); if(e.key==="Escape") setFolderForm(null); }}
+                placeholder="Folder name…"
+                style={{ ...IS,width:"100%",boxSizing:"border-box",marginBottom:14 }}
+              />
+              <div style={{ display:"flex",gap:8 }}>
+                <button onClick={()=>{ if(folderForm.name.trim()) saveFolder(folderForm.name.trim(),folderForm.folder); }}
+                  style={{ flex:1,padding:"9px 0",borderRadius:20,border:"none",background:T.purple,color:T.headerFg,fontFamily:T.fHead,fontSize:13,fontWeight:700,cursor:"pointer",opacity:folderForm.name.trim()?1:0.5 }}>
+                  {folderForm.folder?"Save":"Create"}
+                </button>
+                <button onClick={()=>setFolderForm(null)}
+                  style={{ padding:"9px 14px",borderRadius:20,border:`1px solid ${T.border}`,background:"transparent",color:T.muted,fontSize:13,cursor:"pointer" }}>
+                  Cancel
+                </button>
+              </div>
+            </>)}
           </div>
         </div>
       )}
+
+      {/* Move-to-folder dropdown — fixed position to escape overflow:hidden containers */}
+      {movingPOI && moveDropdownPos && (()=>{
+        const mp = pois.find(p=>p.id===movingPOI);
+        if (!mp) return null;
+        return (
+          <div style={{ position:"fixed",top:moveDropdownPos.top,right:moveDropdownPos.right,zIndex:9100,background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,padding:"4px 0",minWidth:180,boxShadow:"0 8px 28px rgba(0,0,0,0.3)" }}
+            onClick={e=>e.stopPropagation()}>
+            <div style={{ fontSize:10,color:T.muted,padding:"5px 14px 7px",fontWeight:700,letterSpacing:"0.07em" }}>MOVE TO FOLDER</div>
+            {poiFolders.map(f=>(
+              <button key={f.id} onClick={()=>movePOIToFolder(mp.id,f.id)}
+                style={{ display:"block",width:"100%",textAlign:"left",padding:"8px 14px",border:"none",background:mp.folder_id===f.id?`${T.purple}18`:"transparent",color:mp.folder_id===f.id?T.purple:T.ink,fontSize:12,cursor:"pointer",fontWeight:mp.folder_id===f.id?600:400 }}>
+                {mp.folder_id===f.id?"✓ ":""}{f.name}
+              </button>
+            ))}
+            {poiFolders.length===0 && <div style={{ padding:"6px 14px",fontSize:12,color:T.muted,fontStyle:"italic" }}>No folders yet — create one first.</div>}
+            {mp.folder_id && (
+              <button onClick={()=>movePOIToFolder(mp.id,null)}
+                style={{ display:"block",width:"100%",textAlign:"left",padding:"8px 14px",border:"none",borderTop:`0.5px solid ${T.border}`,background:"transparent",color:T.danger,fontSize:12,cursor:"pointer",marginTop:2 }}>
+                ✕ Remove from folder
+              </button>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Bell — notification history panel */}
       {showBell && (
