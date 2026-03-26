@@ -224,6 +224,7 @@ const T = {
   danger:   "#8B1A1A",   // blood red
   fHead:    "'Cinzel', 'Georgia', serif",
   fBody:    "'Lora', 'Georgia', serif",
+  fMap:     "'Exo 2', 'Cinzel', sans-serif",
 };
 
 function getCatColor(id) { return CATEGORIES.find(c => c.id === id)?.color || "#95A5A6"; }
@@ -291,7 +292,7 @@ function MarkerPin({ marker, scale, isOwner, isGM, onTap, onDragStart, displayNa
       style={{ position: "absolute", left: marker.x - size/2, top: marker.y - size, width: size, height: size, cursor: isOwner ? "grab" : "pointer", zIndex: 25 }}
     >
       <div style={{ width: size, height: size, borderRadius: "50% 50% 50% 0", transform: "rotate(-45deg)", background: color, border: `${Math.max(1.5, 2/scale)}px solid white`, boxSizing: "border-box", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <span style={{ transform: "rotate(45deg)", color: "white", fontWeight: 700, fontSize, lineHeight: 1, textShadow: "0 0 2px rgba(0,0,0,0.5)" }}>{initial}</span>
+        <span style={{ transform: "rotate(45deg)", color: "white", fontWeight: 700, fontSize, fontFamily: T.fMap, lineHeight: 1, textShadow: "0 0 3px rgba(0,0,0,0.8)" }}>{initial}</span>
       </div>
     </div>
   );
@@ -315,7 +316,7 @@ function POIPin({ poi, scale, isGM, onTap, onDragStart, resolvedIconUrl, poiOpac
         onMouseDown={e => { if (isGM) { e.stopPropagation(); onDragStart(e, poi); } }}
         onTouchStart={e => { if (isGM) { e.stopPropagation(); onDragStart(e, poi); } }}
         onClick={e => { e.stopPropagation(); onTap(poi); }}
-        style={{ position:"absolute", left:poi.x-d/2, top:poi.y-d, width:d, height:d, cursor:isGM?"grab":"pointer", zIndex:22, opacity:poiOpacity, transition:"opacity 0.15s ease" }}
+        style={{ position:"absolute", left:poi.x-d/2, top:poi.y-d, width:d, height:d, cursor:isGM?(poi.locked?"pointer":"grab"):"pointer", zIndex:22, opacity:poiOpacity, transition:"opacity 0.15s ease" }}
       >
         {/* Pulsing aura ring */}
         <div style={{ position:"absolute", inset:-d*0.3, borderRadius:"50%", border:`${bw}px solid ${cc}`, animation:"portalPulse 2s ease-in-out infinite", pointerEvents:"none" }} />
@@ -338,7 +339,7 @@ function POIPin({ poi, scale, isGM, onTap, onDragStart, resolvedIconUrl, poiOpac
         onMouseDown={e => { if (isGM) { e.stopPropagation(); onDragStart(e, poi); } }}
         onTouchStart={e => { if (isGM) { e.stopPropagation(); onDragStart(e, poi); } }}
         onClick={e => { e.stopPropagation(); onTap(poi); }}
-        style={{ position:"absolute", left:poi.x-size/2, top:poi.y-size, width:size, height:size, cursor:isGM?"grab":"pointer", zIndex:21, borderRadius:4, border:`${bw}px ${borderStyle} ${cc}`, boxSizing:"border-box", overflow:"hidden", background:cc+"59", opacity:poiOpacity, transition:"opacity 0.15s ease" }}
+        style={{ position:"absolute", left:poi.x-size/2, top:poi.y-size, width:size, height:size, cursor:isGM?(poi.locked?"pointer":"grab"):"pointer", zIndex:21, borderRadius:4, border:`${bw}px ${borderStyle} ${cc}`, boxSizing:"border-box", overflow:"hidden", background:cc+"59", opacity:poiOpacity, transition:"opacity 0.15s ease" }}
       >
         {iconUrl
           ? <img src={iconUrl} alt={poi.name} draggable={false} style={{ width:"100%", height:"100%", objectFit:"contain", display:"block", pointerEvents:"none" }} />
@@ -355,7 +356,7 @@ function POIPin({ poi, scale, isGM, onTap, onDragStart, resolvedIconUrl, poiOpac
       onMouseDown={e => { if (isGM) { e.stopPropagation(); onDragStart(e, poi); } }}
       onTouchStart={e => { if (isGM) { e.stopPropagation(); onDragStart(e, poi); } }}
       onClick={e => { e.stopPropagation(); onTap(poi); }}
-      style={{ position: "absolute", left: poi.x - size/2, top: poi.y - size, width: size, height: size, cursor: isGM ? "grab" : "pointer", zIndex: 20, borderRadius: "50%", border: `${bw}px ${borderStyle} ${cc}`, boxSizing: "border-box", overflow: "hidden", background: cc + "59", opacity: poiOpacity, transition: "opacity 0.15s ease" }}
+      style={{ position: "absolute", left: poi.x - size/2, top: poi.y - size, width: size, height: size, cursor: isGM ? (poi.locked ? "pointer" : "grab") : "pointer", zIndex: 20, borderRadius: "50%", border: `${bw}px ${borderStyle} ${cc}`, boxSizing: "border-box", overflow: "hidden", background: cc + "59", opacity: poiOpacity, transition: "opacity 0.15s ease" }}
     >
       {iconUrl
         ? <img src={iconUrl} alt={poi.name} draggable={false} onDragStart={e => e.preventDefault()} style={{ width: "100%", height: "100%", objectFit: "contain", display: "block", pointerEvents: "none" }} />
@@ -2406,15 +2407,15 @@ function App() {
                       resolvedIconUrl={categoryIcons[p.category]||""}
                       poiOpacity={poiOpacity}
                       onTap={poi=>{
-                        if (poi.poi_type==="portal" && poi.linked_map_id) {
-                          if (isGM) {
-                            // GM tap on portal → open edit form (same as any POI)
-                            setPoiForm({ poi, name:poi.name, description:poi.description, revealed:poi.revealed, category:poi.category, size:poi.size||"large", poi_type:poi.poi_type, linked_map_id:poi.linked_map_id });
-                          } else {
-                            // Player tap on portal → open POI details card; travel button shown inside
-                            if (openPOICard===poi.id) { closePOICard(); } else { closePOICard(); setOpenPOICard(poi.id); }
-                          }
-                        } else if (!isGM) { if (openPOICard===poi.id) { closePOICard(); } else { closePOICard(); setOpenPOICard(poi.id); } }
+                        if (isGM) {
+                          // GM tap on any POI → open edit form (lock only prevents dragging, not editing)
+                          setPoiForm({ poi, name:poi.name, description:poi.description, revealed:poi.revealed, category:poi.category||"other", size:poi.size||"large", poi_type:poi.poi_type||"standard", linked_map_id:poi.linked_map_id||null });
+                        } else if (poi.poi_type==="portal" && poi.linked_map_id) {
+                          // Player tap on portal → open POI details card; travel button shown inside
+                          if (openPOICard===poi.id) { closePOICard(); } else { closePOICard(); setOpenPOICard(poi.id); }
+                        } else {
+                          if (openPOICard===poi.id) { closePOICard(); } else { closePOICard(); setOpenPOICard(poi.id); }
+                        }
                       }}
                       onDragStart={startPOIDrag} />
                   ))}
@@ -2442,7 +2443,7 @@ function App() {
                           style={{ position:"absolute", left:pad-ns/2, top:pad-ns/2, width:ns, height:ns, borderRadius:"50%", background:`${npc.border_color}33`, border:`${bw}px solid ${npc.border_color}`, cursor:isGM?"grab":"default", pointerEvents:"all", display:"flex", alignItems:"center", justifyContent:"center", boxShadow:`0 0 ${6/transform.scale}px ${npc.border_color}88` }}>
                           <span style={{ fontSize:fs*0.9, pointerEvents:"none", userSelect:"none" }}>👤</span>
                         </div>
-                        <div style={{ position:"absolute", left:pad, top:pad+ns/2+4/transform.scale, transform:"translateX(-50%)", fontSize:fs, fontWeight:600, color:npc.border_color, textShadow:"0 1px 3px rgba(0,0,0,0.85)", whiteSpace:"nowrap", pointerEvents:"none", userSelect:"none", lineHeight:1.3 }}>
+                        <div style={{ position:"absolute", left:pad, top:pad+ns/2+4/transform.scale, transform:"translateX(-50%)", fontSize:fs, fontWeight:700, fontFamily:T.fMap, letterSpacing:"0.03em", color:npc.border_color, textShadow:"0 0 6px rgba(0,0,0,1), 0 1px 4px rgba(0,0,0,0.95)", whiteSpace:"nowrap", pointerEvents:"none", userSelect:"none", lineHeight:1.3 }}>
                           {showName ? npc.name : "???"}
                           {showStatus && <span style={{ opacity:0.8, fontWeight:400 }}> · {npc.show_status ? npc.status : "???"}</span>}
                         </div>
