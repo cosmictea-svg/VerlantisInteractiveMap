@@ -136,6 +136,7 @@ function createRealtimeChannel(token, campaignId, handlers) {
         { table: "announcements",    filter: `campaign_id=eq.${campaignId}` },
         { table: "notification_log", filter: `campaign_id=eq.${campaignId}` },
         { table: "maps",             filter: `campaign_id=eq.${campaignId}` },
+        { table: "poi_folders",      filter: `campaign_id=eq.${campaignId}` },
       ];
       tableConfigs.forEach(({ table, filter }, i) => {
         ws.send(JSON.stringify({
@@ -166,6 +167,7 @@ function createRealtimeChannel(token, campaignId, handlers) {
         if (table === "announcements") handlers.onAnnouncement?.(mapped);
         if (table === "notification_log") handlers.onNotifLog?.(mapped);
         if (table === "maps") handlers.onMap?.(mapped);
+        if (table === "poi_folders") handlers.onPOIFolder?.(mapped);
       } catch {}
     };
     ws.onclose = () => { clearInterval(heartbeatTimer); if (!closed) reconnectTimer = setTimeout(connect, 3000); };
@@ -558,6 +560,11 @@ function App() {
   const [showFilter, setShowFilter] = useState(false);
   const [renamingOverlay, setRenamingOverlay] = useState(null); // { id, name }
   const [campInfoEdit, setCampInfoEdit] = useState(null); // { name, sub_header, description } or null
+  const [poiFolders, setPoiFolders] = useState([]);
+  const [folderCollapsed, setFolderCollapsed] = useState({}); // { folderId: true = collapsed }
+  const [poiLibView, setPoiLibView] = useState("folders");    // "folders" | "name" | "type"
+  const [folderForm, setFolderForm] = useState(null);         // null | { folder: obj|null, name: "" }
+  const [movingPOI, setMovingPOI] = useState(null);           // poi id whose move-dropdown is open
   const [campDeleteConfirm, setCampDeleteConfirm] = useState(null); // campaign object to delete, or null
   const [mapDeleteConfirm, setMapDeleteConfirm] = useState(null);   // map id to delete, or null
   const [campaignLoading, setCampaignLoading] = useState(false);
@@ -759,6 +766,11 @@ function App() {
         if (payload.eventType === "UPDATE") setMaps(p => p.map(x => x.id === payload.new.id ? { ...x, ...payload.new } : x));
         if (payload.eventType === "DELETE") setMaps(p => p.filter(x => x.id !== payload.old?.id));
       },
+      onPOIFolder: (payload) => {
+        if (payload.eventType === "INSERT") setPoiFolders(p => [...p, payload.new]);
+        if (payload.eventType === "UPDATE") setPoiFolders(p => p.map(f => f.id === payload.new.id ? payload.new : f));
+        if (payload.eventType === "DELETE") setPoiFolders(p => p.filter(f => f.id !== payload.old?.id));
+      },
     });
     return () => { if (realtimeRef.current) realtimeRef.current.unsubscribe(); };
   }, [activeCampaign?.id, session?.access_token]);
@@ -813,11 +825,14 @@ function App() {
         } catch { /* non-fatal — image will load via onImgLoad fallback */ }
       }
       // All state updates batched atomically in one React render (React 18 auto-batching)
+      // Fetch poi_folders separately (not in the RPC yet)
+      let foldersData = [];
+      try { foldersData = await dbSelect(session.access_token, "poi_folders", `campaign_id=eq.${camp.id}&order=sort_order.asc`); } catch {}
       setMaps(mapsWithSrc); setPois(d.pois || []); setMarkers(d.markers || []);
       setMembers(d.members || []);
       setOverlays(d.overlays || []); setZones(d.zones || []); setNpcs(d.npcs || []);
       setAnnouncements(d.announcements || []); setNotifLog(d.notification_log || []);
-      setCategoryIcons(d.category_icons || {});
+      setCategoryIcons(d.category_icons || {}); setPoiFolders(foldersData);
       const me = (d.members || []).find(m => m.user_id === user.id);
       setMyColor(me?.player_color || null);
       if (main) setActiveMapId(main.id);
@@ -1449,6 +1464,45 @@ function App() {
       // The RPC doesn't return src, so attach it client-side
       setMaps(prev => [...prev, { ...nm, src }]);
       if (isFirst) setActiveMapId(nm.id);
+    } catch(e) { setError(e.message); }
+  }
+  // ── POI Folder management ──
+  async function saveFolder(name, folder) {
+    try {
+      if (folder) {
+        await dbUpdate(session.access_token, "poi_folders", folder.id, { name });
+        setPoiFolders(prev => prev.map(f => f.id === folder.id ? { ...f, name } : f));
+      } else {
+        const [nf] = await dbInsert(session.access_token, "poi_folders", { name, campaign_id: activeCampaign.id, sort_order: poiFolders.length });
+        setPoiFolders(prev => [...prev, nf]);
+      }
+      setFolderForm(null);
+    } catch(e) { setError(e.message); }
+  }
+  async function deleteFolder(id) {
+    try {
+      await dbDelete(session.access_token, "poi_folders", id);
+      setPois(prev => prev.map(p => p.folder_id === id ? { ...p, folder_id: null } : p));
+      setPoiFolders(prev => prev.filter(f => f.id !== id));
+      setFolderForm(null);
+    } catch(e) { setError(e.message); }
+  }
+  async function movePOIToFolder(poiId, folderId) {
+    try {
+      await dbUpdate(session.access_token, "pois", poiId, { folder_id: folderId || null });
+      setPois(prev => prev.map(p => p.id === poiId ? { ...p, folder_id: folderId || null } : p));
+      setMovingPOI(null);
+    } catch(e) { setError(e.message); }
+  }
+  async function toggleFolderReveal(folder) {
+    const children = pois.filter(p => p.folder_id === folder.id);
+    if (!children.length) return;
+    const newState = !children.every(p => p.revealed);
+    try {
+      await Promise.all(children.filter(p => p.revealed !== newState).map(p =>
+        dbUpdate(session.access_token, "pois", p.id, { revealed: newState })
+      ));
+      setPois(prev => prev.map(p => p.folder_id === folder.id ? { ...p, revealed: newState } : p));
     } catch(e) { setError(e.message); }
   }
   async function setMainMap(id) {
@@ -2128,7 +2182,7 @@ function App() {
           <div style={{ flex:1,minHeight:0,position:"relative" }}>
             <div ref={mapRef} style={{ position:"absolute",inset:0,overflow:"hidden",background:"#1a1a2e",cursor:placingMode?"crosshair":isDragging?"grabbing":"grab",touchAction:"none",userSelect:"none" }}
               onMouseDown={onPointerDown} onTouchStart={onPointerDown}
-              onClick={()=>{ if(!dragRef.current.moved){ closePOICard(); closeMarkerCard(); } }}>
+              onClick={()=>{ setMovingPOI(null); if(!dragRef.current.moved){ closePOICard(); closeMarkerCard(); } }}>
               {!currentMap ? (
                 <div style={{ display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",color:"#aaa",gap:8 }}>
                   <span style={{ fontSize:40 }}>🗺</span>
@@ -2640,34 +2694,163 @@ function App() {
 
 
             {/* ── POIS ── */}
-            {libSubTab==="pois" && <>
-              <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:14,flexWrap:"wrap" }}>
-                <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:14,color:T.ink,flex:1 }}>Points of Interest</div>
-                <button onClick={()=>setLibSort("name")} style={{ fontSize:12,padding:"4px 10px",borderRadius:20,border:`1px solid ${T.border}`,background:libSort==="name"?T.purple:T.bg,color:libSort==="name"?T.headerFg:T.muted,cursor:"pointer",fontFamily:T.fBody }}>By Name</button>
-                <button onClick={()=>setLibSort("type")} style={{ fontSize:12,padding:"4px 10px",borderRadius:20,border:`1px solid ${T.border}`,background:libSort==="type"?T.purple:T.bg,color:libSort==="type"?T.headerFg:T.muted,cursor:"pointer",fontFamily:T.fBody }}>By Type</button>
-              </div>
-              {sortedLibPOIs.length===0 && <p style={{ color:T.muted,fontSize:13,fontStyle:"italic" }}>No POIs yet. Place them on the map using "＋ POI".</p>}
-              {sortedLibPOIs.map(p=>{
-                const cc=getCatColor(p.category);
+            {libSubTab==="pois" && (()=>{
+              // ── Helper: render one POI row ──
+              const renderPOIRow = (p, showMove) => {
+                const cc = getCatColor(p.category);
                 const iconUrl = p.icon_url || categoryIcons[p.category] || "";
+                const isCheckpoint = p.poi_type === "checkpoint";
                 return (
-                  <div key={p.id} style={{ display:"flex",alignItems:"center",gap:10,padding:"9px 12px",background:T.surface,borderRadius:10,marginBottom:8,border:`1px solid ${T.border}` }}>
-                    <div style={{ width:32,height:32,borderRadius:"50%",border:`2px ${p.revealed?"solid":"dashed"} ${cc}`,overflow:"hidden",flexShrink:0,background:cc+"28",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer" }}
-                      onClick={()=>setPoiForm({poi:p,name:p.name,description:p.description,revealed:p.revealed,category:p.category||"other",size:p.size||"large"})}>
-                      {iconUrl?<img src={iconUrl} alt="" draggable={false} style={{ width:"100%",height:"100%",objectFit:"contain" }} />:<span style={{ fontSize:13,fontWeight:700,color:cc }}>?</span>}
+                  <div key={p.id} style={{ display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:T.bg,borderTop:`0.5px solid ${T.border}` }}>
+                    {/* Icon */}
+                    <div style={{ width:30,height:30,borderRadius:isCheckpoint?4:"50%",border:`2px ${p.revealed?"solid":"dashed"} ${cc}`,overflow:"hidden",flexShrink:0,background:cc+"28",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer" }}
+                      onClick={()=>{ setMovingPOI(null); setPoiForm({poi:p,name:p.name,description:p.description,revealed:p.revealed,category:p.category||"other",size:p.size||"large"}); }}>
+                      {iconUrl?<img src={iconUrl} alt="" draggable={false} style={{ width:"100%",height:"100%",objectFit:"contain" }} />:<span style={{ fontSize:12,fontWeight:700,color:cc }}>?</span>}
                     </div>
-                    <div style={{ flex:1,minWidth:0,cursor:"pointer" }} onClick={()=>setPoiForm({poi:p,name:p.name,description:p.description,revealed:p.revealed,category:p.category||"other",size:p.size||"large"})}>
+                    {/* Name + meta */}
+                    <div style={{ flex:1,minWidth:0,cursor:"pointer" }} onClick={()=>{ setMovingPOI(null); setPoiForm({poi:p,name:p.name,description:p.description,revealed:p.revealed,category:p.category||"other",size:p.size||"large"}); }}>
                       <div style={{ fontSize:13,fontWeight:600,color:T.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{p.name}</div>
-                      <div style={{ fontSize:11,color:cc,fontWeight:500 }}>{getCatLabel(p.category)}</div>
+                      <div style={{ fontSize:10,color:cc,fontWeight:500 }}>{getCatLabel(p.category)} · {maps.find(m=>m.id===p.map_id)?.name||"?"}</div>
                     </div>
+                    {/* Show/hide toggle */}
                     <button onClick={()=>togglePOIReveal(p.id,p.revealed)}
-                      style={{ padding:"4px 10px",borderRadius:20,border:"none",background:p.revealed?"#EAF3DE":"#FEF3E2",color:p.revealed?"#3B6D11":"#854F0B",fontSize:11,fontWeight:600,cursor:"pointer",flexShrink:0 }}>
+                      style={{ padding:"3px 9px",borderRadius:20,border:"none",background:p.revealed?"#EAF3DE":"#FEF3E2",color:p.revealed?"#3B6D11":"#854F0B",fontSize:11,fontWeight:600,cursor:"pointer",flexShrink:0 }}>
                       {p.revealed?"Shown":"Hidden"}
                     </button>
+                    {/* Move button (GM, folder view only) */}
+                    {isGM && showMove && (
+                      <div style={{ position:"relative",flexShrink:0 }}>
+                        <button title="Move to folder" onClick={e=>{e.stopPropagation();setMovingPOI(movingPOI===p.id?null:p.id);}}
+                          style={{ padding:"4px 8px",borderRadius:6,border:`1px solid ${T.border}`,background:movingPOI===p.id?T.purple:T.surface,color:movingPOI===p.id?T.headerFg:T.muted,fontSize:12,cursor:"pointer",lineHeight:1 }}>⇄</button>
+                        {movingPOI===p.id && (
+                          <div style={{ position:"absolute",right:0,top:"calc(100% + 4px)",zIndex:300,background:T.bg,border:`1px solid ${T.border}`,borderRadius:8,padding:"4px 0",minWidth:160,boxShadow:"0 6px 20px rgba(0,0,0,0.25)" }}>
+                            <div style={{ fontSize:10,color:T.muted,padding:"4px 12px 6px",fontWeight:700,letterSpacing:"0.06em" }}>MOVE TO FOLDER</div>
+                            {poiFolders.map(f=>(
+                              <button key={f.id} onClick={()=>movePOIToFolder(p.id,f.id)}
+                                style={{ display:"block",width:"100%",textAlign:"left",padding:"7px 12px",border:"none",background:p.folder_id===f.id?`${T.purple}22`:"transparent",color:p.folder_id===f.id?T.purple:T.ink,fontSize:12,cursor:"pointer",fontWeight:p.folder_id===f.id?600:400 }}>
+                                {p.folder_id===f.id?"✓ ":""}{f.name}
+                              </button>
+                            ))}
+                            {poiFolders.length===0 && <div style={{ padding:"6px 12px",fontSize:12,color:T.muted,fontStyle:"italic" }}>No folders yet</div>}
+                            {p.folder_id && <button onClick={()=>movePOIToFolder(p.id,null)}
+                              style={{ display:"block",width:"100%",textAlign:"left",padding:"7px 12px",border:"none",borderTop:`0.5px solid ${T.border}`,background:"transparent",color:T.danger,fontSize:12,cursor:"pointer",marginTop:2 }}>
+                              ✕ Remove from folder
+                            </button>}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
-              })}
-            </>}
+              };
+
+              return (
+                <>
+                  {/* Header */}
+                  <div style={{ display:"flex",alignItems:"center",gap:6,marginBottom:14,flexWrap:"wrap" }}>
+                    <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:14,color:T.ink,flex:1 }}>Points of Interest</div>
+                    <div style={{ display:"flex",gap:4,flexShrink:0 }}>
+                      {[["folders","Folders"],["name","By Name"],["type","By Type"]].map(([v,lbl])=>(
+                        <button key={v} onClick={()=>{setPoiLibView(v);setMovingPOI(null);}}
+                          style={{ fontSize:11,padding:"4px 10px",borderRadius:20,border:`1px solid ${T.border}`,background:poiLibView===v?T.purple:T.bg,color:poiLibView===v?T.headerFg:T.muted,cursor:"pointer",fontFamily:T.fBody }}>
+                          {lbl}
+                        </button>
+                      ))}
+                    </div>
+                    {isGM && <Btn size="sm" variant="primary" onClick={()=>setFolderForm({folder:null,name:""})}>＋ Folder</Btn>}
+                  </div>
+
+                  {pois.length===0 && <p style={{ color:T.muted,fontSize:13,fontStyle:"italic" }}>No POIs yet. Place them on the map using "＋ POI".</p>}
+
+                  {/* ── FOLDER VIEW ── */}
+                  {poiLibView==="folders" && <>
+                    {poiFolders.map(folder=>{
+                      const children = pois.filter(p=>p.folder_id===folder.id);
+                      const isCollapsed = folderCollapsed[folder.id] ?? false;
+                      const allShown = children.length>0 && children.every(p=>p.revealed);
+                      const someShown = children.some(p=>p.revealed);
+                      return (
+                        <div key={folder.id} style={{ marginBottom:8,border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden" }}>
+                          {/* Folder header */}
+                          <div style={{ display:"flex",alignItems:"center",gap:8,padding:"9px 12px",background:T.surface,cursor:"pointer",userSelect:"none" }}
+                            onClick={()=>setFolderCollapsed(prev=>({...prev,[folder.id]:!prev[folder.id]}))}>
+                            <span style={{ fontSize:11,color:T.muted,display:"inline-block",transition:"transform 0.18s",transform:isCollapsed?"rotate(-90deg)":"rotate(0deg)",lineHeight:1 }}>▾</span>
+                            <div style={{ flex:1,fontFamily:T.fHead,fontWeight:600,fontSize:13,color:T.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{folder.name}</div>
+                            <span style={{ fontSize:11,color:T.muted,flexShrink:0 }}>{children.length}</span>
+                            {/* Master toggle */}
+                            {isGM && children.length>0 && (
+                              <button onClick={e=>{e.stopPropagation();toggleFolderReveal(folder);}}
+                                style={{ padding:"3px 8px",borderRadius:20,border:"none",background:allShown?"#EAF3DE":someShown?"#FFF8E7":"#FEF3E2",color:allShown?"#3B6D11":someShown?"#7A5500":"#854F0B",fontSize:10,fontWeight:700,cursor:"pointer",flexShrink:0 }}>
+                                {allShown?"All Shown":someShown?"Mixed":"All Hidden"}
+                              </button>
+                            )}
+                            {isGM && (
+                              <button onClick={e=>{e.stopPropagation();setFolderForm({folder,name:folder.name});setMovingPOI(null);}}
+                                style={{ padding:"3px 8px",borderRadius:6,border:`1px solid ${T.border}`,background:"transparent",color:T.muted,fontSize:11,cursor:"pointer",flexShrink:0,lineHeight:1 }}>✎</button>
+                            )}
+                          </div>
+                          {/* Children */}
+                          {!isCollapsed && children.length===0 && (
+                            <div style={{ padding:"10px 14px",fontSize:12,color:T.muted,fontStyle:"italic" }}>No POIs in this folder yet.</div>
+                          )}
+                          {!isCollapsed && children.map(p=>renderPOIRow(p,true))}
+                        </div>
+                      );
+                    })}
+
+                    {/* Unfiled section */}
+                    {(()=>{
+                      const unfiled = pois.filter(p=>!p.folder_id);
+                      if (unfiled.length===0 && poiFolders.length>0) return null;
+                      const isCollapsed = folderCollapsed["__unfiled"] ?? false;
+                      return (
+                        <div style={{ marginBottom:8,border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden" }}>
+                          <div style={{ display:"flex",alignItems:"center",gap:8,padding:"9px 12px",background:T.surface,cursor:"pointer",userSelect:"none" }}
+                            onClick={()=>setFolderCollapsed(prev=>({...prev,"__unfiled":!prev["__unfiled"]}))}>
+                            <span style={{ fontSize:11,color:T.muted,display:"inline-block",transition:"transform 0.18s",transform:isCollapsed?"rotate(-90deg)":"rotate(0deg)",lineHeight:1 }}>▾</span>
+                            <div style={{ flex:1,fontFamily:T.fHead,fontWeight:500,fontSize:13,color:T.muted,fontStyle:"italic" }}>Unfiled</div>
+                            <span style={{ fontSize:11,color:T.muted,flexShrink:0 }}>{unfiled.length}</span>
+                          </div>
+                          {!isCollapsed && unfiled.length===0 && (
+                            <div style={{ padding:"10px 14px",fontSize:12,color:T.muted,fontStyle:"italic" }}>All POIs are organised into folders.</div>
+                          )}
+                          {!isCollapsed && unfiled.map(p=>renderPOIRow(p,true))}
+                        </div>
+                      );
+                    })()}
+                  </>}
+
+                  {/* ── BY NAME VIEW ── */}
+                  {poiLibView==="name" && (
+                    <div style={{ border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden" }}>
+                      {[...pois].sort((a,b)=>(a.name||"").localeCompare(b.name||"")).map((p,i)=>(
+                        <div key={p.id} style={{ borderTop:i>0?`0.5px solid ${T.border}`:"none" }}>{renderPOIRow(p,false)}</div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* ── BY TYPE VIEW ── */}
+                  {poiLibView==="type" && (()=>{
+                    const grouped = {};
+                    [...pois].sort((a,b)=>(a.name||"").localeCompare(b.name||"")).forEach(p=>{
+                      const k=p.category||"other"; if(!grouped[k]) grouped[k]=[]; grouped[k].push(p);
+                    });
+                    return Object.entries(grouped).map(([cat,items])=>(
+                      <div key={cat} style={{ marginBottom:10,border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden" }}>
+                        <div style={{ padding:"8px 12px",background:T.surface,display:"flex",alignItems:"center",gap:8 }}>
+                          <div style={{ width:8,height:8,borderRadius:"50%",background:getCatColor(cat),flexShrink:0 }} />
+                          <div style={{ fontFamily:T.fHead,fontWeight:600,fontSize:12,color:T.ink }}>{getCatLabel(cat)}</div>
+                          <span style={{ fontSize:11,color:T.muted }}>{items.length}</span>
+                        </div>
+                        {items.map((p,i)=>(
+                          <div key={p.id} style={{ borderTop:`0.5px solid ${T.border}` }}>{renderPOIRow(p,false)}</div>
+                        ))}
+                      </div>
+                    ));
+                  })()}
+                </>
+              );
+            })()}
 
             {/* ── ZONES ── */}
             {libSubTab==="zones" && <>
@@ -2728,6 +2911,41 @@ function App() {
         onClose={()=>setZoneForm(null)} />}
       {poiForm && <POIFormModal form={poiForm} categoryIcons={categoryIcons} maps={maps} onSave={savePOI} onDelete={deletePOI} onDuplicate={duplicatePOI} onClose={()=>setPoiForm(null)} />}
       {markerForm && <MarkerFormModal form={markerForm} onSave={saveMarker} onEdit={editMarker} onCancel={()=>setMarkerForm(null)} />}
+
+      {/* Folder form modal */}
+      {folderForm && (
+        <div style={{ position:"fixed",inset:0,zIndex:9000,display:"flex",alignItems:"center",justifyContent:"center",padding:16,background:"rgba(10,5,20,0.75)" }} onClick={()=>setFolderForm(null)}>
+          <div style={{ background:T.surface,borderRadius:16,padding:"22px 22px 18px",maxWidth:340,width:"100%",boxShadow:"0 8px 40px rgba(0,0,0,0.5)",border:`1px solid ${T.border}` }} onClick={e=>e.stopPropagation()}>
+            <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:15,color:T.ink,marginBottom:14 }}>
+              {folderForm.folder?"Edit Folder":"New Folder"}
+            </div>
+            <input
+              autoFocus={!isTouchDevice}
+              value={folderForm.name}
+              onChange={e=>setFolderForm(f=>({...f,name:e.target.value}))}
+              onKeyDown={e=>{ if(e.key==="Enter"&&folderForm.name.trim()) saveFolder(folderForm.name.trim(),folderForm.folder); if(e.key==="Escape") setFolderForm(null); }}
+              placeholder="Folder name…"
+              style={{ ...IS,width:"100%",boxSizing:"border-box",marginBottom:14 }}
+            />
+            <div style={{ display:"flex",gap:8 }}>
+              <button onClick={()=>{ if(folderForm.name.trim()) saveFolder(folderForm.name.trim(),folderForm.folder); }}
+                style={{ flex:1,padding:"9px 0",borderRadius:20,border:"none",background:T.purple,color:T.headerFg,fontFamily:T.fHead,fontSize:13,fontWeight:700,cursor:"pointer",opacity:folderForm.name.trim()?1:0.5 }}>
+                {folderForm.folder?"Save":"Create"}
+              </button>
+              {folderForm.folder && (
+                <button onClick={()=>deleteFolder(folderForm.folder.id)}
+                  style={{ padding:"9px 14px",borderRadius:20,border:"none",background:T.danger,color:"#fff",fontFamily:T.fHead,fontSize:13,fontWeight:700,cursor:"pointer" }}>
+                  Delete
+                </button>
+              )}
+              <button onClick={()=>setFolderForm(null)}
+                style={{ padding:"9px 14px",borderRadius:20,border:`1px solid ${T.border}`,background:"transparent",color:T.muted,fontSize:13,cursor:"pointer" }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Bell — notification history panel */}
       {showBell && (
