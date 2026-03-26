@@ -303,10 +303,12 @@ function MarkerPin({ marker, scale, isOwner, isGM, onTap, onDragStart, displayNa
 }
 
 // ── POI Pin ───────────────────────────────────────────────────────────────────
-function POIPin({ poi, scale, isGM, onTap, onDragStart, resolvedIconUrl, poiOpacity = 1 }) {
+// POIPin uses fixed map-coordinate sizes (no scale prop) so React.memo works effectively.
+// Opacity is handled by the parent poiLayerRef div — no re-render needed per zoom step.
+const POIPin = React.memo(function POIPin({ poi, isGM, onTap, onDragStart, resolvedIconUrl }) {
   const ss = getSizeScale(poi.size);
-  const size = Math.max(28 * ss, (36 / scale) * ss);
-  const bw = Math.max(1.5, 3 / scale);
+  const size = 32 * ss;          // fixed map-coordinate size
+  const bw = 2;                  // fixed border width
   const cc = getCatColor(poi.category);
   const borderStyle = (isGM && !poi.revealed) ? "dashed" : "solid";
   const iconUrl = poi.icon_url || resolvedIconUrl || "";
@@ -320,17 +322,15 @@ function POIPin({ poi, scale, isGM, onTap, onDragStart, resolvedIconUrl, poiOpac
         onMouseDown={e => { if (isGM) { e.stopPropagation(); onDragStart(e, poi); } }}
         onTouchStart={e => { if (isGM) { e.stopPropagation(); onDragStart(e, poi); } }}
         onClick={e => { e.stopPropagation(); onTap(poi); }}
-        style={{ position:"absolute", left:poi.x-d/2, top:poi.y-d, width:d, height:d, cursor:isGM?(poi.locked?"pointer":"grab"):"pointer", zIndex:22, opacity:poiOpacity, transition:"opacity 0.15s ease" }}
+        style={{ position:"absolute", left:poi.x-d/2, top:poi.y-d, width:d, height:d, cursor:isGM?(poi.locked?"pointer":"grab"):"pointer", zIndex:22 }}
       >
-        {/* Pulsing aura ring */}
         <div style={{ position:"absolute", inset:-d*0.3, borderRadius:"50%", border:`${bw}px solid ${cc}`, animation:"portalPulse 2s ease-in-out infinite", pointerEvents:"none" }} />
-        {/* Diamond shape */}
         <div style={{ position:"absolute", inset:0, transform:"rotate(45deg)", background:cc+"33", border:`${bw}px ${borderStyle} ${cc}`, boxSizing:"border-box" }}>
           {iconUrl && <img src={iconUrl} alt={poi.name} draggable={false} style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"contain", transform:"rotate(-45deg)", pointerEvents:"none" }} />}
         </div>
         {!iconUrl && (
           <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
-            <span style={{ fontSize:Math.max(10, size*0.35), lineHeight:1, pointerEvents:"none" }}>⛩</span>
+            <span style={{ fontSize:size*0.35, lineHeight:1, pointerEvents:"none" }}>⛩</span>
           </div>
         )}
       </div>
@@ -343,12 +343,12 @@ function POIPin({ poi, scale, isGM, onTap, onDragStart, resolvedIconUrl, poiOpac
         onMouseDown={e => { if (isGM) { e.stopPropagation(); onDragStart(e, poi); } }}
         onTouchStart={e => { if (isGM) { e.stopPropagation(); onDragStart(e, poi); } }}
         onClick={e => { e.stopPropagation(); onTap(poi); }}
-        style={{ position:"absolute", left:poi.x-size/2, top:poi.y-size, width:size, height:size, cursor:isGM?(poi.locked?"pointer":"grab"):"pointer", zIndex:21, borderRadius:4, border:`${bw}px ${borderStyle} ${cc}`, boxSizing:"border-box", overflow:"hidden", background:cc+"59", opacity:poiOpacity, transition:"opacity 0.15s ease" }}
+        style={{ position:"absolute", left:poi.x-size/2, top:poi.y-size, width:size, height:size, cursor:isGM?(poi.locked?"pointer":"grab"):"pointer", zIndex:21, borderRadius:4, border:`${bw}px ${borderStyle} ${cc}`, boxSizing:"border-box", overflow:"hidden", background:cc+"59" }}
       >
         {iconUrl
           ? <img src={iconUrl} alt={poi.name} draggable={false} style={{ width:"100%", height:"100%", objectFit:"contain", display:"block", pointerEvents:"none" }} />
           : <div style={{ width:"100%", height:"100%", display:"flex", alignItems:"center", justifyContent:"center" }}>
-              <span style={{ color:"white", fontWeight:700, fontSize:Math.max(8, 14*ss/scale), lineHeight:1, pointerEvents:"none" }}>⬛</span>
+              <span style={{ color:"white", fontWeight:700, fontSize:14*ss, lineHeight:1, pointerEvents:"none" }}>⬛</span>
             </div>
         }
       </div>
@@ -360,17 +360,17 @@ function POIPin({ poi, scale, isGM, onTap, onDragStart, resolvedIconUrl, poiOpac
       onMouseDown={e => { if (isGM) { e.stopPropagation(); onDragStart(e, poi); } }}
       onTouchStart={e => { if (isGM) { e.stopPropagation(); onDragStart(e, poi); } }}
       onClick={e => { e.stopPropagation(); onTap(poi); }}
-      style={{ position: "absolute", left: poi.x - size/2, top: poi.y - size, width: size, height: size, cursor: isGM ? (poi.locked ? "pointer" : "grab") : "pointer", zIndex: 20, borderRadius: "50%", border: `${bw}px ${borderStyle} ${cc}`, boxSizing: "border-box", overflow: "hidden", background: cc + "59", opacity: poiOpacity, transition: "opacity 0.15s ease" }}
+      style={{ position:"absolute", left:poi.x-size/2, top:poi.y-size, width:size, height:size, cursor:isGM?(poi.locked?"pointer":"grab"):"pointer", zIndex:20, borderRadius:"50%", border:`${bw}px ${borderStyle} ${cc}`, boxSizing:"border-box", overflow:"hidden", background:cc+"59" }}
     >
       {iconUrl
-        ? <img src={iconUrl} alt={poi.name} draggable={false} onDragStart={e => e.preventDefault()} style={{ width: "100%", height: "100%", objectFit: "contain", display: "block", pointerEvents: "none" }} />
-        : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <span style={{ color: "white", fontWeight: 700, fontSize: Math.max(8, 14 * ss / scale), lineHeight: 1 }}>?</span>
+        ? <img src={iconUrl} alt={poi.name} draggable={false} onDragStart={e=>e.preventDefault()} style={{ width:"100%", height:"100%", objectFit:"contain", display:"block", pointerEvents:"none" }} />
+        : <div style={{ width:"100%", height:"100%", display:"flex", alignItems:"center", justifyContent:"center" }}>
+            <span style={{ color:"white", fontWeight:700, fontSize:14*ss, lineHeight:1 }}>?</span>
           </div>
       }
     </div>
   );
-}
+});
 
 // ── Profile Tab ───────────────────────────────────────────────────────────────
 function ProfileTab({ user, members, myColor, takenColors, isGM, onColorChange, onSaveDisplayName, soundVolume, onVolumeChange, markers, activeMapId, markerLimit, onMarkerLimitChange, onKickPlayer, onLeaveCampaign }) {
@@ -607,6 +607,10 @@ function App() {
   const isPinchingRef = useRef(false); // true while 2-finger pinch is active
   const pendingRevealRef = useRef({ revealed: [], hidden: [] }); // batch notification accumulator
   const revealTimerRef = useRef(null);
+  const transformRef = useRef({ x: 0, y: 0, scale: 1 }); // mirrors transform state, writable during gesture
+  const mapTransformDivRef = useRef(null);                // ref to the map transform container div
+  const poiLayerRef = useRef(null);                       // ref to the POI layer div for direct opacity update
+  const fitScaleRef = useRef(0);                          // mirrors fitScale for use inside gesture handler
   const soundVolumeRef = useRef(0.5);
   const npcsRef = useRef([]);
   const pendingFocusRef = useRef(null); // { x, y } applied after map image loads
@@ -1142,6 +1146,10 @@ function App() {
     ? (transform.scale <= fitScale ? 0 : Math.min(1, (transform.scale - fitScale) / fitScale))
     : 1;
 
+  // Keep refs in sync with state so gesture handlers can read current values without closures
+  useEffect(() => { transformRef.current = transform; }, [transform]);
+  useEffect(() => { fitScaleRef.current = fitScale; }, [fitScale]);
+
   // Viewport culling — map-coordinate bounds of what's currently visible on screen.
   // Entities outside this rect are not rendered at all (saves DOM nodes on large maps).
   const viewportBounds = useMemo(() => {
@@ -1391,9 +1399,26 @@ function App() {
         const dist=getDist(e.touches); if(!lastDist){lastDist=dist;return;}
         const factor=Math.min(Math.max(dist/lastDist,0.5),2); lastDist=dist;
         const mid=getMid(e.touches); const rect=el.getBoundingClientRect();
-        setTransform(t=>{const ns=Math.min(8,Math.max(0.1,t.scale*factor));const sr=ns/t.scale;const mx=mid.x-rect.left,my=mid.y-rect.top;return clamp({scale:ns,x:mx-sr*(mx-t.x),y:my-sr*(my-t.y)},rect.width,rect.height,imgSizeRef.current.w,imgSizeRef.current.h);});
+        const t=transformRef.current;
+        const ns=Math.min(8,Math.max(0.1,t.scale*factor));
+        const sr=ns/t.scale; const mx=mid.x-rect.left,my=mid.y-rect.top;
+        const nt=clamp({scale:ns,x:mx-sr*(mx-t.x),y:my-sr*(my-t.y)},rect.width,rect.height,imgSizeRef.current.w,imgSizeRef.current.h);
+        transformRef.current=nt;
+        // Direct DOM update — no React re-render during gesture
+        if(mapTransformDivRef.current)
+          mapTransformDivRef.current.style.transform=`translate3d(${Math.round(nt.x)}px,${Math.round(nt.y)}px,0) scale(${nt.scale})`;
+        if(poiLayerRef.current){
+          const fs=fitScaleRef.current;
+          poiLayerRef.current.style.opacity=fs>0?(nt.scale<=fs?0:Math.min(1,(nt.scale-fs)/fs)):1;
+        }
       }
-      function onTE(e){if(e.touches.length<2){isPinching=false;isPinchingRef.current=false;lastDist=null;setMapInteracting(false);}}
+      function onTE(e){
+        if(e.touches.length<2){
+          isPinching=false;isPinchingRef.current=false;lastDist=null;setMapInteracting(false);
+          // Sync React state once on gesture end (single re-render instead of one per frame)
+          setTransform({...transformRef.current});
+        }
+      }
       el.addEventListener("touchstart",onTS,{passive:true}); el.addEventListener("touchmove",onTM,{passive:false}); el.addEventListener("touchend",onTE,{passive:true});
       pinchCleanup=()=>{el.removeEventListener("touchstart",onTS);el.removeEventListener("touchmove",onTM);el.removeEventListener("touchend",onTE);};
     }
@@ -2296,7 +2321,7 @@ function App() {
                   <span style={{ fontSize:13 }}>{isGM?"Go to Library to upload a map.":"Waiting for GM to load a map."}</span>
                 </div>
               ) : (
-                <div style={{ position:"absolute",transform: mapInteracting ? `translate3d(${Math.round(transform.x)}px,${Math.round(transform.y)}px,0) scale(${transform.scale})` : `translate(${Math.round(transform.x)}px,${Math.round(transform.y)}px) scale(${transform.scale})`,transformOrigin:"0 0",willChange:mapInteracting?"transform":"auto" }}>
+                <div ref={mapTransformDivRef} style={{ position:"absolute",transform: mapInteracting ? `translate3d(${Math.round(transform.x)}px,${Math.round(transform.y)}px,0) scale(${transform.scale})` : `translate(${Math.round(transform.x)}px,${Math.round(transform.y)}px) scale(${transform.scale})`,transformOrigin:"0 0",willChange:mapInteracting?"transform":"auto" }}>
                   <img src={currentMap.src} alt="map" style={{ display:"block",maxWidth:"none" }} draggable={false} onLoad={onImgLoad} />
                   {/* Overlay image layers — per-user opacity/visibility */}
                   {mapOverlays.map(ov => {
@@ -2425,10 +2450,10 @@ function App() {
                       })()}
                     </svg>
                   )}
+                  <div ref={poiLayerRef} style={{ opacity:poiOpacity, transition:"opacity 0.15s ease" }}>
                   {mapPOIs.filter(p=>inViewport(p.x, p.y) && (p.poi_type==="portal" ? isVisible("portals", p.id) : isVisible("categories", p.category))).map(p=>(
-                    <POIPin key={p.id} poi={p} scale={transform.scale} isGM={isGM}
+                    <POIPin key={p.id} poi={p} isGM={isGM}
                       resolvedIconUrl={categoryIcons[p.category]||""}
-                      poiOpacity={poiOpacity}
                       onTap={poi=>{
                         if (isGM) {
                           // GM tap on any POI → open edit form (lock only prevents dragging, not editing)
@@ -2442,6 +2467,7 @@ function App() {
                       }}
                       onDragStart={startPOIDrag} />
                   ))}
+                  </div>
                   {/* NPC nodes */}
                   {mapNPCs.filter(n=>inViewport(n.x, n.y) && isVisible("npcs", n.id)).map(npc => {
                     const r = npc.aura_radius > 0 ? npc.aura_radius : 0;
