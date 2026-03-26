@@ -137,6 +137,7 @@ function createRealtimeChannel(token, campaignId, handlers) {
         { table: "notification_log", filter: `campaign_id=eq.${campaignId}` },
         { table: "maps",             filter: `campaign_id=eq.${campaignId}` },
         { table: "poi_folders",      filter: `campaign_id=eq.${campaignId}` },
+        { table: "map_texts",        filter: `campaign_id=eq.${campaignId}` },
       ];
       tableConfigs.forEach(({ table, filter }, i) => {
         ws.send(JSON.stringify({
@@ -172,6 +173,7 @@ function createRealtimeChannel(token, campaignId, handlers) {
         if (table === "notification_log") handlers.onNotifLog?.(mapped);
         if (table === "maps") handlers.onMap?.(mapped);
         if (table === "poi_folders") handlers.onPOIFolder?.(mapped);
+        if (table === "map_texts")   handlers.onMapText?.(mapped);
       } catch {}
     };
     ws.onclose = () => { clearInterval(heartbeatTimer); if (!closed) reconnectTimer = setTimeout(connect, 3000); };
@@ -228,7 +230,7 @@ const T = {
   danger:   "#8B1A1A",   // blood red
   fHead:    "'Cinzel', 'Georgia', serif",
   fBody:    "'Lora', 'Georgia', serif",
-  fMap:     "'Exo 2', 'Cinzel', sans-serif",
+  fMap:     "'Nunito', 'Exo 2', sans-serif",
 };
 
 function getCatColor(id) { return CATEGORIES.find(c => c.id === id)?.color || "#95A5A6"; }
@@ -296,7 +298,7 @@ function MarkerPin({ marker, scale, isOwner, isGM, onTap, onDragStart, displayNa
       style={{ position: "absolute", left: marker.x - size/2, top: marker.y - size, width: size, height: size, cursor: isOwner ? "grab" : "pointer", zIndex: 25 }}
     >
       <div style={{ width: size, height: size, borderRadius: "50% 50% 50% 0", transform: "rotate(-45deg)", background: color, border: `${Math.max(1.5, 2/scale)}px solid white`, boxSizing: "border-box", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <span style={{ transform: "rotate(45deg)", color: "white", fontWeight: 700, fontSize, fontFamily: T.fMap, lineHeight: 1, textShadow: "0 0 3px rgba(0,0,0,0.8)" }}>{initial}</span>
+        <span style={{ transform: "rotate(45deg)", color: "white", fontWeight: 800, fontSize, fontFamily: T.fMap, lineHeight: 1, textShadow: "0 0 4px #000, 0 1px 3px #000" }}>{initial}</span>
       </div>
     </div>
   );
@@ -567,6 +569,8 @@ function App() {
   const [renamingOverlay, setRenamingOverlay] = useState(null); // { id, name }
   const [campInfoEdit, setCampInfoEdit] = useState(null); // { name, sub_header, description } or null
   const [poiFolders, setPoiFolders] = useState([]);
+  const [mapTexts, setMapTexts] = useState([]);
+  const [textForm, setTextForm] = useState(null); // null | { text, content, font_size, color, font_weight, fade_enabled, fade_invert }
   const [folderCollapsed, setFolderCollapsed] = useState({}); // { folderId: true = collapsed }
   const [dragOverFolderId, setDragOverFolderId] = useState(null);
   const folderDragRef = useRef(null); // id of folder being dragged
@@ -605,6 +609,7 @@ function App() {
   const zonePointDragRef = useRef(null);
   const npcDragState = useRef(null);
   const isPinchingRef = useRef(false); // true while 2-finger pinch is active
+  const textDragState = useRef(null);
   const pendingRevealRef = useRef({ revealed: [], hidden: [] }); // batch notification accumulator
   const revealTimerRef = useRef(null);
   // transformRef already declared above — mirrors transform state for use inside gesture handlers
@@ -808,6 +813,11 @@ function App() {
         if (payload.eventType === "UPDATE") setPoiFolders(p => p.map(f => f.id === payload.new.id ? payload.new : f));
         if (payload.eventType === "DELETE") setPoiFolders(p => p.filter(f => f.id !== payload.old?.id));
       },
+      onMapText: (payload) => {
+        if (payload.eventType === "INSERT") setMapTexts(p => p.find(x => x.id === payload.new.id) ? p : [...p, payload.new]);
+        if (payload.eventType === "UPDATE") setMapTexts(p => p.map(t => t.id === payload.new.id ? payload.new : t));
+        if (payload.eventType === "DELETE") setMapTexts(p => p.filter(t => t.id !== payload.old?.id));
+      },
     });
     return () => { if (realtimeRef.current) realtimeRef.current.unsubscribe(); };
   }, [activeCampaign?.id, session?.access_token]);
@@ -863,13 +873,14 @@ function App() {
       }
       // All state updates batched atomically in one React render (React 18 auto-batching)
       // Fetch poi_folders separately (not in the RPC yet)
-      let foldersData = [];
+      let foldersData = [], textsData = [];
       try { foldersData = await dbSelect(session.access_token, "poi_folders", `campaign_id=eq.${camp.id}&order=sort_order.asc`); } catch {}
+      try { textsData = await dbSelect(session.access_token, "map_texts", `campaign_id=eq.${camp.id}`); } catch {}
       setMaps(mapsWithSrc); setPois(d.pois || []); setMarkers(d.markers || []);
       setMembers(d.members || []);
       setOverlays(d.overlays || []); setZones(d.zones || []); setNpcs(d.npcs || []);
       setAnnouncements(d.announcements || []); setNotifLog(d.notification_log || []);
-      setCategoryIcons(d.category_icons || {}); setPoiFolders(foldersData);
+      setCategoryIcons(d.category_icons || {}); setPoiFolders(foldersData); setMapTexts(textsData);
       const me = (d.members || []).find(m => m.user_id === user.id);
       setMyColor(me?.player_color || null);
       if (main) setActiveMapId(main.id);
@@ -1767,6 +1778,62 @@ function App() {
   async function deleteNPC(id) {
     try { await dbDelete(session.access_token, "npcs", id); setNpcs(prev => prev.filter(n => n.id !== id)); setNpcForm(null); } catch(e) { setError(e.message); }
   }
+
+  // ── Map Text overlays ──
+  async function saveText(form) {
+    const body = { content: form.content||"New Text", font_size: Number(form.font_size)||28, color: form.color||"#FFFFFF", font_weight: form.font_weight||"700", fade_enabled: !!form.fade_enabled, fade_invert: !!form.fade_invert };
+    try {
+      if (form.text) {
+        await dbUpdate(session.access_token, "map_texts", form.text.id, body);
+        setMapTexts(prev => prev.map(t => t.id === form.text.id ? { ...t, ...body } : t));
+      } else {
+        const [t] = await dbInsert(session.access_token, "map_texts", { ...body, campaign_id: activeCampaign.id, map_id: activeMapId, x: form.x??200, y: form.y??200 });
+        setMapTexts(prev => [...prev, t]);
+      }
+      setTextForm(null);
+    } catch(e) { setError(e.message); }
+  }
+  async function deleteText(id) {
+    try { await dbDelete(session.access_token, "map_texts", id); setMapTexts(prev => prev.filter(t => t.id !== id)); setTextForm(null); } catch(e) { setError(e.message); }
+  }
+  function startTextDrag(e, txt) {
+    e.stopPropagation();
+    if (dragRef.current.active || isPinchingRef.current) return;
+    const touch0 = e.touches?.[0];
+    const startCx = touch0 ? touch0.clientX : e.clientX;
+    const startCy = touch0 ? touch0.clientY : e.clientY;
+    const touchId = touch0 ? touch0.identifier : null;
+    const scaleAtStart = transformRef.current.scale;
+    textDragState.current = { textId: txt.id, originX: txt.x, originY: txt.y, startCx, startCy, touchId, scaleAtStart, moved: false, mapX: txt.x, mapY: txt.y };
+    function onMove(ev) {
+      if (!textDragState.current) return;
+      const touch = ev.touches ? Array.from(ev.touches).find(t => t.identifier === textDragState.current.touchId) ?? ev.touches[0] : null;
+      const cx = touch ? touch.clientX : ev.clientX;
+      const cy = touch ? touch.clientY : ev.clientY;
+      const dx = cx - textDragState.current.startCx, dy = cy - textDragState.current.startCy;
+      if (Math.sqrt(dx*dx+dy*dy) > 6) textDragState.current.moved = true;
+      const nx = textDragState.current.originX + dx / textDragState.current.scaleAtStart;
+      const ny = textDragState.current.originY + dy / textDragState.current.scaleAtStart;
+      textDragState.current.mapX = nx; textDragState.current.mapY = ny;
+      setMapTexts(prev => prev.map(t => t.id === textDragState.current?.textId ? { ...t, x: nx, y: ny } : t));
+    }
+    function onUp() {
+      if (!textDragState.current) return;
+      const { textId, mapX, mapY, moved, originX, originY } = textDragState.current;
+      textDragState.current = null;
+      window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("touchmove", onMove); window.removeEventListener("touchend", onUp);
+      if (!moved) {
+        setMapTexts(prev => prev.map(t => t.id === textId ? { ...t, x: originX, y: originY } : t));
+        const t = mapTexts.find(t => t.id === textId);
+        if (t) setTextForm({ text: t, content: t.content, font_size: t.font_size, color: t.color, font_weight: t.font_weight, fade_enabled: t.fade_enabled, fade_invert: t.fade_invert });
+      } else {
+        dbUpdate(sessionRef.current.access_token, "map_texts", textId, { x: mapX, y: mapY }).catch(console.error);
+      }
+    }
+    window.addEventListener("mousemove", onMove); window.addEventListener("mouseup", onUp);
+    window.addEventListener("touchmove", onMove, { passive: true }); window.addEventListener("touchend", onUp);
+  }
   function startNPCDrag(e, npc) {
     e.stopPropagation();
     if (npc.locked) return;
@@ -2100,6 +2167,7 @@ function App() {
                 {isGM && <>
                   <Btn size="sm" onClick={()=>setPlacingMode(p=>p==="poi"?null:"poi")} style={{ background:placingMode==="poi"?`${T.gold}22`:undefined,borderColor:placingMode==="poi"?T.gold:undefined }}>＋ POI</Btn>
                   <Btn size="sm" onClick={()=>setNpcForm({npc:null,name:"",status:"Alive",border_color:"#C9A84C",aura_radius:80,show_name:true,show_status:true,show_aura:true,is_visible_to_players:false,x:200,y:200})}>＋ NPC</Btn>
+                  <Btn size="sm" onClick={()=>setTextForm({text:null,content:"New Text",font_size:28,color:"#FFFFFF",font_weight:"700",fade_enabled:false,fade_invert:false,x:Math.round(imgSize.w/2),y:Math.round(imgSize.h/2)})}>＋ Text</Btn>
                 </>}
                 <Btn size="sm" onClick={()=>{
                   if (!myColor && !isGM) { setShowColorPicker(true); return; }
@@ -2492,7 +2560,7 @@ function App() {
                           style={{ position:"absolute", left:pad-ns/2, top:pad-ns/2, width:ns, height:ns, borderRadius:"50%", background:`${npc.border_color}33`, border:`${bw}px solid ${npc.border_color}`, cursor:isGM?"grab":"default", pointerEvents:"all", display:"flex", alignItems:"center", justifyContent:"center", boxShadow:`0 0 ${6/transform.scale}px ${npc.border_color}88` }}>
                           <span style={{ fontSize:fs*0.9, pointerEvents:"none", userSelect:"none" }}>👤</span>
                         </div>
-                        <div style={{ position:"absolute", left:pad, top:pad+ns/2+4/transform.scale, transform:"translateX(-50%)", fontSize:fs, fontWeight:700, fontFamily:T.fMap, letterSpacing:"0.03em", color:npc.border_color, textShadow:"0 0 6px rgba(0,0,0,1), 0 1px 4px rgba(0,0,0,0.95)", whiteSpace:"nowrap", pointerEvents:"none", userSelect:"none", lineHeight:1.3 }}>
+                        <div style={{ position:"absolute", left:pad, top:pad+ns/2+4/transform.scale, transform:"translateX(-50%)", fontSize:fs, fontWeight:700, fontFamily:T.fMap, letterSpacing:"0.03em", color:npc.border_color, textShadow:"0 0 4px #000, 0 0 8px #000, 0 1px 3px #000, -1px 0 3px #000, 1px 0 3px #000", whiteSpace:"nowrap", pointerEvents:"none", userSelect:"none", lineHeight:1.3 }}>
                           {showName ? npc.name : "???"}
                           {showStatus && <span style={{ opacity:0.8, fontWeight:400 }}> · {npc.show_status ? npc.status : "???"}</span>}
                         </div>
@@ -2508,6 +2576,22 @@ function App() {
                         memberColor={memberInfo?.player_color}
                         onTap={marker => { setOpenMarkerCard(openMarkerCard === marker.id ? null : marker.id); }}
                         onDragStart={isOwner ? startMarkerDrag : () => {}} />
+                    );
+                  })}
+                  {/* ── Text overlays — highest layer ── */}
+                  {mapTexts.filter(t => t.map_id === activeMapId).map(t => {
+                    let opacity = 1;
+                    if (t.fade_enabled && fitScale > 0) {
+                      const progress = Math.min(1, Math.max(0, (transform.scale - fitScale) / fitScale));
+                      opacity = t.fade_invert ? 1 - progress : progress;
+                    }
+                    return (
+                      <div key={t.id}
+                        onMouseDown={isGM ? e => { e.stopPropagation(); startTextDrag(e, t); } : undefined}
+                        onTouchStart={isGM ? e => { e.stopPropagation(); startTextDrag(e, t); } : undefined}
+                        style={{ position:"absolute", left:t.x, top:t.y, fontSize:t.font_size, fontWeight:t.font_weight||"700", fontFamily:T.fMap, color:t.color||"#FFFFFF", opacity, whiteSpace:"pre-wrap", lineHeight:1.4, letterSpacing:"0.02em", textShadow:"0 0 4px #000, 0 0 10px #000, 0 1px 3px #000", pointerEvents:isGM?"all":"none", cursor:isGM?"grab":"default", userSelect:"none", zIndex:60, maxWidth:600 }}>
+                        {t.content}
+                      </div>
                     );
                   })}
                 </div>
@@ -3251,6 +3335,69 @@ function App() {
 
       {/* NPC form modal */}
       {npcForm && <NpcFormModal form={npcForm} onSave={saveNPC} onDelete={deleteNPC} onClose={()=>setNpcForm(null)} />}
+
+      {/* Text overlay form modal */}
+      {textForm && (() => {
+        const isEdit = !!textForm.text;
+        return (
+          <Modal title={isEdit ? "Edit Text Overlay" : "New Text Overlay"} onClose={()=>setTextForm(null)} width={380}>
+            <div style={{ display:"flex",flexDirection:"column",gap:14 }}>
+              <Field label="Content (Enter for new line)">
+                <textarea value={textForm.content} rows={4}
+                  onChange={e=>setTextForm(f=>({...f,content:e.target.value}))}
+                  style={{ ...IS, resize:"vertical", fontFamily:T.fMap, fontSize:14, lineHeight:1.5 }} />
+              </Field>
+              <div style={{ display:"flex",gap:10 }}>
+                <Field label="Font Size">
+                  <input type="number" min={8} max={200} value={textForm.font_size}
+                    onChange={e=>setTextForm(f=>({...f,font_size:Number(e.target.value)}))}
+                    style={{ ...IS, width:80 }} />
+                </Field>
+                <Field label="Weight">
+                  <select value={textForm.font_weight} onChange={e=>setTextForm(f=>({...f,font_weight:e.target.value}))} style={{ ...IS }}>
+                    <option value="400">Regular</option>
+                    <option value="600">Semi-Bold</option>
+                    <option value="700">Bold</option>
+                    <option value="800">Extra Bold</option>
+                  </select>
+                </Field>
+                <Field label="Colour">
+                  <input type="color" value={textForm.color}
+                    onChange={e=>setTextForm(f=>({...f,color:e.target.value}))}
+                    style={{ width:44,height:36,border:"none",borderRadius:6,cursor:"pointer",padding:2 }} />
+                </Field>
+              </div>
+              {/* Fade settings */}
+              <div style={{ background:T.surface,borderRadius:10,padding:"12px 14px",border:`1px solid ${T.border}` }}>
+                <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:textForm.fade_enabled?10:0 }}>
+                  <input type="checkbox" id="tf-fade" checked={textForm.fade_enabled}
+                    onChange={e=>setTextForm(f=>({...f,fade_enabled:e.target.checked}))} style={{ width:16,height:16,cursor:"pointer" }} />
+                  <label htmlFor="tf-fade" style={{ fontSize:13,cursor:"pointer",fontWeight:600,color:T.ink }}>Enable zoom fade</label>
+                </div>
+                {textForm.fade_enabled && (
+                  <div style={{ display:"flex",alignItems:"center",gap:10,marginTop:8,paddingLeft:2 }}>
+                    <input type="checkbox" id="tf-invert" checked={textForm.fade_invert}
+                      onChange={e=>setTextForm(f=>({...f,fade_invert:e.target.checked}))} style={{ width:16,height:16,cursor:"pointer" }} />
+                    <label htmlFor="tf-invert" style={{ fontSize:12,cursor:"pointer",color:T.muted }}>
+                      {textForm.fade_invert ? "Fades when zooming IN (visible at low zoom — good for region labels)" : "Fades when zooming OUT (visible at high zoom — like POIs)"}
+                    </label>
+                  </div>
+                )}
+              </div>
+              {/* Preview */}
+              <div style={{ background:"#1a1a2e",borderRadius:10,padding:"14px 16px",minHeight:60,display:"flex",alignItems:"center" }}>
+                <span style={{ fontFamily:T.fMap,fontSize:Math.min(textForm.font_size,36),fontWeight:textForm.font_weight,color:textForm.color,whiteSpace:"pre-wrap",lineHeight:1.4,textShadow:"0 0 4px #000,0 0 10px #000" }}>
+                  {textForm.content||"Preview…"}
+                </span>
+              </div>
+              <div style={{ display:"flex",gap:8,marginTop:4 }}>
+                <Btn variant="primary" onClick={()=>saveText(textForm)} style={{ flex:1 }}>{isEdit?"Save Changes":"Place Text"}</Btn>
+                {isEdit && <Btn variant="danger" onClick={()=>deleteText(textForm.text.id)}>🗑 Delete</Btn>}
+              </div>
+            </div>
+          </Modal>
+        );
+      })()}
 
       {/* Announcement form modal */}
       {announceForm && <AnnouncementModal form={announceForm} onSave={saveAnnouncement} onClose={()=>setAnnounceForm(null)} />}
