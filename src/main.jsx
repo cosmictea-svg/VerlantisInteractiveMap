@@ -535,6 +535,7 @@ function App() {
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
   const [isDragging, setIsDragging] = useState(false);
+  const [mapInteracting, setMapInteracting] = useState(false);
   const [imgSize, setImgSize] = useState({ w: 0, h: 0 });
   const [scrollSens, setScrollSens] = useState(1.0);
   const [libSort, setLibSort] = useState("name");
@@ -1302,14 +1303,14 @@ function App() {
       const my = ev.touches ? ev.touches[0].clientY : ev.clientY;
       const tdx = mx - dragRef.current.startX, tdy = my - dragRef.current.startY;
       if (!dragRef.current.moved && Math.sqrt(tdx*tdx+tdy*tdy) < 8) return;
-      dragRef.current.moved = true; setIsDragging(true);
+      dragRef.current.moved = true; setIsDragging(true); setMapInteracting(true);
       const dx = Math.max(-80, Math.min(80, mx - dragRef.current.lastX));
       const dy = Math.max(-80, Math.min(80, my - dragRef.current.lastY));
       dragRef.current.lastX = mx; dragRef.current.lastY = my;
       setTransform(t => { const rect = getContainerRect(); return clamp({ ...t, x: t.x+dx, y: t.y+dy }, rect.width, rect.height, imgSizeRef.current.w, imgSizeRef.current.h); });
     }
     function onUp(ev) {
-      dragRef.current.active = false; setIsDragging(false);
+      dragRef.current.active = false; setIsDragging(false); setMapInteracting(false);
       window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp);
       window.removeEventListener("touchmove", onMove); window.removeEventListener("touchend", onUp);
       if (!dragRef.current.moved && (placingRef.current || addPointZoneRef.current)) {
@@ -1365,7 +1366,7 @@ function App() {
       let lastDist = null, isPinching = false;
       function getDist(t) { const dx=t[0].clientX-t[1].clientX,dy=t[0].clientY-t[1].clientY; return Math.sqrt(dx*dx+dy*dy); }
       function getMid(t) { return { x:(t[0].clientX+t[1].clientX)/2,y:(t[0].clientY+t[1].clientY)/2 }; }
-      function onTS(e) { if(e.touches.length===2){isPinching=true;isPinchingRef.current=true;lastDist=getDist(e.touches);dragRef.current.active=false;setIsDragging(false);} }
+      function onTS(e) { if(e.touches.length===2){isPinching=true;isPinchingRef.current=true;lastDist=getDist(e.touches);dragRef.current.active=false;setIsDragging(false);setMapInteracting(true);} }
       function onTM(e) {
         if(e.touches.length!==2||!isPinching)return; e.preventDefault();
         const dist=getDist(e.touches); if(!lastDist){lastDist=dist;return;}
@@ -1373,7 +1374,7 @@ function App() {
         const mid=getMid(e.touches); const rect=el.getBoundingClientRect();
         setTransform(t=>{const ns=Math.min(8,Math.max(0.1,t.scale*factor));const sr=ns/t.scale;const mx=mid.x-rect.left,my=mid.y-rect.top;return clamp({scale:ns,x:mx-sr*(mx-t.x),y:my-sr*(my-t.y)},rect.width,rect.height,imgSizeRef.current.w,imgSizeRef.current.h);});
       }
-      function onTE(e){if(e.touches.length<2){isPinching=false;isPinchingRef.current=false;lastDist=null;}}
+      function onTE(e){if(e.touches.length<2){isPinching=false;isPinchingRef.current=false;lastDist=null;setMapInteracting(false);}}
       el.addEventListener("touchstart",onTS,{passive:true}); el.addEventListener("touchmove",onTM,{passive:false}); el.addEventListener("touchend",onTE,{passive:true});
       pinchCleanup=()=>{el.removeEventListener("touchstart",onTS);el.removeEventListener("touchmove",onTM);el.removeEventListener("touchend",onTE);};
     }
@@ -2215,7 +2216,7 @@ function App() {
                   <span style={{ fontSize:13 }}>{isGM?"Go to Library to upload a map.":"Waiting for GM to load a map."}</span>
                 </div>
               ) : (
-                <div style={{ position:"absolute",transform:`translate3d(${Math.round(transform.x)}px,${Math.round(transform.y)}px,0) scale(${transform.scale})`,transformOrigin:"0 0",willChange:"transform" }}>
+                <div style={{ position:"absolute",transform: mapInteracting ? `translate3d(${Math.round(transform.x)}px,${Math.round(transform.y)}px,0) scale(${transform.scale})` : `translate(${Math.round(transform.x)}px,${Math.round(transform.y)}px) scale(${transform.scale})`,transformOrigin:"0 0",willChange:mapInteracting?"transform":"auto" }}>
                   <img src={currentMap.src} alt="map" style={{ display:"block",maxWidth:"none" }} draggable={false} onLoad={onImgLoad} />
                   {/* Overlay image layers — per-user opacity/visibility */}
                   {mapOverlays.map(ov => {
