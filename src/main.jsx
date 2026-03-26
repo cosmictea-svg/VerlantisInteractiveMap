@@ -1823,7 +1823,10 @@ function App() {
           <div style={{ fontSize:11,color:T.goldDim,letterSpacing:"0.12em",textTransform:"uppercase",fontFamily:T.fHead }}>Interactive Map</div>
           <div style={{ fontSize:9,color:T.muted,letterSpacing:"0.06em",marginTop:1,fontFamily:T.fBody }}>{VERSION}</div>
         </div>
-        <span style={{ fontSize:12,color:T.muted,overflow:"hidden",textOverflow:"ellipsis",maxWidth:140,whiteSpace:"nowrap" }}>{user.user_metadata?.full_name||user.email}</span>
+        <button onClick={()=>{}} title="Tutorial coming soon"
+          style={{ padding:"4px 11px",borderRadius:20,border:`1px solid ${T.border}`,background:"transparent",color:T.muted,fontSize:11,cursor:"not-allowed",fontFamily:T.fBody,opacity:0.6,flexShrink:0 }}>
+          ? Tutorial
+        </button>
         <Btn size="sm" onClick={async()=>{await signOut(session.access_token);setUser(null);setSession(null);}}>Sign out</Btn>
       </div>
       {error && <div style={{ background:"#f5d5d5",color:T.danger,padding:"9px 14px",borderRadius:10,marginBottom:14,fontSize:13,border:`1px solid ${T.danger}44` }}>{error}<button onClick={()=>setError("")} style={{ marginLeft:8,border:"none",background:"none",cursor:"pointer",color:T.danger }}>✕</button></div>}
@@ -3143,12 +3146,8 @@ function App() {
         </Modal>
       )}
       {/* Version footer */}
-      <div style={{ padding:"4px 14px",paddingBottom:"max(8px, env(safe-area-inset-bottom))",background:T.surface,borderTop:`1px solid ${T.border}`,fontSize:10,color:T.muted,display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0,fontFamily:T.fBody }}>
-        <span>{buildVersion}</span>
-        <button onClick={()=>{}} title="Tutorial coming soon"
-          style={{ padding:"3px 10px",borderRadius:20,border:`1px solid ${T.border}`,background:"transparent",color:T.muted,fontSize:10,cursor:"not-allowed",fontFamily:T.fBody,opacity:0.6 }}>
-          ? Tutorial
-        </button>
+      <div style={{ padding:"4px 14px",paddingBottom:"max(8px, env(safe-area-inset-bottom))",background:T.surface,borderTop:`1px solid ${T.border}`,fontSize:10,color:T.muted,textAlign:"center",flexShrink:0,fontFamily:T.fBody }}>
+        {buildVersion}
       </div>
     </div>
   );
