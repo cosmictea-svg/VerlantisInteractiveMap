@@ -2453,7 +2453,7 @@ function App() {
                         const sw = Math.max(1, 2/transform.scale);
                         return (
                           <g key={z.id} opacity={(z.opacity/100) * (masterZoneOpacity/100)}
-                            onClick={e=>{ e.stopPropagation(); if(isGM && placingMode !== "zone" && placingMode !== "addpoint") setZoneForm({zone:z,name:z.name,fill_color:z.fill_color,opacity:z.opacity,revealed:z.revealed,points:[...z.points]}); }}
+                            onClick={e=>{ e.stopPropagation(); if(suppressClickRef.current){suppressClickRef.current=false;return;} if(isGM && placingMode !== "zone" && placingMode !== "addpoint") setZoneForm({zone:z,name:z.name,fill_color:z.fill_color,opacity:z.opacity,revealed:z.revealed,points:[...z.points]}); }}
                             style={{ pointerEvents: isGM && placingMode !== "zone" && placingMode !== "addpoint" ? "all" : "none", cursor: isGM ? "pointer" : "default" }}>
                             <polygon points={pts} fill={z.fill_color} />
                             {z.image_url && (z.image_repeat
