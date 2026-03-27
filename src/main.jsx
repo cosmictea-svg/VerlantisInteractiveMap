@@ -570,7 +570,7 @@ function App() {
   const [campInfoEdit, setCampInfoEdit] = useState(null); // { name, sub_header, description } or null
   const [poiFolders, setPoiFolders] = useState([]);
   const [mapTexts, setMapTexts] = useState([]);
-  const [textForm, setTextForm] = useState(null); // null | { text, content, font_size, color, font_weight, fade_enabled, fade_invert }
+  const [textForm, setTextForm] = useState(null); // null | { text, content, font_size, color, font_weight, fade_enabled, fade_invert, locked }
   const [folderCollapsed, setFolderCollapsed] = useState({}); // { folderId: true = collapsed }
   const [dragOverFolderId, setDragOverFolderId] = useState(null);
   const folderDragRef = useRef(null); // id of folder being dragged
@@ -763,7 +763,10 @@ function App() {
       },
       onNPC: (payload) => {
         if (payload.eventType === "INSERT") setNpcs(p => p.find(x => x.id === payload.new.id) ? p : [...p, payload.new]);
-        if (payload.eventType === "UPDATE") setNpcs(p => p.map(x => x.id === payload.new.id ? payload.new : x));
+        if (payload.eventType === "UPDATE") setNpcs(p => {
+          const exists = p.find(x => x.id === payload.new.id);
+          return exists ? p.map(x => x.id === payload.new.id ? payload.new : x) : [...p, payload.new];
+        });
         if (payload.eventType === "DELETE") setNpcs(p => p.filter(x => x.id !== payload.old?.id));
       },
       onAnnouncement: (payload) => {
@@ -1797,7 +1800,7 @@ function App() {
 
   // ── Map Text overlays ──
   async function saveText(form) {
-    const body = { content: form.content||"New Text", font_size: Number(form.font_size)||28, color: form.color||"#FFFFFF", font_weight: form.font_weight||"700", fade_enabled: !!form.fade_enabled, fade_invert: !!form.fade_invert };
+    const body = { content: form.content||"New Text", font_size: Number(form.font_size)||28, color: form.color||"#FFFFFF", font_weight: form.font_weight||"700", fade_enabled: !!form.fade_enabled, fade_invert: !!form.fade_invert, locked: !!form.locked };
     try {
       if (form.text) {
         await dbUpdate(session.access_token, "map_texts", form.text.id, body);
@@ -1814,6 +1817,7 @@ function App() {
   }
   function startTextDrag(e, txt) {
     e.stopPropagation();
+    if (txt.locked) return;
     if (dragRef.current.active || isPinchingRef.current) return;
     const touch0 = e.touches?.[0];
     const startCx = touch0 ? touch0.clientX : e.clientX;
@@ -1877,7 +1881,7 @@ function App() {
         if (suppressClickRef.current) { suppressClickRef.current = false; return; }
         const n=npcsRef.current.find(n=>n.id===npcId); if(n) setNpcForm({npc:n,...n});
       } else {
-        dbUpdate(session.access_token,"npcs",npcId,{x:mapX,y:mapY}).then(()=>{
+        dbUpdate(sessionRef.current.access_token,"npcs",npcId,{x:mapX,y:mapY}).then(()=>{
           const n=npcsRef.current.find(n=>n.id===npcId);
           if(n) {
             const zCtx = getZoneContext(mapX, mapY, zonesRef.current.filter(z=>z.map_id===n.map_id));
@@ -2609,7 +2613,7 @@ function App() {
                         data-text-overlay={t.id}
                         onMouseDown={isGM ? e => { e.stopPropagation(); startTextDrag(e, t); } : undefined}
                         onTouchStart={isGM ? e => { e.stopPropagation(); startTextDrag(e, t); } : undefined}
-                        style={{ position:"absolute", left:t.x, top:t.y, fontSize:t.font_size, fontWeight:t.font_weight||"700", fontFamily:T.fMap, color:t.color||"#FFFFFF", opacity, whiteSpace:"pre-wrap", lineHeight:1.4, letterSpacing:"0.02em", textShadow:"0 0 4px #000, 0 0 10px #000, 0 1px 3px #000", pointerEvents:isGM?"all":"none", cursor:isGM?"grab":"default", userSelect:"none", zIndex:60, maxWidth:600 }}>
+                        style={{ position:"absolute", left:t.x, top:t.y, fontSize:t.font_size, fontWeight:t.font_weight||"700", fontFamily:T.fMap, color:t.color||"#FFFFFF", opacity, whiteSpace:"pre-wrap", lineHeight:1.4, letterSpacing:"0.02em", textShadow:"0 0 4px #000, 0 0 10px #000, 0 1px 3px #000", pointerEvents:isGM?"all":"none", cursor:isGM?(t.locked?"pointer":"grab"):"default", userSelect:"none", zIndex:60, maxWidth:600 }}>
                         {t.content}
                       </div>
                     );
@@ -2802,6 +2806,7 @@ function App() {
               { id:"npcs",       label:"NPCs" },
                 { id:"pois",       label:"POIs" },
               { id:"zones",      label:"Zones" },
+              { id:"texts",      label:"Texts" },
             ].map(({ id, label })=>(
               <button key={id} onClick={()=>setLibSubTab(id)}
                 style={{ padding:"8px 13px",border:"none",borderBottom:libSubTab===id?`2.5px solid ${T.gold}`:"2.5px solid transparent",background:"transparent",cursor:"pointer",fontSize:12,fontWeight:libSubTab===id?700:400,color:libSubTab===id?T.goldDim:T.muted,fontFamily:T.fBody,whiteSpace:"nowrap" }}>
@@ -3110,6 +3115,37 @@ function App() {
             })()}
 
             {/* ── ZONES ── */}
+            {/* ── TEXTS ── */}
+            {libSubTab==="texts" && <>
+              <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:8 }}>
+                <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:14,color:T.ink,flex:1 }}>Text Overlays</div>
+                {isGM && <Btn size="sm" variant="primary" onClick={()=>{ setTextForm({text:null,content:"New Text",font_size:28,color:"#FFFFFF",font_weight:"700",fade_enabled:false,fade_invert:false,locked:false,x:Math.round(imgSize.w/2),y:Math.round(imgSize.h/2)}); setTab("map"); }}>＋ Text</Btn>}
+              </div>
+              {mapTexts.filter(t=>t.map_id===activeMapId).length===0 && <p style={{ color:T.muted,fontSize:13,fontStyle:"italic" }}>No text overlays on this map yet.</p>}
+              {mapTexts.filter(t=>t.map_id===activeMapId).map(t=>(
+                <div key={t.id} style={{ display:"flex",alignItems:"center",gap:8,padding:"10px 12px",background:T.surface,borderRadius:10,marginBottom:8,border:`1px solid ${T.border}` }}>
+                  {/* Colour swatch */}
+                  <div style={{ width:28,height:28,borderRadius:6,background:t.color,border:`1px solid ${T.border}`,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center" }}>
+                    <span style={{ fontSize:11,fontWeight:700,color:t.color==="#FFFFFF"?"#333":"#fff",fontFamily:T.fMap }}>A</span>
+                  </div>
+                  <div style={{ flex:1,minWidth:0 }}>
+                    <div style={{ fontSize:13,fontWeight:600,color:T.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{t.content.split("\n")[0]||"(empty)"}</div>
+                    <div style={{ fontSize:11,color:T.muted }}>{t.font_size}px{t.fade_enabled?` · fade ${t.fade_invert?"in":"out"}`:""}  {t.locked?"· 🔒":""}</div>
+                  </div>
+                  {isGM && <>
+                    <button title={t.locked?"Unlock":"Lock"} onClick={async()=>{
+                      const nl=!t.locked;
+                      await dbUpdate(session.access_token,"map_texts",t.id,{locked:nl}).catch(()=>{});
+                      setMapTexts(prev=>prev.map(x=>x.id===t.id?{...x,locked:nl}:x));
+                    }} style={{ padding:"4px 8px",borderRadius:20,border:"none",background:t.locked?"#FEE2E2":"transparent",color:t.locked?"#991B1B":"#aaa",fontSize:13,cursor:"pointer",flexShrink:0,lineHeight:1 }}>
+                      {t.locked?"🔒":"🔓"}
+                    </button>
+                    <Btn size="sm" onClick={()=>setTextForm({text:t,content:t.content,font_size:t.font_size,color:t.color,font_weight:t.font_weight,fade_enabled:t.fade_enabled,fade_invert:t.fade_invert,locked:t.locked})}>Edit</Btn>
+                  </>}
+                </div>
+              ))}
+            </>}
+
             {libSubTab==="zones" && <>
               <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:8 }}>
                 <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:14,color:T.ink,flex:1 }}>Zones</div>
@@ -3409,6 +3445,12 @@ function App() {
                 <span style={{ fontFamily:T.fMap,fontSize:Math.min(textForm.font_size,36),fontWeight:textForm.font_weight,color:textForm.color,whiteSpace:"pre-wrap",lineHeight:1.4,textShadow:"0 0 4px #000,0 0 10px #000" }}>
                   {textForm.content||"Preview…"}
                 </span>
+              </div>
+              {/* Lock */}
+              <div style={{ display:"flex",alignItems:"center",gap:10 }}>
+                <input type="checkbox" id="tf-lock" checked={!!textForm.locked}
+                  onChange={e=>setTextForm(f=>({...f,locked:e.target.checked}))} style={{ width:16,height:16,cursor:"pointer" }} />
+                <label htmlFor="tf-lock" style={{ fontSize:13,cursor:"pointer",color:T.ink }}>🔒 Lock position (prevent accidental drag)</label>
               </div>
               <div style={{ display:"flex",gap:8,marginTop:4 }}>
                 <Btn variant="primary" onClick={()=>saveText(textForm)} style={{ flex:1 }}>{isEdit?"Save Changes":"Place Text"}</Btn>
