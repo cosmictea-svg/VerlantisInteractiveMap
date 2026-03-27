@@ -609,6 +609,7 @@ function App() {
   const zonePointDragRef = useRef(null);
   const npcDragState = useRef(null);
   const isPinchingRef = useRef(false); // true while 2-finger pinch is active
+  const suppressClickRef = useRef(false); // true after a map drag — suppresses the next click on any node
   const textDragState = useRef(null);
   const pendingRevealRef = useRef({ revealed: [], hidden: [] }); // batch notification accumulator
   const revealTimerRef = useRef(null);
@@ -1354,6 +1355,7 @@ function App() {
       setTransform(t => { const rect = getContainerRect(); return clamp({ ...t, x: t.x+dx, y: t.y+dy }, rect.width, rect.height, imgSizeRef.current.w, imgSizeRef.current.h); });
     }
     function onUp(ev) {
+      if (dragRef.current.moved) suppressClickRef.current = true;
       dragRef.current.active = false; setIsDragging(false); setMapInteracting(false);
       window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp);
       window.removeEventListener("touchmove", onMove); window.removeEventListener("touchend", onUp);
@@ -1839,6 +1841,7 @@ function App() {
       window.removeEventListener("touchmove", onMove); window.removeEventListener("touchend", onUp);
       if (!moved) {
         setMapTexts(prev => prev.map(t => t.id === textId ? { ...t, x: originX, y: originY } : t));
+        if (suppressClickRef.current) { suppressClickRef.current = false; return; }
         const t = mapTexts.find(t => t.id === textId);
         if (t) setTextForm({ text: t, content: t.content, font_size: t.font_size, color: t.color, font_weight: t.font_weight, fade_enabled: t.fade_enabled, fade_invert: t.fade_invert });
       } else {
@@ -1871,6 +1874,7 @@ function App() {
       window.removeEventListener("touchmove",onMove); window.removeEventListener("touchend",onUp);
       if (!moved) {
         setNpcs(prev=>prev.map(n=>n.id===npcId?{...n,x:originX,y:originY}:n));
+        if (suppressClickRef.current) { suppressClickRef.current = false; return; }
         const n=npcsRef.current.find(n=>n.id===npcId); if(n) setNpcForm({npc:n,...n});
       } else {
         dbUpdate(session.access_token,"npcs",npcId,{x:mapX,y:mapY}).then(()=>{
@@ -2537,6 +2541,7 @@ function App() {
                     <POIPin key={p.id} poi={p} isGM={isGM}
                       resolvedIconUrl={categoryIcons[p.category]||""}
                       onTap={poi=>{
+                        if (suppressClickRef.current) { suppressClickRef.current = false; return; }
                         if (isGM) {
                           // GM tap on any POI → open edit form (lock only prevents dragging, not editing)
                           setPoiForm({ poi, name:poi.name, description:poi.description, revealed:poi.revealed, category:poi.category||"other", size:poi.size||"large", poi_type:poi.poi_type||"standard", linked_map_id:poi.linked_map_id||null });
