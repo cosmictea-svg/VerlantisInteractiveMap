@@ -616,6 +616,7 @@ function App() {
   const mapTransformDivRef = useRef(null);                // ref to the map transform container div
   const poiLayerRef = useRef(null);                       // ref to the POI layer div for direct opacity update
   const fitScaleRef = useRef(0);                          // mirrors fitScale for use inside gesture handler
+  const textFadeRef = useRef({});                         // { [id]: { fade_enabled, fade_invert } } for direct DOM updates
   const soundVolumeRef = useRef(0.5);
   const npcsRef = useRef([]);
   const pendingFocusRef = useRef(null); // { x, y } applied after map image loads
@@ -1160,6 +1161,11 @@ function App() {
   // Keep refs in sync with state so gesture handlers can read current values without closures
   useEffect(() => { transformRef.current = transform; }, [transform]);
   useEffect(() => { fitScaleRef.current = fitScale; }, [fitScale]);
+  useEffect(() => {
+    const m = {};
+    mapTexts.forEach(t => { m[t.id] = { fade_enabled: t.fade_enabled, fade_invert: t.fade_invert }; });
+    textFadeRef.current = m;
+  }, [mapTexts]);
 
   // Viewport culling — map-coordinate bounds of what's currently visible on screen.
   // Entities outside this rect are not rendered at all (saves DOM nodes on large maps).
@@ -1422,6 +1428,14 @@ function App() {
           const fs=fitScaleRef.current;
           poiLayerRef.current.style.opacity=fs>0?(nt.scale<=fs?0:Math.min(1,(nt.scale-fs)/fs)):1;
         }
+        // Update each text overlay's opacity directly
+        const fs=fitScaleRef.current;
+        document.querySelectorAll("[data-text-overlay]").forEach(el=>{
+          const fade=textFadeRef.current[el.dataset.textOverlay];
+          if(!fade||!fade.fade_enabled||fs<=0){el.style.opacity="1";return;}
+          const prog=Math.min(1,Math.max(0,(nt.scale-fs)/fs));
+          el.style.opacity=fade.fade_invert?String(1-prog):String(prog);
+        });
       }
       function onTE(e){
         if(e.touches.length<2){
@@ -2587,6 +2601,7 @@ function App() {
                     }
                     return (
                       <div key={t.id}
+                        data-text-overlay={t.id}
                         onMouseDown={isGM ? e => { e.stopPropagation(); startTextDrag(e, t); } : undefined}
                         onTouchStart={isGM ? e => { e.stopPropagation(); startTextDrag(e, t); } : undefined}
                         style={{ position:"absolute", left:t.x, top:t.y, fontSize:t.font_size, fontWeight:t.font_weight||"700", fontFamily:T.fMap, color:t.color||"#FFFFFF", opacity, whiteSpace:"pre-wrap", lineHeight:1.4, letterSpacing:"0.02em", textShadow:"0 0 4px #000, 0 0 10px #000, 0 1px 3px #000", pointerEvents:isGM?"all":"none", cursor:isGM?"grab":"default", userSelect:"none", zIndex:60, maxWidth:600 }}>
