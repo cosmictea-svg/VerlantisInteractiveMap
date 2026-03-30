@@ -1817,7 +1817,8 @@ function App() {
   }
   function startTextDrag(e, txt) {
     e.stopPropagation();
-    if (txt.locked) return;
+    // Do NOT early-return when locked — tap-to-edit must still work.
+    // Locked texts skip position updates in onMove but still open the form on tap.
     if (dragRef.current.active || isPinchingRef.current) return;
     const touch0 = e.touches?.[0];
     const startCx = touch0 ? touch0.clientX : e.clientX;
@@ -1832,6 +1833,7 @@ function App() {
       const cy = touch ? touch.clientY : ev.clientY;
       const dx = cx - textDragState.current.startCx, dy = cy - textDragState.current.startCy;
       if (Math.sqrt(dx*dx+dy*dy) > 6) textDragState.current.moved = true;
+      if (txt.locked) return; // locked: track movement for tap detection but don't reposition
       const nx = textDragState.current.originX + dx / textDragState.current.scaleAtStart;
       const ny = textDragState.current.originY + dy / textDragState.current.scaleAtStart;
       textDragState.current.mapX = nx; textDragState.current.mapY = ny;
@@ -2608,12 +2610,14 @@ function App() {
                       const progress = Math.min(1, Math.max(0, (transform.scale - fitScale) / fitScale));
                       opacity = t.fade_invert ? 1 - progress : progress;
                     }
+                    // Below 50% opacity: click-through for everyone (UI: disable collision when faded)
+                    const canInteract = opacity >= 0.5;
                     return (
                       <div key={t.id}
                         data-text-overlay={t.id}
-                        onMouseDown={isGM ? e => { e.stopPropagation(); startTextDrag(e, t); } : undefined}
-                        onTouchStart={isGM ? e => { e.stopPropagation(); startTextDrag(e, t); } : undefined}
-                        style={{ position:"absolute", left:t.x, top:t.y, fontSize:t.font_size, fontWeight:t.font_weight||"700", fontFamily:T.fMap, color:t.color||"#FFFFFF", opacity, whiteSpace:"pre-wrap", lineHeight:1.4, letterSpacing:"0.02em", textShadow:"0 0 4px #000, 0 0 10px #000, 0 1px 3px #000", pointerEvents:isGM?"all":"none", cursor:isGM?(t.locked?"pointer":"grab"):"default", userSelect:"none", zIndex:60, maxWidth:600 }}>
+                        onMouseDown={isGM && canInteract ? e => { e.stopPropagation(); startTextDrag(e, t); } : undefined}
+                        onTouchStart={isGM && canInteract ? e => { e.stopPropagation(); startTextDrag(e, t); } : undefined}
+                        style={{ position:"absolute", left:t.x, top:t.y, fontSize:t.font_size, fontWeight:t.font_weight||"700", fontFamily:T.fMap, color:t.color||"#FFFFFF", opacity, whiteSpace:"pre-wrap", lineHeight:1.4, letterSpacing:"0.02em", textShadow:"0 0 4px #000, 0 0 10px #000, 0 1px 3px #000", pointerEvents:canInteract&&isGM?"all":"none", cursor:isGM?(t.locked?"pointer":"grab"):"default", userSelect:"none", zIndex:60, maxWidth:600 }}>
                         {t.content}
                       </div>
                     );
