@@ -2193,59 +2193,140 @@ function App() {
   );
 
   if (!activeCampaign) return (
-    <div style={{ fontFamily:T.fBody,padding:24,paddingBottom:"max(24px, env(safe-area-inset-bottom))",maxWidth:540,margin:"0 auto",minHeight:"100dvh",background:T.bg }}>
-      {/* Page header */}
-      <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:24,paddingBottom:16,borderBottom:`1px solid ${T.border}` }}>
-        <div style={{ flex:1 }}>
-          <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:20,color:T.ink,letterSpacing:"0.06em" }}>Verlantis</div>
-          <div style={{ fontSize:11,color:T.goldDim,letterSpacing:"0.12em",textTransform:"uppercase",fontFamily:T.fHead }}>Interactive Map</div>
-          <div style={{ fontSize:9,color:T.muted,letterSpacing:"0.06em",marginTop:1,fontFamily:T.fBody }}>{VERSION}</div>
-        </div>
-        <button onClick={()=>{}} title="Tutorial coming soon"
-          style={{ padding:"4px 11px",borderRadius:20,border:`1px solid ${T.border}`,background:"transparent",color:T.muted,fontSize:11,cursor:"not-allowed",fontFamily:T.fBody,opacity:0.6,flexShrink:0 }}>
-          ? Tutorial
-        </button>
-        <Btn size="sm" onClick={async()=>{await signOut(session.access_token);setUser(null);setSession(null);}}>Sign out</Btn>
-      </div>
-      {error && <div style={{ background:"#f5d5d5",color:T.danger,padding:"9px 14px",borderRadius:10,marginBottom:14,fontSize:13,border:`1px solid ${T.danger}44` }}>{error}<button onClick={()=>setError("")} style={{ marginLeft:8,border:"none",background:"none",cursor:"pointer",color:T.danger }}>✕</button></div>}
-      {campaignLoading && <div style={{ display:"flex",alignItems:"center",justifyContent:"center",padding:"32px 0",gap:12,color:T.muted,fontSize:13 }}><span style={{ animation:"spin 1s linear infinite",display:"inline-block",fontSize:20 }}>⟳</span> Loading campaign…</div>}
-      {!campaignLoading && campaigns.length===0 && <p style={{ color:T.muted,fontSize:13,marginBottom:16,fontStyle:"italic" }}>No campaigns yet. Create one or join with a campaign ID from your GM.</p>}
-      {campaigns.map(c=>(
-        <div key={c.id} onClick={()=>loadCampaignData(c,c.myRole)}
-          style={{ padding:"16px 18px",background:T.surface,borderRadius:12,marginBottom:10,cursor:"pointer",border:`1.5px solid ${T.border}`,boxShadow:"0 2px 8px rgba(26,16,53,0.07)",transition:"border-color 0.15s",position:"relative" }}
-          onMouseEnter={e=>e.currentTarget.style.borderColor=T.gold}
-          onMouseLeave={e=>e.currentTarget.style.borderColor=T.border}>
-          <div style={{ display:"flex",alignItems:"center",gap:10 }}>
-            <div style={{ width:36,height:36,borderRadius:"50%",background:c.myRole==="gm"?`${T.gold}22`:`${T.purple}22`,border:`1.5px solid ${c.myRole==="gm"?T.gold:T.purple}55`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0 }}>
-              {c.myRole==="gm"?"👑":"⚔"}
-            </div>
-            <div style={{ flex:1,minWidth:0 }}>
-              <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:15,color:T.ink,letterSpacing:"0.03em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{c.name}</div>
-              {c.sub_header && <div style={{ fontSize:12,color:T.goldDim,fontStyle:"italic",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{c.sub_header}</div>}
-              <div style={{ fontSize:11,color:T.muted,marginTop:3 }}>{c.myRole==="gm"?"Game Master":"Player"}</div>
-            </div>
-            {c.myRole==="gm" && (
-              <button
-                onClick={e=>{ e.stopPropagation(); setCampDeleteConfirm(c); }}
-                onTouchEnd={e=>{ e.stopPropagation(); e.preventDefault(); setCampDeleteConfirm(c); }}
-                title="Delete campaign"
-                style={{ background:"none",border:`1px solid ${T.danger}44`,borderRadius:8,color:T.danger,cursor:"pointer",padding:"5px 8px",fontSize:14,lineHeight:1,flexShrink:0,transition:"opacity 0.15s" }}>
-                🗑
-              </button>
-            )}
-            <span style={{ fontSize:18,color:T.muted }}>›</span>
+    <div style={{ position:"fixed",inset:0,overflowY:"auto",background:"linear-gradient(135deg, #0C0618 0%, #070310 50%, #110308 100%)",fontFamily:T.fBody }}>
+
+      {/* Subtle background blobs — same animation, much lower opacity than login */}
+      <div style={{ position:"fixed",top:"-10%",left:"-10%",width:"min(55vw,55vh)",height:"min(55vw,55vh)",maxWidth:540,borderRadius:"50%",
+        background:"radial-gradient(circle, rgba(255,230,110,0.07) 0%, rgba(201,168,76,0.03) 40%, transparent 70%)",
+        pointerEvents:"none", animation:"holyClash 24s linear infinite" }} />
+      <div style={{ position:"fixed",bottom:"-10%",right:"-10%",width:"min(55vw,55vh)",height:"min(55vw,55vh)",maxWidth:540,borderRadius:"50%",
+        background:"radial-gradient(circle, rgba(200,35,20,0.09) 0%, rgba(140,20,15,0.04) 40%, transparent 70%)",
+        pointerEvents:"none", animation:"demonicClash 24s linear infinite" }} />
+
+      {/* Scrollable content column */}
+      <div style={{ maxWidth:520,margin:"0 auto",padding:"24px 20px",paddingBottom:"max(32px, env(safe-area-inset-bottom))",minHeight:"100dvh",display:"flex",flexDirection:"column",position:"relative",zIndex:1 }}>
+
+        {/* ── Header ── */}
+        <div style={{ display:"flex",alignItems:"center",gap:12,marginBottom:24,paddingBottom:16,borderBottom:"1px solid rgba(201,168,76,0.15)" }}>
+          <img src="/logo.png" alt="Verlantis"
+            style={{ width:36,height:"auto",opacity:0.85,filter:"drop-shadow(0 0 10px rgba(201,168,76,0.35))",flexShrink:0 }}
+            onError={e=>e.target.style.display="none"} />
+          <div style={{ flex:1,minWidth:0 }}>
+            <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:17,color:"#C9A84C",letterSpacing:"0.16em",textTransform:"uppercase",textShadow:"0 0 18px rgba(201,168,76,0.3)",lineHeight:1.15 }}>Verlantis</div>
+            <div style={{ fontSize:9,color:"rgba(201,168,76,0.45)",letterSpacing:"0.2em",textTransform:"uppercase",fontFamily:T.fHead }}>Interactive Map</div>
           </div>
+          <button onClick={async()=>{await signOut(session.access_token);setUser(null);setSession(null);}}
+            style={{ padding:"5px 14px",borderRadius:20,border:"1px solid rgba(201,168,76,0.22)",background:"transparent",
+              color:"rgba(201,168,76,0.55)",fontSize:11,cursor:"pointer",fontFamily:T.fHead,letterSpacing:"0.07em",flexShrink:0,transition:"border-color 0.2s,color 0.2s" }}
+            onMouseEnter={e=>{ e.currentTarget.style.borderColor="rgba(201,168,76,0.55)"; e.currentTarget.style.color="#C9A84C"; }}
+            onMouseLeave={e=>{ e.currentTarget.style.borderColor="rgba(201,168,76,0.22)"; e.currentTarget.style.color="rgba(201,168,76,0.55)"; }}>
+            Sign out
+          </button>
         </div>
-      ))}
-      {(()=>{ const ownedCount = campaigns.filter(c=>c.myRole==="gm").length; const atLimit = ownedCount >= 5; return (
-      <div style={{ display:"flex",gap:10,marginTop:18,flexDirection:"column" }}>
-        <div style={{ display:"flex",gap:10 }}>
-          <Btn variant="primary" onClick={()=>{ if(atLimit){setError("You've reached the 5 campaign limit. Delete an existing campaign to create a new one.");return;} setShowCampaignModal(true); }} style={{ flex:1,opacity:atLimit?0.6:1 }}>＋ Create Campaign</Btn>
-          <Btn onClick={()=>setShowJoinModal(true)} style={{ flex:1 }}>Join Campaign</Btn>
-        </div>
-        {ownedCount > 0 && <div style={{ fontSize:11,color:atLimit?T.danger:T.muted,textAlign:"center",fontStyle:"italic" }}>You own {ownedCount}/5 campaigns{atLimit?" — limit reached":""}</div>}
+
+        {/* ── Error banner ── */}
+        {error && (
+          <div style={{ background:"rgba(180,30,20,0.15)",color:"#E06060",padding:"9px 14px",borderRadius:10,marginBottom:16,fontSize:13,border:"1px solid rgba(200,50,40,0.32)",display:"flex",alignItems:"center",justifyContent:"space-between",gap:8 }}>
+            <span>{error}</span>
+            <button onClick={()=>setError("")} style={{ border:"none",background:"none",cursor:"pointer",color:"#E06060",fontSize:15,lineHeight:1,padding:0,flexShrink:0 }}>✕</button>
+          </div>
+        )}
+
+        {/* ── Loading ── */}
+        {campaignLoading && (
+          <div style={{ display:"flex",alignItems:"center",justifyContent:"center",padding:"48px 0",gap:12,color:"rgba(201,168,76,0.55)",fontSize:13 }}>
+            <span style={{ animation:"spin 1s linear infinite",display:"inline-block",fontSize:20 }}>⟳</span> Loading campaigns…
+          </div>
+        )}
+
+        {/* ── Empty state ── */}
+        {!campaignLoading && campaigns.length === 0 && (
+          <div style={{ textAlign:"center",padding:"48px 20px",color:"rgba(180,160,220,0.45)",fontSize:13,fontStyle:"italic",lineHeight:1.8 }}>
+            No campaigns yet.<br/>Create one or join with a campaign ID from your GM.
+          </div>
+        )}
+
+        {/* ── Section label ── */}
+        {!campaignLoading && campaigns.length > 0 && (
+          <div style={{ fontSize:9,letterSpacing:"0.22em",textTransform:"uppercase",color:"rgba(201,168,76,0.38)",fontFamily:T.fHead,marginBottom:10 }}>
+            Your Campaigns
+          </div>
+        )}
+
+        {/* ── Campaign cards ── */}
+        {campaigns.map(c => {
+          const isGMRole = c.myRole === "gm";
+          return (
+            <div key={c.id} onClick={()=>loadCampaignData(c,c.myRole)}
+              style={{ padding:"14px 16px",background:"rgba(255,255,255,0.03)",borderRadius:12,marginBottom:9,cursor:"pointer",
+                border:`1.5px solid ${isGMRole?"rgba(201,168,76,0.18)":"rgba(120,90,200,0.18)"}`,
+                boxShadow:"0 2px 14px rgba(0,0,0,0.3)",transition:"border-color 0.18s,background 0.18s",position:"relative" }}
+              onMouseEnter={e=>{ e.currentTarget.style.borderColor=isGMRole?"rgba(201,168,76,0.52)":"rgba(150,115,230,0.48)"; e.currentTarget.style.background="rgba(255,255,255,0.055)"; }}
+              onMouseLeave={e=>{ e.currentTarget.style.borderColor=isGMRole?"rgba(201,168,76,0.18)":"rgba(120,90,200,0.18)"; e.currentTarget.style.background="rgba(255,255,255,0.03)"; }}>
+              <div style={{ display:"flex",alignItems:"center",gap:12 }}>
+                {/* Role badge */}
+                <div style={{ width:38,height:38,borderRadius:"50%",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,
+                  background:isGMRole?"rgba(201,168,76,0.11)":"rgba(120,80,200,0.1)",
+                  border:`1.5px solid ${isGMRole?"rgba(201,168,76,0.38)":"rgba(140,100,220,0.32)"}` }}>
+                  {isGMRole ? "👑" : "⚔"}
+                </div>
+                {/* Info */}
+                <div style={{ flex:1,minWidth:0 }}>
+                  <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:14,color:"#E8DFC8",letterSpacing:"0.04em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{c.name}</div>
+                  {c.sub_header && <div style={{ fontSize:11,color:"rgba(201,168,76,0.6)",fontStyle:"italic",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{c.sub_header}</div>}
+                  <div style={{ fontSize:9,color:isGMRole?"rgba(201,168,76,0.42)":"rgba(160,140,210,0.5)",marginTop:3,letterSpacing:"0.1em",textTransform:"uppercase",fontFamily:T.fHead }}>{isGMRole?"Game Master":"Player"}</div>
+                </div>
+                {/* Delete (GM only) */}
+                {isGMRole && (
+                  <button onClick={e=>{ e.stopPropagation(); setCampDeleteConfirm(c); }}
+                    onTouchEnd={e=>{ e.stopPropagation(); e.preventDefault(); setCampDeleteConfirm(c); }}
+                    title="Delete campaign"
+                    style={{ background:"none",border:"1px solid rgba(200,50,40,0.28)",borderRadius:8,color:"rgba(200,80,70,0.65)",cursor:"pointer",padding:"5px 8px",fontSize:13,lineHeight:1,flexShrink:0,transition:"border-color 0.15s,color 0.15s" }}
+                    onMouseEnter={e=>{ e.currentTarget.style.borderColor="rgba(200,50,40,0.6)"; e.currentTarget.style.color="#E06060"; }}
+                    onMouseLeave={e=>{ e.currentTarget.style.borderColor="rgba(200,50,40,0.28)"; e.currentTarget.style.color="rgba(200,80,70,0.65)"; }}>
+                    🗑
+                  </button>
+                )}
+                <span style={{ fontSize:16,color:"rgba(201,168,76,0.3)",flexShrink:0 }}>›</span>
+              </div>
+            </div>
+          );
+        })}
+
+        {/* ── Create / Join buttons ── */}
+        {(()=>{ const ownedCount = campaigns.filter(c=>c.myRole==="gm").length; const atLimit = ownedCount >= 5; return (
+          <div style={{ marginTop:campaigns.length>0?14:0,display:"flex",flexDirection:"column",gap:10 }}>
+            <div style={{ display:"flex",gap:10 }}>
+              <button
+                onClick={()=>{ if(atLimit){setError("You've reached the 5 campaign limit. Delete an existing campaign to create a new one.");return;} setShowCampaignModal(true); }}
+                style={{ flex:1,padding:"11px 0",borderRadius:12,border:`1px solid ${atLimit?"rgba(201,168,76,0.15)":"rgba(201,168,76,0.32)"}`,
+                  background:atLimit?"rgba(255,255,255,0.02)":"rgba(201,168,76,0.09)",
+                  color:atLimit?"rgba(201,168,76,0.3)":"#C9A84C",fontSize:13,fontFamily:T.fHead,fontWeight:600,
+                  letterSpacing:"0.07em",cursor:atLimit?"not-allowed":"pointer",transition:"background 0.2s,border-color 0.2s" }}
+                onMouseEnter={e=>{ if(!atLimit){ e.currentTarget.style.background="rgba(201,168,76,0.17)"; e.currentTarget.style.borderColor="rgba(201,168,76,0.58)"; } }}
+                onMouseLeave={e=>{ if(!atLimit){ e.currentTarget.style.background="rgba(201,168,76,0.09)"; e.currentTarget.style.borderColor="rgba(201,168,76,0.32)"; } }}>
+                ＋ Create Campaign
+              </button>
+              <button
+                onClick={()=>setShowJoinModal(true)}
+                style={{ flex:1,padding:"11px 0",borderRadius:12,border:"1px solid rgba(120,90,200,0.28)",
+                  background:"rgba(120,80,200,0.06)",color:"rgba(180,158,230,0.8)",fontSize:13,
+                  fontFamily:T.fHead,fontWeight:600,letterSpacing:"0.07em",cursor:"pointer",transition:"background 0.2s,border-color 0.2s" }}
+                onMouseEnter={e=>{ e.currentTarget.style.background="rgba(120,80,200,0.14)"; e.currentTarget.style.borderColor="rgba(150,115,230,0.52)"; }}
+                onMouseLeave={e=>{ e.currentTarget.style.background="rgba(120,80,200,0.06)"; e.currentTarget.style.borderColor="rgba(120,90,200,0.28)"; }}>
+                Join Campaign
+              </button>
+            </div>
+            {ownedCount > 0 && <div style={{ fontSize:10,color:atLimit?"#E06060":"rgba(201,168,76,0.32)",textAlign:"center",fontStyle:"italic" }}>You own {ownedCount}/5 campaigns{atLimit?" — limit reached":""}</div>}
+          </div>
+        ); })()}
+
+        {/* Version */}
+        <div style={{ fontSize:9,color:"rgba(120,100,160,0.28)",letterSpacing:"0.1em",textAlign:"center",marginTop:"auto",paddingTop:28,fontFamily:T.fHead }}>{VERSION}</div>
+
       </div>
-      ); })()}
+
+      {/* ── Create Campaign modal ── */}
       {showCampaignModal && (
         <Modal title="Create Campaign" onClose={()=>{ setShowCampaignModal(false); setNewCampaignName(""); setNewCampaignSubHeader(""); setNewCampaignDescription(""); }} width={400}>
           <Field label="Campaign Name">
@@ -2262,33 +2343,36 @@ function App() {
           <Btn variant="primary" onClick={createCampaign} style={{ width:"100%" }}>Create Campaign</Btn>
         </Modal>
       )}
+
+      {/* ── Join Campaign modal ── */}
       {showJoinModal && (
         <Modal title="Join Campaign" onClose={()=>setShowJoinModal(false)} width={340}>
           <Field label="Campaign ID (ask your GM)"><input value={joinCode} onChange={e=>setJoinCode(e.target.value)} style={IS} placeholder="Paste campaign UUID here" autoFocus={!isTouchDevice} /></Field>
           <Btn variant="primary" onClick={joinCampaign} style={{ width:"100%" }}>Join</Btn>
         </Modal>
       )}
-      {/* Delete confirmation — rendered here so it works from the campaign list */}
+
+      {/* ── Delete confirmation ── */}
       {campDeleteConfirm && (
-        <div style={{ position:"fixed",inset:0,zIndex:9000,display:"flex",alignItems:"center",justifyContent:"center",padding:16,background:"rgba(10,5,20,0.75)" }} onClick={()=>setCampDeleteConfirm(null)}>
-          <div onClick={e=>e.stopPropagation()} style={{ background:T.bg,border:`2px solid ${T.danger}`,borderRadius:14,padding:"28px 28px 24px",maxWidth:400,width:"100%",boxShadow:"0 12px 48px rgba(0,0,0,0.6)" }}>
-            <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:16 }}>
-              <div style={{ fontSize:28,lineHeight:1 }}>⚠️</div>
+        <div style={{ position:"fixed",inset:0,zIndex:9000,display:"flex",alignItems:"center",justifyContent:"center",padding:16,background:"rgba(4,2,12,0.88)" }} onClick={()=>setCampDeleteConfirm(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:"#0E0618",border:"2px solid rgba(200,50,40,0.5)",borderRadius:14,padding:"26px 24px 22px",maxWidth:400,width:"100%",boxShadow:"0 12px 48px rgba(0,0,0,0.75)" }}>
+            <div style={{ display:"flex",alignItems:"center",gap:12,marginBottom:16 }}>
+              <div style={{ fontSize:26,lineHeight:1 }}>⚠️</div>
               <div>
-                <div style={{ fontFamily:T.fHead,fontSize:16,fontWeight:700,color:T.danger,letterSpacing:"0.03em" }}>Delete Campaign Forever</div>
-                <div style={{ fontSize:11,color:T.muted,marginTop:2 }}>This action cannot be undone — ever.</div>
+                <div style={{ fontFamily:T.fHead,fontSize:15,fontWeight:700,color:"#E06060",letterSpacing:"0.03em" }}>Delete Campaign Forever</div>
+                <div style={{ fontSize:11,color:"rgba(180,140,140,0.55)",marginTop:2 }}>This action cannot be undone — ever.</div>
               </div>
             </div>
-            <div style={{ background:"#1a0808",border:`1px solid ${T.danger}44`,borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:14,fontFamily:T.fHead,color:T.danger,fontWeight:600 }}>
+            <div style={{ background:"rgba(180,30,20,0.1)",border:"1px solid rgba(200,50,40,0.28)",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:14,fontFamily:T.fHead,color:"#E06060",fontWeight:600 }}>
               "{campDeleteConfirm.name}"
             </div>
-            <div style={{ fontSize:12,color:T.muted,lineHeight:1.7,marginBottom:18 }}>
-              <strong style={{ color:T.danger,display:"block",marginBottom:4 }}>Everything inside will be permanently destroyed:</strong>
+            <div style={{ fontSize:12,color:"rgba(180,160,220,0.45)",lineHeight:1.75,marginBottom:18 }}>
+              <strong style={{ color:"rgba(220,80,70,0.75)",display:"block",marginBottom:4 }}>Everything inside will be permanently destroyed:</strong>
               All maps · All POIs & NPCs · All zones & overlays · All player markers · All announcements · All member data
             </div>
             <div style={{ display:"flex",gap:10 }}>
-              <button onClick={()=>deleteCampaign(campDeleteConfirm)} style={{ flex:1,padding:"10px 0",borderRadius:20,border:"none",background:T.danger,color:"#fff",fontFamily:T.fHead,fontSize:13,fontWeight:700,cursor:"pointer",letterSpacing:"0.04em" }}>🗑 Delete Forever</button>
-              <button onClick={()=>setCampDeleteConfirm(null)} style={{ flex:1,padding:"10px 0",borderRadius:20,border:`1px solid ${T.border}`,background:"transparent",color:T.muted,fontFamily:T.fBody,fontSize:13,cursor:"pointer" }}>Cancel</button>
+              <button onClick={()=>deleteCampaign(campDeleteConfirm)} style={{ flex:1,padding:"10px 0",borderRadius:20,border:"none",background:"rgba(170,30,20,0.85)",color:"#fff",fontFamily:T.fHead,fontSize:13,fontWeight:700,cursor:"pointer",letterSpacing:"0.04em" }}>🗑 Delete Forever</button>
+              <button onClick={()=>setCampDeleteConfirm(null)} style={{ flex:1,padding:"10px 0",borderRadius:20,border:"1px solid rgba(120,100,160,0.28)",background:"transparent",color:"rgba(180,160,220,0.5)",fontFamily:T.fBody,fontSize:13,cursor:"pointer" }}>Cancel</button>
             </div>
           </div>
         </div>
