@@ -2021,19 +2021,19 @@ function App() {
         <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:42,color:"#C9A84C",letterSpacing:"0.22em",textTransform:"uppercase",textAlign:"center",animation:"textFadeUp 1s ease-out 0.9s forwards",opacity:0,textShadow:"0 0 48px rgba(201,168,76,0.35), 0 2px 10px rgba(0,0,0,0.9)",marginTop:-16,lineHeight:1 }}>
           Fallen
         </div>
-        <div style={{ fontFamily:T.fHead,fontWeight:400,fontSize:11,color:"#7A5C10",letterSpacing:"0.35em",textTransform:"uppercase",animation:"textFadeUp 1s ease-out 1.1s forwards",opacity:0,marginTop:8 }}>
+        <div style={{ fontFamily:T.fHead,fontWeight:400,fontSize:11,color:"rgba(201,168,76,0.65)",letterSpacing:"0.35em",textTransform:"uppercase",animation:"textFadeUp 1s ease-out 1.1s forwards",opacity:0,marginTop:8 }}>
           Interactive Map
         </div>
 
         {/* Gold divider */}
         <div style={{ display:"flex",alignItems:"center",gap:14,margin:"22px 0 18px",width:"100%",maxWidth:280,animation:"textFadeUp 1s ease-out 1.3s forwards",opacity:0 }}>
-          <div style={{ flex:1,height:1,background:"linear-gradient(to right, transparent, rgba(201,168,76,0.4))" }} />
-          <span style={{ color:"rgba(201,168,76,0.5)",fontSize:12,animation:"shimmer 3s ease-in-out infinite" }}>✦</span>
-          <div style={{ flex:1,height:1,background:"linear-gradient(to left, transparent, rgba(201,168,76,0.4))" }} />
+          <div style={{ flex:1,height:1,background:"linear-gradient(to right, transparent, rgba(201,168,76,0.5))" }} />
+          <span style={{ color:"rgba(201,168,76,0.8)",fontSize:12,animation:"shimmer 3s ease-in-out infinite" }}>✦</span>
+          <div style={{ flex:1,height:1,background:"linear-gradient(to left, transparent, rgba(201,168,76,0.5))" }} />
         </div>
 
         {/* Flavour text */}
-        <div style={{ color:"#7A6890",fontSize:13,textAlign:"center",maxWidth:310,fontStyle:"italic",lineHeight:1.9,animation:"textFadeUp 1s ease-out 1.4s forwards",opacity:0,marginBottom:30 }}>
+        <div style={{ color:"#C0B0D8",fontSize:13,textAlign:"center",maxWidth:310,fontStyle:"italic",lineHeight:1.9,animation:"textFadeUp 1s ease-out 1.4s forwards",opacity:0,marginBottom:30 }}>
           "A world caught between the grace of light<br/>and the fury of the fallen."
         </div>
 
@@ -2047,7 +2047,7 @@ function App() {
         </button>
 
         {/* Version */}
-        <div style={{ color:"#3A2860",fontSize:10,letterSpacing:"0.12em",marginTop:32,animation:"textFadeUp 1s ease-out 1.8s forwards",opacity:0,fontFamily:T.fHead }}>
+        <div style={{ color:"#6A5888",fontSize:10,letterSpacing:"0.12em",marginTop:32,animation:"textFadeUp 1s ease-out 1.8s forwards",opacity:0,fontFamily:T.fHead }}>
           {VERSION}
         </div>
       </div>
