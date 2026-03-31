@@ -1,0 +1,6 @@
+Bugs, quality of life features needed and feedback received. 
+- Bug: Text while locked becomes unclickable on the map. 
+- UI: When the Text has been faded at least 50% transparent, can we disable their collision so we can click through them? 
+- 
+
+

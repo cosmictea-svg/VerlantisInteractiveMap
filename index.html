@@ -16,7 +16,7 @@
       ::-webkit-scrollbar-thumb { background: #3A2860; border-radius: 3px; }
       ::-webkit-scrollbar-thumb:hover { background: #C9A84C; }
 
-      /* ── Landing page animations ── */
+      /* ── Core animations ── */
       @keyframes logoFadeIn {
         from { opacity: 0; transform: scale(0.92) translateY(24px); }
         to   { opacity: 1; transform: scale(1)    translateY(0);    }
@@ -26,149 +26,164 @@
         to   { opacity: 1; transform: translateY(0);    }
       }
       @keyframes shimmer {
-        0%,100% { opacity: 0.5; }
-        50%     { opacity: 1;   }
+        0%,100% { opacity: 0.5; } 50% { opacity: 1; }
       }
       @keyframes bgShift {
-        0%,100% { background-position: 0% 0%; }
-        50%     { background-position: 100% 100%; }
-      }
-      /* Slow ambient drift for secondary blobs between clashes */
-      @keyframes ambientHoly {
-        0%,100% { transform: translate(0px,0px)    scale(1.00); opacity:0.30; }
-        33%     { transform: translate(22px,40px)  scale(1.05); opacity:0.38; }
-        66%     { transform: translate(-14px,18px) scale(0.95); opacity:0.25; }
-      }
-      @keyframes ambientDemonic {
-        0%,100% { transform: translate(0px,0px)    scale(1.00); opacity:0.32; }
-        33%     { transform: translate(-18px,-36px)scale(1.06); opacity:0.40; }
-        66%     { transform: translate(12px,-14px) scale(0.94); opacity:0.26; }
+        0%,100% { background-position: 0% 0%; } 50% { background-position: 100% 100%; }
       }
 
       /*
-       * HOLY blob — 3 clashes at 22%, 50%, 80%
-       * Patrol is slow/lazy. Rush is a 2% sprint (≈0.48s). Impact is instant.
-       * Clash 1 → upper-right,  Clash 2 → centre,  Clash 3 → lower-centre-left
+       * 24s loop — 3 clashes at t=27%, t=60%, t=93%
+       *
+       * IMPACT POINTS (screen-relative, blob centers converge here):
+       *   1 → upper-right  (holy goes right+up,  demonic goes slight-left+up)
+       *   2 → centre-left  (holy goes right+down, demonic goes left+slight-up)
+       *   3 → lower-left   (holy goes slight-right+down, demonic goes left+slight-down)
+       *
+       * Holy anchored: top:-8%, left:-8%   → center ≈ 21vw from TL
+       * Demonic anchored: bottom:-8%, right:-8% → center ≈ 21vw from BR
+       *
+       * Each rush is ~5% of cycle (~1.2s). Recoil snaps back in ~3%.
        */
+
       @keyframes holyClash {
-        0%   { transform: translate(0px,  0px)   scale(1.00); opacity:0.50; }
-        5%   { transform: translate(18px, 38px)  scale(1.03); opacity:0.52; }
-        11%  { transform: translate(-8px, 55px)  scale(0.97); opacity:0.46; }
-        17%  { transform: translate(22px, 28px)  scale(1.01); opacity:0.51; }
-        /* ── rush 1 ── */
-        20%  { transform: translate(20px, 28px)  scale(1.05); opacity:0.60; }
-        21%  { transform: translate(90px, 80px)  scale(1.70); opacity:0.92; }
-        22%  { transform: translate(138px,112px) scale(2.10); opacity:1.00; } /* IMPACT 1 */
-        /* ── recoil 1 ── */
-        23%  { transform: translate(102px,84px)  scale(1.40); opacity:0.52; }
-        27%  { transform: translate(12px, 18px)  scale(0.87); opacity:0.36; }
-        /* ── patrol 2 ── */
-        32%  { transform: translate(-5px, 52px)  scale(1.00); opacity:0.48; }
-        38%  { transform: translate(28px, 75px)  scale(1.04); opacity:0.53; }
-        44%  { transform: translate(8px,  58px)  scale(0.98); opacity:0.47; }
-        /* ── rush 2 ── */
-        48%  { transform: translate(14px, 58px)  scale(1.05); opacity:0.62; }
-        49%  { transform: translate(86px, 158px) scale(1.75); opacity:0.93; }
-        50%  { transform: translate(132px,198px) scale(2.15); opacity:1.00; } /* IMPACT 2 */
-        /* ── recoil 2 ── */
-        51%  { transform: translate(97px, 150px) scale(1.38); opacity:0.50; }
-        55%  { transform: translate(10px, 22px)  scale(0.85); opacity:0.35; }
-        /* ── patrol 3 ── */
-        60%  { transform: translate(5px,  48px)  scale(1.00); opacity:0.49; }
-        66%  { transform: translate(32px, 95px)  scale(1.05); opacity:0.54; }
-        72%  { transform: translate(-6px, 118px) scale(0.97); opacity:0.47; }
-        /* ── rush 3 ── */
-        78%  { transform: translate(10px, 115px) scale(1.05); opacity:0.60; }
-        79%  { transform: translate(68px, 228px) scale(1.72); opacity:0.91; }
-        80%  { transform: translate(102px,270px) scale(2.08); opacity:1.00; } /* IMPACT 3 */
-        /* ── recoil 3 ── */
-        81%  { transform: translate(76px, 202px) scale(1.35); opacity:0.51; }
-        85%  { transform: translate(8px,  32px)  scale(0.86); opacity:0.36; }
-        /* ── drift home ── */
-        92%  { transform: translate(3px,  12px)  scale(1.00); opacity:0.49; }
-        100% { transform: translate(0px,  0px)   scale(1.00); opacity:0.50; }
+        /* ── Patrol 1 (lazy drift near TL corner) ── */
+        0%   { transform: translate(0,0)          scale(1.00); opacity:0.48; }
+        6%   { transform: translate(7vw, 4vh)     scale(1.03); opacity:0.54; }
+        13%  { transform: translate(-3vw, 9vh)    scale(0.97); opacity:0.44; }
+        20%  { transform: translate(5vw, 6vh)     scale(1.01); opacity:0.51; }
+        /* ── Rush 1 → upper-right ── */
+        22%  { transform: translate(6vw, 5vh)     scale(1.08); opacity:0.62; }
+        25%  { transform: translate(34vw, -5vh)   scale(1.55); opacity:0.88; }
+        26.5%{ transform: translate(52vw, -11vh)  scale(1.85); opacity:0.97; }
+        27%  { transform: translate(57vw, -13vh)  scale(2.10); opacity:1.00; } /* ★ IMPACT 1 */
+        /* ── Recoil + reset ── */
+        28.5%{ transform: translate(14vw, -3vh)   scale(1.20); opacity:0.45; }
+        31%  { transform: translate(0,0)          scale(1.00); opacity:0.48; }
+        /* ── Patrol 2 ── */
+        37%  { transform: translate(-4vw, 7vh)    scale(0.98); opacity:0.52; }
+        44%  { transform: translate(8vw, 14vh)    scale(1.03); opacity:0.45; }
+        53%  { transform: translate(3vw, 10vh)    scale(1.01); opacity:0.50; }
+        /* ── Rush 2 → centre ── */
+        55%  { transform: translate(4vw, 11vh)    scale(1.08); opacity:0.63; }
+        58%  { transform: translate(16vw, 22vh)   scale(1.58); opacity:0.89; }
+        59.5%{ transform: translate(23vw, 27vh)   scale(1.88); opacity:0.97; }
+        60%  { transform: translate(26vw, 30vh)   scale(2.12); opacity:1.00; } /* ★ IMPACT 2 */
+        /* ── Recoil + reset ── */
+        61.5%{ transform: translate(6vw, 7vh)     scale(1.18); opacity:0.44; }
+        64%  { transform: translate(0,0)          scale(1.00); opacity:0.48; }
+        /* ── Patrol 3 ── */
+        70%  { transform: translate(4vw, 11vh)    scale(1.02); opacity:0.53; }
+        78%  { transform: translate(-2vw, 18vh)   scale(0.97); opacity:0.45; }
+        86%  { transform: translate(2vw, 14vh)    scale(1.01); opacity:0.50; }
+        /* ── Rush 3 → lower-left ── */
+        88%  { transform: translate(2vw, 15vh)    scale(1.08); opacity:0.62; }
+        91%  { transform: translate(3vw, 36vh)    scale(1.57); opacity:0.88; }
+        92.5%{ transform: translate(4vw, 49vh)    scale(1.86); opacity:0.97; }
+        93%  { transform: translate(4vw, 55vh)    scale(2.08); opacity:1.00; } /* ★ IMPACT 3 */
+        /* ── Recoil + reset ── */
+        94.5%{ transform: translate(1vw, 14vh)    scale(1.18); opacity:0.44; }
+        97%  { transform: translate(0,0)          scale(1.00); opacity:0.48; }
+        100% { transform: translate(0,0)          scale(1.00); opacity:0.48; }
       }
 
-      /* DEMONIC blob — mirrors holy, from bottom-right */
       @keyframes demonicClash {
-        0%   { transform: translate(0px,   0px)   scale(1.00); opacity:0.55; }
-        5%   { transform: translate(-16px,-35px)  scale(1.03); opacity:0.57; }
-        11%  { transform: translate(7px,  -52px)  scale(0.97); opacity:0.49; }
-        17%  { transform: translate(-20px,-26px)  scale(1.01); opacity:0.54; }
-        /* ── rush 1 ── */
-        20%  { transform: translate(-18px,-26px)  scale(1.05); opacity:0.63; }
-        21%  { transform: translate(-87px,-77px)  scale(1.72); opacity:0.93; }
-        22%  { transform: translate(-135px,-109px)scale(2.12); opacity:1.00; } /* IMPACT 1 */
-        /* ── recoil 1 ── */
-        23%  { transform: translate(-99px,-81px)  scale(1.42); opacity:0.53; }
-        27%  { transform: translate(-10px,-16px)  scale(0.85); opacity:0.38; }
-        /* ── patrol 2 ── */
-        32%  { transform: translate(4px,  -49px)  scale(1.00); opacity:0.51; }
-        38%  { transform: translate(-25px,-72px)  scale(1.04); opacity:0.56; }
-        44%  { transform: translate(-6px, -55px)  scale(0.98); opacity:0.50; }
-        /* ── rush 2 ── */
-        48%  { transform: translate(-12px,-55px)  scale(1.05); opacity:0.64; }
-        49%  { transform: translate(-83px,-155px) scale(1.77); opacity:0.94; }
-        50%  { transform: translate(-129px,-194px)scale(2.17); opacity:1.00; } /* IMPACT 2 */
-        /* ── recoil 2 ── */
-        51%  { transform: translate(-94px,-147px) scale(1.40); opacity:0.51; }
-        55%  { transform: translate(-8px, -20px)  scale(0.83); opacity:0.36; }
-        /* ── patrol 3 ── */
-        60%  { transform: translate(-3px, -45px)  scale(1.00); opacity:0.52; }
-        66%  { transform: translate(-30px,-92px)  scale(1.05); opacity:0.57; }
-        72%  { transform: translate(5px,  -115px) scale(0.97); opacity:0.49; }
-        /* ── rush 3 ── */
-        78%  { transform: translate(-8px, -112px) scale(1.05); opacity:0.63; }
-        79%  { transform: translate(-65px,-225px) scale(1.74); opacity:0.92; }
-        80%  { transform: translate(-99px,-266px) scale(2.10); opacity:1.00; } /* IMPACT 3 */
-        /* ── recoil 3 ── */
-        81%  { transform: translate(-73px,-198px) scale(1.37); opacity:0.52; }
-        85%  { transform: translate(-6px, -30px)  scale(0.84); opacity:0.37; }
-        /* ── drift home ── */
-        92%  { transform: translate(-2px, -10px)  scale(1.00); opacity:0.52; }
-        100% { transform: translate(0px,  0px)    scale(1.00); opacity:0.55; }
+        /* ── Patrol 1 (lazy drift near BR corner) ── */
+        0%   { transform: translate(0,0)           scale(1.00); opacity:0.52; }
+        6%   { transform: translate(-6vw, -5vh)    scale(1.03); opacity:0.58; }
+        13%  { transform: translate(3vw,  -10vh)   scale(0.97); opacity:0.47; }
+        20%  { transform: translate(-4vw, -7vh)    scale(1.01); opacity:0.54; }
+        /* ── Rush 1 → upper-right (demonic travels up, slight left) ── */
+        22%  { transform: translate(-5vw, -6vh)    scale(1.08); opacity:0.65; }
+        25%  { transform: translate(-2vw, -30vh)   scale(1.57); opacity:0.89; }
+        26.5%{ transform: translate(-2vw, -48vh)   scale(1.87); opacity:0.97; }
+        27%  { transform: translate(-2vw, -54vh)   scale(2.12); opacity:1.00; } /* ★ IMPACT 1 */
+        /* ── Recoil + reset ── */
+        28.5%{ transform: translate(-1vw, -13vh)   scale(1.20); opacity:0.46; }
+        31%  { transform: translate(0,0)           scale(1.00); opacity:0.52; }
+        /* ── Patrol 2 ── */
+        37%  { transform: translate(5vw,  -8vh)    scale(0.98); opacity:0.55; }
+        44%  { transform: translate(-7vw, -15vh)   scale(1.03); opacity:0.48; }
+        53%  { transform: translate(-2vw, -11vh)   scale(1.01); opacity:0.53; }
+        /* ── Rush 2 → centre (demonic travels left and up) ── */
+        55%  { transform: translate(-3vw, -12vh)   scale(1.08); opacity:0.66; }
+        58%  { transform: translate(-20vw, -22vh)  scale(1.60); opacity:0.90; }
+        59.5%{ transform: translate(-28vw, -28vh)  scale(1.90); opacity:0.97; }
+        60%  { transform: translate(-31vw, -31vh)  scale(2.14); opacity:1.00; } /* ★ IMPACT 2 */
+        /* ── Recoil + reset ── */
+        61.5%{ transform: translate(-7vw, -8vh)    scale(1.19); opacity:0.45; }
+        64%  { transform: translate(0,0)           scale(1.00); opacity:0.52; }
+        /* ── Patrol 3 ── */
+        70%  { transform: translate(-3vw, -12vh)   scale(1.02); opacity:0.56; }
+        78%  { transform: translate(2vw,  -19vh)   scale(0.97); opacity:0.47; }
+        86%  { transform: translate(-1vw, -15vh)   scale(1.01); opacity:0.53; }
+        /* ── Rush 3 → lower-left (demonic travels far left) ── */
+        88%  { transform: translate(-2vw, -15vh)   scale(1.08); opacity:0.65; }
+        91%  { transform: translate(-34vw, -4vh)   scale(1.58); opacity:0.89; }
+        92.5%{ transform: translate(-51vw, -1vh)   scale(1.88); opacity:0.97; }
+        93%  { transform: translate(-57vw, 0vh)    scale(2.10); opacity:1.00; } /* ★ IMPACT 3 */
+        /* ── Recoil + reset ── */
+        94.5%{ transform: translate(-14vw, 0vh)    scale(1.19); opacity:0.45; }
+        97%  { transform: translate(0,0)           scale(1.00); opacity:0.52; }
+        100% { transform: translate(0,0)           scale(1.00); opacity:0.52; }
       }
 
-      /* ── Clash flash 1 — snaps on at 22%, gone by 24.5% ── */
+      /*
+       * Explosion dissolve — bright snap at impact, expands outward and fades smoothly.
+       * Each flash is visible for ~8% of the cycle (~1.9s): instant on, slow dissolve out.
+       */
       @keyframes clashFlash1 {
-        0%, 21.5%, 24.5%, 100% { opacity:0; transform:translate(-50%,-50%) scale(0.05); }
-        22%  { opacity:1.0; transform:translate(-50%,-50%) scale(0.7);  }
-        22.6%{ opacity:0.8; transform:translate(-50%,-50%) scale(1.6);  }
-        24%  { opacity:0;   transform:translate(-50%,-50%) scale(2.8);  }
+        0%,   26.8%, 35%, 100% { opacity:0; transform:translate(-50%,-50%) scale(0.05); }
+        27%   { opacity:1.00; transform:translate(-50%,-50%) scale(0.20); }
+        27.5% { opacity:0.90; transform:translate(-50%,-50%) scale(0.65); }
+        29%   { opacity:0.65; transform:translate(-50%,-50%) scale(1.20); }
+        31%   { opacity:0.30; transform:translate(-50%,-50%) scale(1.90); }
+        33.5% { opacity:0.08; transform:translate(-50%,-50%) scale(2.60); }
+        35%   { opacity:0;    transform:translate(-50%,-50%) scale(3.00); }
       }
       @keyframes shockRing1 {
-        0%, 21.8%, 24.5%, 100% { opacity:0; transform:translate(-50%,-50%) scale(0.05); }
-        22%  { opacity:0.9; transform:translate(-50%,-50%) scale(0.2);  }
-        23%  { opacity:0.4; transform:translate(-50%,-50%) scale(1.8);  }
-        24%  { opacity:0;   transform:translate(-50%,-50%) scale(3.2);  }
+        0%,   26.8%, 36%, 100% { opacity:0; transform:translate(-50%,-50%) scale(0.05); border-width:2px; }
+        27%   { opacity:0.95; transform:translate(-50%,-50%) scale(0.15); border-width:3px; }
+        28%   { opacity:0.70; transform:translate(-50%,-50%) scale(0.90); border-width:2px; }
+        30%   { opacity:0.35; transform:translate(-50%,-50%) scale(1.80); border-width:1.5px; }
+        33%   { opacity:0.08; transform:translate(-50%,-50%) scale(3.00); border-width:1px; }
+        35%   { opacity:0;    transform:translate(-50%,-50%) scale(3.80); border-width:0.5px; }
       }
 
-      /* ── Clash flash 2 — snaps on at 50% ── */
       @keyframes clashFlash2 {
-        0%, 49.5%, 52.5%, 100% { opacity:0; transform:translate(-50%,-50%) scale(0.05); }
-        50%  { opacity:1.0; transform:translate(-50%,-50%) scale(0.7);  }
-        50.6%{ opacity:0.8; transform:translate(-50%,-50%) scale(1.6);  }
-        52%  { opacity:0;   transform:translate(-50%,-50%) scale(2.8);  }
+        0%,   59.8%, 68%, 100% { opacity:0; transform:translate(-50%,-50%) scale(0.05); }
+        60%   { opacity:1.00; transform:translate(-50%,-50%) scale(0.20); }
+        60.5% { opacity:0.90; transform:translate(-50%,-50%) scale(0.65); }
+        62%   { opacity:0.65; transform:translate(-50%,-50%) scale(1.20); }
+        64%   { opacity:0.30; transform:translate(-50%,-50%) scale(1.90); }
+        66.5% { opacity:0.08; transform:translate(-50%,-50%) scale(2.60); }
+        68%   { opacity:0;    transform:translate(-50%,-50%) scale(3.00); }
       }
       @keyframes shockRing2 {
-        0%, 49.8%, 52.5%, 100% { opacity:0; transform:translate(-50%,-50%) scale(0.05); }
-        50%  { opacity:0.9; transform:translate(-50%,-50%) scale(0.2);  }
-        51%  { opacity:0.4; transform:translate(-50%,-50%) scale(1.8);  }
-        52%  { opacity:0;   transform:translate(-50%,-50%) scale(3.2);  }
+        0%,   59.8%, 69%, 100% { opacity:0; transform:translate(-50%,-50%) scale(0.05); border-width:2px; }
+        60%   { opacity:0.95; transform:translate(-50%,-50%) scale(0.15); border-width:3px; }
+        61%   { opacity:0.70; transform:translate(-50%,-50%) scale(0.90); border-width:2px; }
+        63%   { opacity:0.35; transform:translate(-50%,-50%) scale(1.80); border-width:1.5px; }
+        66%   { opacity:0.08; transform:translate(-50%,-50%) scale(3.00); border-width:1px; }
+        68%   { opacity:0;    transform:translate(-50%,-50%) scale(3.80); border-width:0.5px; }
       }
 
-      /* ── Clash flash 3 — snaps on at 80% ── */
       @keyframes clashFlash3 {
-        0%, 79.5%, 82.5%, 100% { opacity:0; transform:translate(-50%,-50%) scale(0.05); }
-        80%  { opacity:1.0; transform:translate(-50%,-50%) scale(0.7);  }
-        80.6%{ opacity:0.8; transform:translate(-50%,-50%) scale(1.6);  }
-        82%  { opacity:0;   transform:translate(-50%,-50%) scale(2.8);  }
+        0%,   92.8%, 101%, 100% { opacity:0; transform:translate(-50%,-50%) scale(0.05); }
+        93%   { opacity:1.00; transform:translate(-50%,-50%) scale(0.20); }
+        93.5% { opacity:0.90; transform:translate(-50%,-50%) scale(0.65); }
+        95%   { opacity:0.65; transform:translate(-50%,-50%) scale(1.20); }
+        97%   { opacity:0.30; transform:translate(-50%,-50%) scale(1.90); }
+        99%   { opacity:0.08; transform:translate(-50%,-50%) scale(2.60); }
+        100%  { opacity:0;    transform:translate(-50%,-50%) scale(3.00); }
       }
       @keyframes shockRing3 {
-        0%, 79.8%, 82.5%, 100% { opacity:0; transform:translate(-50%,-50%) scale(0.05); }
-        80%  { opacity:0.9; transform:translate(-50%,-50%) scale(0.2);  }
-        81%  { opacity:0.4; transform:translate(-50%,-50%) scale(1.8);  }
-        82%  { opacity:0;   transform:translate(-50%,-50%) scale(3.2);  }
+        0%,   92.8%, 100% { opacity:0; transform:translate(-50%,-50%) scale(0.05); border-width:2px; }
+        93%   { opacity:0.95; transform:translate(-50%,-50%) scale(0.15); border-width:3px; }
+        94%   { opacity:0.70; transform:translate(-50%,-50%) scale(0.90); border-width:2px; }
+        96%   { opacity:0.35; transform:translate(-50%,-50%) scale(1.80); border-width:1.5px; }
+        98.5% { opacity:0.08; transform:translate(-50%,-50%) scale(3.00); border-width:1px; }
+        100%  { opacity:0;    transform:translate(-50%,-50%) scale(3.80); border-width:0.5px; }
       }
     </style>
   </head>

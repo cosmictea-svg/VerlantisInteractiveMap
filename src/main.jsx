@@ -2050,44 +2050,38 @@ function App() {
       background:"linear-gradient(135deg, #0C0618 0%, #070310 40%, #110308 100%)",
       backgroundSize:"300% 300%", animation:"bgShift 20s ease-in-out infinite" }}>
 
-      {/* ── Holy blob (top-left origin) ── */}
-      <div style={{ position:"fixed",top:"-8%",left:"-8%",width:"58vw",height:"58vw",maxWidth:640,maxHeight:640,borderRadius:"50%",
-        background:"radial-gradient(circle, rgba(255,230,110,0.22) 0%, rgba(201,168,76,0.12) 35%, transparent 70%)",
+      {/* ── Holy blob — patrols top-left, rushes to 3 impact points ── */}
+      <div style={{ position:"fixed",top:"-8%",left:"-8%",width:"min(58vw,58vh)",height:"min(58vw,58vh)",maxWidth:660,maxHeight:660,borderRadius:"50%",
+        background:"radial-gradient(circle, rgba(255,230,110,0.24) 0%, rgba(201,168,76,0.13) 35%, transparent 70%)",
         pointerEvents:"none", animation:"holyClash 24s linear infinite" }} />
-      <div style={{ position:"fixed",top:"0%",left:"0%",width:"28vw",height:"28vw",maxWidth:300,maxHeight:300,borderRadius:"50%",
-        background:"radial-gradient(circle, rgba(255,245,190,0.12) 0%, rgba(220,185,80,0.06) 45%, transparent 70%)",
-        pointerEvents:"none", animation:"ambientHoly 13s ease-in-out infinite" }} />
 
-      {/* ── Demonic blob (bottom-right origin) ── */}
-      <div style={{ position:"fixed",bottom:"-8%",right:"-8%",width:"58vw",height:"58vw",maxWidth:640,maxHeight:640,borderRadius:"50%",
-        background:"radial-gradient(circle, rgba(200,35,20,0.26) 0%, rgba(140,20,15,0.14) 35%, transparent 70%)",
+      {/* ── Demonic blob — patrols bottom-right, rushes to 3 impact points ── */}
+      <div style={{ position:"fixed",bottom:"-8%",right:"-8%",width:"min(58vw,58vh)",height:"min(58vw,58vh)",maxWidth:660,maxHeight:660,borderRadius:"50%",
+        background:"radial-gradient(circle, rgba(210,35,20,0.28) 0%, rgba(140,20,15,0.15) 35%, transparent 70%)",
         pointerEvents:"none", animation:"demonicClash 24s linear infinite" }} />
-      <div style={{ position:"fixed",bottom:"0%",right:"0%",width:"26vw",height:"26vw",maxWidth:280,maxHeight:280,borderRadius:"50%",
-        background:"radial-gradient(circle, rgba(230,90,20,0.14) 0%, rgba(170,45,10,0.07) 45%, transparent 70%)",
-        pointerEvents:"none", animation:"ambientDemonic 15s ease-in-out infinite" }} />
 
-      {/* ── Clash 1 flash+ring — upper-right (~22%) ── */}
-      <div style={{ position:"fixed",top:"18%",left:"60%",width:"44vw",height:"44vw",maxWidth:460,maxHeight:460,borderRadius:"50%",
-        background:"radial-gradient(circle, rgba(255,210,80,0.9) 0%, rgba(200,60,20,0.5) 35%, transparent 70%)",
+      {/* ── Impact 1: upper-right (t=27%) ── */}
+      <div style={{ position:"fixed",top:"12%",left:"72%",width:"min(50vw,50vh)",height:"min(50vw,50vh)",maxWidth:520,maxHeight:520,borderRadius:"50%",
+        background:"radial-gradient(circle, rgba(255,220,100,0.92) 0%, rgba(220,80,20,0.55) 30%, rgba(160,20,10,0.2) 60%, transparent 75%)",
         pointerEvents:"none", animation:"clashFlash1 24s linear infinite" }} />
-      <div style={{ position:"fixed",top:"18%",left:"60%",width:"60vw",height:"60vw",maxWidth:620,maxHeight:620,borderRadius:"50%",
-        border:"2px solid rgba(255,190,50,0.75)",
+      <div style={{ position:"fixed",top:"12%",left:"72%",width:"min(72vw,72vh)",height:"min(72vw,72vh)",maxWidth:740,maxHeight:740,borderRadius:"50%",
+        border:"2px solid rgba(255,195,60,0.7)", background:"transparent",
         pointerEvents:"none", animation:"shockRing1 24s linear infinite" }} />
 
-      {/* ── Clash 2 flash+ring — centre (~50%) ── */}
-      <div style={{ position:"fixed",top:"38%",left:"28%",width:"44vw",height:"44vw",maxWidth:460,maxHeight:460,borderRadius:"50%",
-        background:"radial-gradient(circle, rgba(255,210,80,0.9) 0%, rgba(200,60,20,0.5) 35%, transparent 70%)",
+      {/* ── Impact 2: centre (t=60%) ── */}
+      <div style={{ position:"fixed",top:"48%",left:"44%",width:"min(50vw,50vh)",height:"min(50vw,50vh)",maxWidth:520,maxHeight:520,borderRadius:"50%",
+        background:"radial-gradient(circle, rgba(255,220,100,0.92) 0%, rgba(220,80,20,0.55) 30%, rgba(160,20,10,0.2) 60%, transparent 75%)",
         pointerEvents:"none", animation:"clashFlash2 24s linear infinite" }} />
-      <div style={{ position:"fixed",top:"38%",left:"28%",width:"60vw",height:"60vw",maxWidth:620,maxHeight:620,borderRadius:"50%",
-        border:"2px solid rgba(255,190,50,0.75)",
+      <div style={{ position:"fixed",top:"48%",left:"44%",width:"min(72vw,72vh)",height:"min(72vw,72vh)",maxWidth:740,maxHeight:740,borderRadius:"50%",
+        border:"2px solid rgba(255,195,60,0.7)", background:"transparent",
         pointerEvents:"none", animation:"shockRing2 24s linear infinite" }} />
 
-      {/* ── Clash 3 flash+ring — lower-left (~80%) ── */}
-      <div style={{ position:"fixed",top:"58%",left:"10%",width:"44vw",height:"44vw",maxWidth:460,maxHeight:460,borderRadius:"50%",
-        background:"radial-gradient(circle, rgba(255,210,80,0.9) 0%, rgba(200,60,20,0.5) 35%, transparent 70%)",
+      {/* ── Impact 3: lower-left (t=93%) ── */}
+      <div style={{ position:"fixed",top:"75%",left:"18%",width:"min(50vw,50vh)",height:"min(50vw,50vh)",maxWidth:520,maxHeight:520,borderRadius:"50%",
+        background:"radial-gradient(circle, rgba(255,220,100,0.92) 0%, rgba(220,80,20,0.55) 30%, rgba(160,20,10,0.2) 60%, transparent 75%)",
         pointerEvents:"none", animation:"clashFlash3 24s linear infinite" }} />
-      <div style={{ position:"fixed",top:"58%",left:"10%",width:"60vw",height:"60vw",maxWidth:620,maxHeight:620,borderRadius:"50%",
-        border:"2px solid rgba(255,190,50,0.75)",
+      <div style={{ position:"fixed",top:"75%",left:"18%",width:"min(72vw,72vh)",height:"min(72vw,72vh)",maxWidth:740,maxHeight:740,borderRadius:"50%",
+        border:"2px solid rgba(255,195,60,0.7)", background:"transparent",
         pointerEvents:"none", animation:"shockRing3 24s linear infinite" }} />
 
       {/* ── Main content ── */}
