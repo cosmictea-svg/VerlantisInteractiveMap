@@ -326,6 +326,158 @@ const VERLANTIS_QUOTES = [
   { quote: "The rest of this era's history has not yet been written. That is either the most hopeful or most terrifying sentence in this entire record. I genuinely cannot decide.", attribution: "Verlantis Encyclopedia, closing note, EC4 entry" },
 ];
 
+// ── Tutorial step data ─────────────────────────────────────────────────────────
+const CAMPAIGN_STEPS = [
+  { target:"tut-campaign-cards",  title:"Your Campaigns",      desc:"All campaigns you belong to appear here. Tap any card to enter it." },
+  { target:"tut-campaign-role",   title:"Your Role",           desc:"👑 means you are the Game Master — you control the world. ⚔ means you are a Player." },
+  { target:"tut-campaign-create", title:"Create a Campaign",   desc:"GMs: tap here to start a brand new campaign. You can own up to 5." },
+  { target:"tut-campaign-join",   title:"Join a Campaign",     desc:"Players: paste the Campaign ID your GM shared with you to join their world." },
+];
+const PLAYER_STEPS = [
+  { target:"tut-map-area",     title:"The Map",             desc:"Drag to pan. Pinch or scroll to zoom. Double-tap any empty area to reset the view." },
+  { target:"tut-toolbar-marker", title:"Your Marker",       desc:"Tap '＋ Marker' to drop your position on the map. Tap your marker again to move or remove it." },
+  { target:"tut-tab-info",     title:"Info Tab",            desc:"Find campaign announcements, lore notes and session recaps posted by your GM here." },
+  { target:"tut-tab-profile",  title:"Profile Tab",         desc:"Set your display name, choose your colour, and adjust sound & notification settings." },
+  { target:"tut-notif-bell",   title:"Notifications",       desc:"The bell lights up when the GM posts something new — pins moved, announcements, events." },
+  { target:"tut-header-back",  title:"Leave Campaign",      desc:"The ← arrow returns you to the campaign list. Your markers and data are always saved." },
+];
+const GM_STEPS = [
+  { target:"tut-map-area",        title:"The Map",              desc:"Drag to pan. Pinch or scroll to zoom. Use 'Fit ⟳' or press F to reset the view at any time." },
+  { target:"tut-toolbar-poi",     title:"Place a POI",          desc:"Tap '＋ POI' then tap anywhere on the map to drop a Point of Interest. Add a name, icon, category and description — control whether players can see it." },
+  { target:"tut-toolbar-npc",     title:"Place an NPC",         desc:"NPCs sit on the map and show a sonar ring when they move. Toggle name, status and aura visibility per NPC." },
+  { target:"tut-toolbar-marker",  title:"Your Marker",          desc:"Drop your own GM marker to mark a location. Players see their own markers; you see all of them." },
+  { target:"tut-toolbar-fit",     title:"Fit & Zoom Speed",     desc:"'Fit ⟳' snaps back to the full map view. Use the Zoom Speed slider to tune how fast scrolling zooms in." },
+  { target:"tut-map-switcher",    title:"Map Switcher",         desc:"Switch between your campaign's maps here. Create sub-maps (dungeons, buildings) from the Library tab and link them via Portal POIs." },
+  { target:"tut-tab-library",     title:"Library Tab",          desc:"Your control centre. Create & manage POIs, NPCs, Overlays (image layers), Zones (coloured regions) and manage your maps from here." },
+  { target:"tut-tab-info",        title:"Info Tab",             desc:"Post announcements your players see in real time. Add campaign lore, session notes or handouts." },
+  { target:"tut-invite-bar",      title:"Invite Players",       desc:"Your Campaign ID is shown in this bar. Share it with your players so they can join. Hit Copy for a one-click copy." },
+  { target:"tut-tab-profile",     title:"Profile & Members",    desc:"See who's in your campaign, kick players if needed, set per-player marker limits, and customise your own display." },
+];
+
+// ── TutorialOverlay ────────────────────────────────────────────────────────────
+function TutorialOverlay({ steps, stepIndex, onNext, onPrev, onExit }) {
+  const [rect, setRect] = useState(null);
+  const PAD = 10;
+
+  useEffect(() => {
+    const step = steps[stepIndex];
+    if (!step?.target) { setRect(null); return; }
+    const el = document.querySelector(`[data-tut="${step.target}"]`);
+    if (!el) { setRect(null); return; }
+    const r = el.getBoundingClientRect();
+    setRect(r);
+    el.scrollIntoView({ behavior:"smooth", block:"nearest", inline:"nearest" });
+  }, [stepIndex, steps]);
+
+  useEffect(() => {
+    function recalc() {
+      const step = steps[stepIndex];
+      if (!step?.target) return;
+      const el = document.querySelector(`[data-tut="${step.target}"]`);
+      if (el) setRect(el.getBoundingClientRect());
+    }
+    window.addEventListener("resize", recalc);
+    return () => window.removeEventListener("resize", recalc);
+  }, [stepIndex, steps]);
+
+  const step = steps[stepIndex];
+  const isLast = stepIndex === steps.length - 1;
+
+  return (
+    <>
+      {/* Dim backdrop — 4-panel cutout around the highlighted element */}
+      <div style={{ position:"fixed", inset:0, zIndex:7900, pointerEvents:"none" }}>
+        {rect ? <>
+          <div style={{ position:"absolute", inset:`0 0 ${window.innerHeight - rect.top + PAD}px 0`, background:"rgba(4,2,14,0.72)" }} />
+          <div style={{ position:"absolute", top:rect.top - PAD, bottom:0, left:0, width: Math.max(0, rect.left - PAD), background:"rgba(4,2,14,0.72)" }} />
+          <div style={{ position:"absolute", top:rect.top - PAD, bottom:0, left: rect.right + PAD, right:0, background:"rgba(4,2,14,0.72)" }} />
+          <div style={{ position:"absolute", top: rect.bottom + PAD, left:0, right:0, bottom:0, background:"rgba(4,2,14,0.72)" }} />
+          {/* Glowing highlight ring */}
+          <div style={{ position:"absolute", top: rect.top - PAD, left: rect.left - PAD,
+            width: rect.width + PAD*2, height: rect.height + PAD*2,
+            borderRadius:12, border:"2px solid rgba(201,168,76,0.9)",
+            animation:"tutorialPulse 1.6s ease-in-out infinite",
+            boxShadow:"0 0 0 3px rgba(201,168,76,0.25), 0 0 18px rgba(201,168,76,0.3)" }} />
+        </> : (
+          // Full dim when no target element found
+          <div style={{ position:"absolute", inset:0, background:"rgba(4,2,14,0.55)" }} />
+        )}
+      </div>
+
+      {/* Tutorial card — fixed at bottom, centred, safe-area aware */}
+      <div style={{ position:"fixed", bottom:"max(20px, env(safe-area-inset-bottom))",
+        left:"50%", transform:"translateX(-50%)", zIndex:8000,
+        width:"min(440px, calc(100vw - 28px))",
+        background:"linear-gradient(145deg, #0F0820 0%, #14060E 100%)",
+        border:"1px solid rgba(201,168,76,0.32)", borderRadius:16,
+        padding:"16px 18px 14px",
+        boxShadow:"0 10px 50px rgba(0,0,0,0.8), 0 0 0 1px rgba(201,168,76,0.08)",
+        animation:"tutorialCardIn 0.25s ease-out",
+        WebkitFontSmoothing:"antialiased" }}>
+
+        {/* Top row: step counter + exit */}
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+            <span style={{ fontSize:9, letterSpacing:"0.2em", textTransform:"uppercase", color:"rgba(201,168,76,0.55)", fontFamily:T.fHead }}>
+              Step {stepIndex + 1} of {steps.length}
+            </span>
+            {/* Progress dots */}
+            <div style={{ display:"flex", gap:4 }}>
+              {steps.map((_, i) => (
+                <div key={i} style={{ width: i === stepIndex ? 14 : 6, height:6, borderRadius:3,
+                  background: i < stepIndex ? "rgba(201,168,76,0.55)" : i === stepIndex ? "#C9A84C" : "rgba(201,168,76,0.18)",
+                  transition:"all 0.25s" }} />
+              ))}
+            </div>
+          </div>
+          <button onClick={onExit}
+            style={{ background:"none", border:"none", color:"rgba(180,155,215,0.5)", cursor:"pointer",
+              fontSize:17, lineHeight:1, padding:"2px 0 2px 10px", flexShrink:0 }}
+            title="Exit tutorial">✕</button>
+        </div>
+
+        {/* Title */}
+        <div style={{ fontFamily:T.fHead, fontWeight:700, fontSize:15, color:"#C9A84C",
+          letterSpacing:"0.04em", marginBottom:6, lineHeight:1.3 }}>{step.title}</div>
+
+        {/* Description */}
+        <div style={{ fontSize:13, color:"rgba(215,200,245,0.88)", lineHeight:1.65, marginBottom:14 }}>
+          {step.desc}
+        </div>
+
+        {/* Button row */}
+        <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+          {stepIndex > 0 ? (
+            <button onClick={onPrev}
+              style={{ padding:"8px 16px", borderRadius:10, border:"1px solid rgba(201,168,76,0.22)",
+                background:"transparent", color:"rgba(201,168,76,0.65)", fontSize:12,
+                fontFamily:T.fHead, cursor:"pointer", letterSpacing:"0.06em", flexShrink:0 }}>
+              ← Prev
+            </button>
+          ) : (
+            <button onClick={onExit}
+              style={{ padding:"8px 16px", borderRadius:10, border:"1px solid rgba(130,110,180,0.25)",
+                background:"transparent", color:"rgba(180,160,220,0.45)", fontSize:12,
+                fontFamily:T.fHead, cursor:"pointer", letterSpacing:"0.06em", flexShrink:0 }}>
+              Skip
+            </button>
+          )}
+          <div style={{ flex:1 }} />
+          <button onClick={isLast ? onExit : onNext}
+            style={{ padding:"9px 22px", borderRadius:10, border:"1px solid rgba(201,168,76,0.4)",
+              background:"rgba(201,168,76,0.13)", color:"#C9A84C", fontSize:13,
+              fontFamily:T.fHead, fontWeight:700, cursor:"pointer", letterSpacing:"0.07em",
+              transition:"background 0.18s, border-color 0.18s" }}
+            onMouseEnter={e=>{ e.currentTarget.style.background="rgba(201,168,76,0.24)"; e.currentTarget.style.borderColor="rgba(201,168,76,0.65)"; }}
+            onMouseLeave={e=>{ e.currentTarget.style.background="rgba(201,168,76,0.13)"; e.currentTarget.style.borderColor="rgba(201,168,76,0.4)"; }}>
+            {isLast ? "Done ✓" : "Next →"}
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function Btn({ style, variant, size, onClick, children, disabled }) {
   const base = { padding: size === "sm" ? "5px 12px" : "7px 16px", fontSize: size === "sm" ? 12 : 13, borderRadius: 8, border: `1px solid ${T.border}`, background: T.bg, cursor: disabled ? "default" : "pointer", fontWeight: 500, color: T.ink, fontFamily: T.fBody, lineHeight: 1.35 };
   const v = variant === "primary" ? { background: T.purple, color: T.headerFg, border: "none" }
@@ -660,6 +812,8 @@ function App() {
   const [movingPOI, setMovingPOI] = useState(null);           // poi id whose move-dropdown is open
   const [moveDropdownPos, setMoveDropdownPos] = useState(null); // { top|bottom, right } for fixed dropdown
   const [campDeleteConfirm, setCampDeleteConfirm] = useState(null); // campaign object to delete, or null
+  const [tutStep, setTutStep] = useState(0);
+  const [tutMode, setTutMode] = useState(null); // null | "campaign" | "player" | "gm"
   const [mapDeleteConfirm, setMapDeleteConfirm] = useState(null);   // map id to delete, or null
   const [campaignLoading, setCampaignLoading] = useState(false);
   const [npcs, setNpcs] = useState([]);
@@ -768,6 +922,25 @@ function App() {
   }, []);
 
   useEffect(() => { if (user && session) loadCampaigns(); }, [user]);
+
+  // ── Tutorial auto-trigger ──
+  // Campaign page: show once for new users who have campaigns to see
+  useEffect(() => {
+    if (user && !activeCampaign && tutMode === null) {
+      if (!localStorage.getItem("tut_campaign_v1")) {
+        setTutStep(0); setTutMode("campaign");
+      }
+    }
+  }, [user, activeCampaign]);
+  // Map page: show once on first campaign entry, mode depends on role
+  useEffect(() => {
+    if (activeCampaign && tutMode === null) {
+      const key = isGM ? "tut_gm_v1" : "tut_player_v1";
+      if (!localStorage.getItem(key)) {
+        setTutStep(0); setTutMode(isGM ? "gm" : "player");
+      }
+    }
+  }, [activeCampaign?.id, isGM]);
 
   // ── Realtime ──
   useEffect(() => {
@@ -2050,6 +2223,19 @@ function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (openMarkerCard) { clearTimeout(markerCloseTimer.current); setMarkerCardClosing(null); } }, [openMarkerCard]);
 
+  // ── Tutorial helpers ──
+  const tutSteps = tutMode === "campaign" ? CAMPAIGN_STEPS : tutMode === "gm" ? GM_STEPS : tutMode === "player" ? PLAYER_STEPS : [];
+  function tutNext() {
+    if (tutStep < tutSteps.length - 1) { setTutStep(s => s + 1); }
+    else tutDone();
+  }
+  function tutPrev() { setTutStep(s => Math.max(0, s - 1)); }
+  function tutDone() {
+    const key = tutMode === "campaign" ? "tut_campaign_v1" : tutMode === "gm" ? "tut_gm_v1" : "tut_player_v1";
+    localStorage.setItem(key, "1");
+    setTutMode(null);
+  }
+
   // Card positions — uses the closing id as fallback so the card stays positioned during fade-out
   const displayedPOIId = openPOICard || poiCardClosing;
   const displayedMarkerCardId = openMarkerCard || markerCardClosing;
@@ -2269,7 +2455,7 @@ function App() {
 
         {/* ── Section label ── */}
         {!campaignLoading && campaigns.length > 0 && (
-          <div style={{ fontSize:10,letterSpacing:"0.2em",textTransform:"uppercase",color:"rgba(201,168,76,0.65)",fontFamily:T.fHead,marginBottom:10 }}>
+          <div data-tut="tut-campaign-cards" style={{ fontSize:10,letterSpacing:"0.2em",textTransform:"uppercase",color:"rgba(201,168,76,0.65)",fontFamily:T.fHead,marginBottom:10 }}>
             Your Campaigns
           </div>
         )}
@@ -2286,7 +2472,7 @@ function App() {
               onMouseLeave={e=>{ e.currentTarget.style.borderColor=isGMRole?"rgba(201,168,76,0.28)":"rgba(130,100,210,0.28)"; e.currentTarget.style.background="rgba(255,255,255,0.045)"; }}>
               <div style={{ display:"flex",alignItems:"center",gap:12 }}>
                 {/* Role badge */}
-                <div style={{ width:38,height:38,borderRadius:"50%",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,
+                <div data-tut="tut-campaign-role" style={{ width:38,height:38,borderRadius:"50%",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,
                   background:isGMRole?"rgba(201,168,76,0.15)":"rgba(120,80,200,0.14)",
                   border:`1.5px solid ${isGMRole?"rgba(201,168,76,0.5)":"rgba(150,110,230,0.45)"}` }}>
                   {isGMRole ? "👑" : "⚔"}
@@ -2318,7 +2504,7 @@ function App() {
         {(()=>{ const ownedCount = campaigns.filter(c=>c.myRole==="gm").length; const atLimit = ownedCount >= 5; return (
           <div style={{ marginTop:campaigns.length>0?14:0,display:"flex",flexDirection:"column",gap:10 }}>
             <div style={{ display:"flex",gap:10 }}>
-              <button
+              <button data-tut="tut-campaign-create"
                 onClick={()=>{ if(atLimit){setError("You've reached the 5 campaign limit. Delete an existing campaign to create a new one.");return;} setShowCampaignModal(true); }}
                 style={{ flex:1,padding:"11px 0",borderRadius:12,border:`1px solid ${atLimit?"rgba(201,168,76,0.2)":"rgba(201,168,76,0.45)"}`,
                   background:atLimit?"rgba(255,255,255,0.02)":"rgba(201,168,76,0.12)",
@@ -2328,7 +2514,7 @@ function App() {
                 onMouseLeave={e=>{ if(!atLimit){ e.currentTarget.style.background="rgba(201,168,76,0.12)"; e.currentTarget.style.borderColor="rgba(201,168,76,0.45)"; } }}>
                 ＋ Create Campaign
               </button>
-              <button
+              <button data-tut="tut-campaign-join"
                 onClick={()=>setShowJoinModal(true)}
                 style={{ flex:1,padding:"11px 0",borderRadius:12,border:"1px solid rgba(140,105,220,0.42)",
                   background:"rgba(120,80,200,0.1)",color:"rgba(200,182,245,0.9)",fontSize:13,
@@ -2342,8 +2528,15 @@ function App() {
           </div>
         ); })()}
 
-        {/* Version */}
-        <div style={{ fontSize:9,color:"rgba(140,120,180,0.45)",letterSpacing:"0.1em",textAlign:"center",marginTop:"auto",paddingTop:28,fontFamily:T.fHead }}>{VERSION}</div>
+        {/* Version + help button */}
+        <div style={{ display:"flex",alignItems:"center",justifyContent:"center",gap:14,marginTop:"auto",paddingTop:28 }}>
+          <div style={{ fontSize:9,color:"rgba(140,120,180,0.45)",letterSpacing:"0.1em",fontFamily:T.fHead }}>{VERSION}</div>
+          <button onClick={()=>{ setTutStep(0); setTutMode("campaign"); }}
+            style={{ padding:"4px 12px",borderRadius:20,border:"1px solid rgba(201,168,76,0.28)",background:"transparent",
+              color:"rgba(201,168,76,0.55)",fontSize:10,cursor:"pointer",fontFamily:T.fHead,letterSpacing:"0.08em" }}>
+            ? Tutorial
+          </button>
+        </div>
 
       </div>
 
@@ -2398,6 +2591,11 @@ function App() {
           </div>
         </div>
       )}
+
+      {/* ── Campaign page tutorial ── */}
+      {tutMode === "campaign" && (
+        <TutorialOverlay steps={CAMPAIGN_STEPS} stepIndex={tutStep} onNext={tutNext} onPrev={tutPrev} onExit={tutDone} />
+      )}
     </div>
   );
 
@@ -2406,7 +2604,7 @@ function App() {
       {/* Header */}
       <div style={{ display:"flex",alignItems:"center",gap:10,padding:"0 14px",minHeight:52,borderBottom:`2px solid ${T.gold}44`,background:T.header,flexShrink:0 }}>
         {/* Back to campaign list */}
-        <button onClick={()=>{setActiveCampaign(null);localStorage.removeItem("sb_last_campaign");if(realtimeRef.current)realtimeRef.current.unsubscribe();}}
+        <button data-tut="tut-header-back" onClick={()=>{setActiveCampaign(null);localStorage.removeItem("sb_last_campaign");if(realtimeRef.current)realtimeRef.current.unsubscribe();}}
           title="All Campaigns"
           style={{ background:"none",border:"none",cursor:"pointer",fontSize:20,padding:"12px 6px 12px 0",color:T.headerFg,lineHeight:1,flexShrink:0 }}>←</button>
         {/* Campaign name + subtitle */}
@@ -2421,10 +2619,16 @@ function App() {
         </>}
         {/* Role badge */}
         <span style={{ fontSize:10,padding:"3px 10px",borderRadius:20,background:isGM?`${T.gold}30`:`${T.headerFg}18`,color:isGM?T.gold:`${T.headerFg}cc`,fontWeight:700,border:`1px solid ${isGM?`${T.gold}55`:`${T.headerFg}30`}`,fontFamily:T.fHead,letterSpacing:"0.06em",flexShrink:0 }}>{isGM?"GM":"Player"}</span>
-        {/* Tutorial placeholder */}
-        <button onClick={()=>{}} title="Tutorial coming soon" style={{ background:"none",border:`1px solid ${T.headerFg}33`,borderRadius:20,padding:"3px 9px",color:`${T.headerFg}77`,fontSize:10,cursor:"not-allowed",fontFamily:T.fBody,flexShrink:0 }}>? Tutorial</button>
+        {/* Tutorial button */}
+        <button onClick={()=>{ setTutStep(0); setTutMode(isGM ? "gm" : "player"); }}
+          title="Start tutorial"
+          style={{ background:"none",border:`1px solid ${T.headerFg}44`,borderRadius:20,padding:"3px 9px",color:`${T.headerFg}99`,fontSize:10,cursor:"pointer",fontFamily:T.fBody,flexShrink:0,transition:"border-color 0.15s,color 0.15s" }}
+          onMouseEnter={e=>{ e.currentTarget.style.borderColor=T.gold; e.currentTarget.style.color=T.gold; }}
+          onMouseLeave={e=>{ e.currentTarget.style.borderColor=`${T.headerFg}44`; e.currentTarget.style.color=`${T.headerFg}99`; }}>
+          ? Help
+        </button>
         {/* Bell */}
-        <button onClick={()=>{setShowBell(b=>!b);setUnreadCount(0);}}
+        <button data-tut="tut-notif-bell" onClick={()=>{setShowBell(b=>!b);setUnreadCount(0);}}
           style={{ position:"relative",background:"none",border:"none",cursor:"pointer",color:T.headerFg,fontSize:18,padding:"4px 2px",flexShrink:0,lineHeight:1 }} title="Notifications">
           🔔
           {unreadCount>0 && <span style={{ position:"absolute",top:-1,right:-2,background:T.danger,color:"#fff",fontSize:9,fontWeight:700,borderRadius:"50%",minWidth:14,height:14,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1,padding:"0 2px" }}>{unreadCount>9?"9+":unreadCount}</span>}
@@ -2438,7 +2642,7 @@ function App() {
 
       {error && <div style={{ background:"#f5d5d5",color:T.danger,padding:"5px 14px",fontSize:12,borderBottom:`1px solid ${T.danger}44` }}>{error}<button onClick={()=>setError("")} style={{ marginLeft:8,border:"none",background:"none",cursor:"pointer",color:T.danger }}>✕</button></div>}
       {isGM && (
-        <div style={{ display:"flex",alignItems:"center",gap:8,padding:"4px 14px",background:`${T.gold}12`,fontSize:11,color:T.goldDim,borderBottom:`1px solid ${T.border}` }}>
+        <div data-tut="tut-invite-bar" style={{ display:"flex",alignItems:"center",gap:8,padding:"4px 14px",background:`${T.gold}12`,fontSize:11,color:T.goldDim,borderBottom:`1px solid ${T.border}` }}>
           <span style={{ color:T.muted }}>Invite code:</span>
           <code style={{ fontFamily:"monospace",fontSize:11,background:T.surface,color:T.ink,padding:"1px 8px",borderRadius:6,border:`1px solid ${T.border}`,letterSpacing:"0.02em" }}>{activeCampaign.id}</code>
           <button onClick={()=>{
@@ -2458,7 +2662,7 @@ function App() {
       {/* Tabs */}
       <div style={{ display:"flex",borderBottom:`1px solid ${T.border}`,padding:"0 10px",background:T.surface,overflowX:"auto" }}>
         {tabs.map(t=>(
-          <button key={t} onClick={()=>setTab(t)}
+          <button key={t} data-tut={`tut-tab-${t}`} onClick={()=>setTab(t)}
             style={{ padding:"10px 14px",border:"none",borderBottom:tab===t?`2.5px solid ${T.gold}`:"2.5px solid transparent",background:"transparent",cursor:"pointer",fontSize:13,fontWeight:tab===t?700:400,color:tab===t?T.goldDim:T.muted,fontFamily:T.fBody,letterSpacing:"0.01em",whiteSpace:"nowrap" }}>
             {TAB_LABELS[t]||t}
           </button>
@@ -2475,11 +2679,11 @@ function App() {
               {/* Placement actions */}
               <div style={{ display:"flex",gap:4,flexShrink:0 }}>
                 {isGM && <>
-                  <Btn size="sm" onClick={()=>setPlacingMode(p=>p==="poi"?null:"poi")} style={{ background:placingMode==="poi"?`${T.gold}22`:undefined,borderColor:placingMode==="poi"?T.gold:undefined }}>＋ POI</Btn>
-                  <Btn size="sm" onClick={()=>setNpcForm({npc:null,name:"",status:"Alive",border_color:"#C9A84C",aura_radius:80,show_name:true,show_status:true,show_aura:true,is_visible_to_players:false,x:200,y:200})}>＋ NPC</Btn>
+                  <Btn size="sm" data-tut="tut-toolbar-poi" onClick={()=>setPlacingMode(p=>p==="poi"?null:"poi")} style={{ background:placingMode==="poi"?`${T.gold}22`:undefined,borderColor:placingMode==="poi"?T.gold:undefined }}>＋ POI</Btn>
+                  <Btn size="sm" data-tut="tut-toolbar-npc" onClick={()=>setNpcForm({npc:null,name:"",status:"Alive",border_color:"#C9A84C",aura_radius:80,show_name:true,show_status:true,show_aura:true,is_visible_to_players:false,x:200,y:200})}>＋ NPC</Btn>
                   <Btn size="sm" onClick={()=>setTextForm({text:null,content:"New Text",font_size:28,color:"#FFFFFF",font_weight:"700",fade_enabled:false,fade_invert:false,x:Math.round(imgSize.w/2),y:Math.round(imgSize.h/2)})}>＋ Text</Btn>
                 </>}
-                <Btn size="sm" onClick={()=>{
+                <Btn size="sm" data-tut="tut-toolbar-marker" onClick={()=>{
                   if (!myColor && !isGM) { setShowColorPicker(true); return; }
                   setPlacingMode(p=>p==="marker"?null:"marker");
                 }} style={{ background:placingMode==="marker"?`${T.gold}22`:undefined,borderColor:placingMode==="marker"?T.gold:undefined }}>
@@ -2489,9 +2693,9 @@ function App() {
               {/* Visual separator */}
               <div style={{ width:1,height:20,background:T.border,flexShrink:0 }} />
               {/* View controls */}
-              <Btn size="sm" onClick={resetView} style={{ flexShrink:0 }}>Fit ⟳ (F)</Btn>
+              <Btn size="sm" data-tut="tut-toolbar-fit" onClick={resetView} style={{ flexShrink:0 }}>Fit ⟳ (F)</Btn>
               {accessibleMaps.length > 1 && (
-                <select value={activeMapId||""} onChange={e=>{
+                <select data-tut="tut-map-switcher" value={activeMapId||""} onChange={e=>{
                   const target = maps.find(m=>m.id===e.target.value);
                   if (!isGM && target && !target.is_main && !target.player_accessible) {
                     addToast("🔒 The GM has locked access to this area.", "denied"); return;
@@ -2690,7 +2894,7 @@ function App() {
           )}
 
           <div style={{ flex:1,minHeight:0,position:"relative" }}>
-            <div ref={mapRef} style={{ position:"absolute",inset:0,overflow:"hidden",background:"#1a1a2e",cursor:placingMode?"crosshair":isDragging?"grabbing":"grab",touchAction:"none",userSelect:"none" }}
+            <div ref={mapRef} data-tut="tut-map-area" style={{ position:"absolute",inset:0,overflow:"hidden",background:"#1a1a2e",cursor:placingMode?"crosshair":isDragging?"grabbing":"grab",touchAction:"none",userSelect:"none" }}
               onMouseDown={onPointerDown} onTouchStart={onPointerDown}
               onClick={()=>{ setMovingPOI(null); setMoveDropdownPos(null); if(!dragRef.current.moved){ closePOICard(); closeMarkerCard(); } }}>
               {!currentMap ? (
@@ -3780,6 +3984,11 @@ function App() {
       <div style={{ padding:"4px 14px",paddingBottom:"max(8px, env(safe-area-inset-bottom))",background:T.surface,borderTop:`1px solid ${T.border}`,fontSize:10,color:T.muted,textAlign:"center",flexShrink:0,fontFamily:T.fBody }}>
         {buildVersion}
       </div>
+
+      {/* ── Tutorial overlay (player / GM) ── */}
+      {(tutMode === "player" || tutMode === "gm") && (
+        <TutorialOverlay steps={tutSteps} stepIndex={tutStep} onNext={tutNext} onPrev={tutPrev} onExit={tutDone} />
+      )}
     </div>
   );
 }
