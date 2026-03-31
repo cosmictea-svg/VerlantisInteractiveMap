@@ -2,7 +2,7 @@
 const VERSION = (typeof __BUILD_DATE__ !== "undefined" && typeof __COMMIT__ !== "undefined")
   ? `v${__BUILD_DATE__}-${__COMMIT__}`
   : "vdev";
-import { useState, useRef, useEffect, useMemo, memo } from "react";
+import React, { useState, useRef, useEffect, useMemo, memo } from "react";
 import { createRoot } from "react-dom/client";
 
 // Detect touch-only devices so we can suppress autoFocus={!isTouchDevice} (prevents keyboard pop-up on mobile)
@@ -4407,5 +4407,4 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-import React from "react";
 createRoot(document.getElementById("root")).render(<ErrorBoundary><App /></ErrorBoundary>);
