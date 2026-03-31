@@ -1,9 +1,10 @@
 // Verlantis Interactive Map
+import React, { useState, useRef, useEffect, useMemo, memo } from "react";
+import { createRoot } from "react-dom/client";
+
 const VERSION = (typeof __BUILD_DATE__ !== "undefined" && typeof __COMMIT__ !== "undefined")
   ? `v${__BUILD_DATE__}-${__COMMIT__}`
   : "vdev";
-import React, { useState, useRef, useEffect, useMemo, memo } from "react";
-import { createRoot } from "react-dom/client";
 
 // Detect touch-only devices so we can suppress autoFocus={!isTouchDevice} (prevents keyboard pop-up on mobile)
 const isTouchDevice = typeof window !== "undefined" && ("ontouchstart" in window || navigator.maxTouchPoints > 0);
