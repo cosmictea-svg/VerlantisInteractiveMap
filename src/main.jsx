@@ -1290,7 +1290,7 @@ function App() {
     const minY = Math.min(0, ch - sh) - PAD, maxY = Math.max(0, ch - sh) + PAD;
     return { ...t, x: Math.min(maxX, Math.max(minX, t.x)), y: Math.min(maxY, Math.max(minY, t.y)) };
   }
-  function getContainerRect() { return mapRef.current?.getBoundingClientRect() || { width: 800, height: 500, left: 0, top: 0 }; }
+  function getContainerRect() { return mapRef.current?.getBoundingClientRect() || { width: window.innerWidth, height: window.innerHeight, left: 0, top: 0 }; }
   function resetView() { const fit = fitToContainer(imgSize.w, imgSize.h); setTransform(fit); setFitScale(fit.scale); }
   function onImgLoad(e) {
     const w = e.target.naturalWidth, h = e.target.naturalHeight;
@@ -1301,7 +1301,7 @@ function App() {
       const { x, y } = pendingFocusRef.current;
       pendingFocusRef.current = null;
       const targetScale = fit.scale * 2.5;
-      const rect = mapRef.current?.getBoundingClientRect() || { width: 800, height: 500 };
+      const rect = mapRef.current?.getBoundingClientRect() || { width: window.innerWidth, height: window.innerHeight };
       setTransform({ scale: targetScale, x: rect.width/2 - x*targetScale, y: rect.height/2 - y*targetScale });
     } else {
       setTransform(fit);
@@ -2084,43 +2084,44 @@ function App() {
   );
 
   if (!user) return (
-    <div style={{ position:"fixed",inset:0,overflowY:"auto",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"100vh",padding:32,fontFamily:T.fBody,
+    <div style={{ position:"fixed",inset:0,overflowY:"auto",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"100%",padding:32,fontFamily:T.fBody,
+      WebkitFontSmoothing:"antialiased",MozOsxFontSmoothing:"grayscale",
       background:"linear-gradient(135deg, #0C0618 0%, #070310 40%, #110308 100%)",
       backgroundSize:"300% 300%", animation:"bgShift 20s ease-in-out infinite" }}>
 
       {/* ── Holy blob — patrols top-left, rushes to 3 impact points ── */}
       <div style={{ position:"fixed",top:"-8%",left:"-8%",width:"min(58vw,58vh)",height:"min(58vw,58vh)",maxWidth:660,maxHeight:660,borderRadius:"50%",
         background:"radial-gradient(circle, rgba(255,230,110,0.24) 0%, rgba(201,168,76,0.13) 35%, transparent 70%)",
-        pointerEvents:"none", animation:"holyClash 24s linear infinite" }} />
+        pointerEvents:"none", animation:"holyClash 24s linear infinite", willChange:"transform, opacity" }} />
 
       {/* ── Demonic blob — patrols bottom-right, rushes to 3 impact points ── */}
       <div style={{ position:"fixed",bottom:"-8%",right:"-8%",width:"min(58vw,58vh)",height:"min(58vw,58vh)",maxWidth:660,maxHeight:660,borderRadius:"50%",
         background:"radial-gradient(circle, rgba(210,35,20,0.28) 0%, rgba(140,20,15,0.15) 35%, transparent 70%)",
-        pointerEvents:"none", animation:"demonicClash 24s linear infinite" }} />
+        pointerEvents:"none", animation:"demonicClash 24s linear infinite", willChange:"transform, opacity" }} />
 
       {/* ── Impact 1: upper-right (t=27%) ── */}
       <div style={{ position:"fixed",top:"12%",left:"72%",width:"min(50vw,50vh)",height:"min(50vw,50vh)",maxWidth:520,maxHeight:520,borderRadius:"50%",
         background:"radial-gradient(circle, rgba(255,220,100,0.92) 0%, rgba(220,80,20,0.55) 30%, rgba(160,20,10,0.2) 60%, transparent 75%)",
-        pointerEvents:"none", animation:"clashFlash1 24s linear infinite" }} />
+        pointerEvents:"none", animation:"clashFlash1 24s linear infinite", willChange:"transform, opacity" }} />
       <div style={{ position:"fixed",top:"12%",left:"72%",width:"min(72vw,72vh)",height:"min(72vw,72vh)",maxWidth:740,maxHeight:740,borderRadius:"50%",
         border:"2px solid rgba(255,195,60,0.7)", background:"transparent",
-        pointerEvents:"none", animation:"shockRing1 24s linear infinite" }} />
+        pointerEvents:"none", animation:"shockRing1 24s linear infinite", willChange:"transform, opacity" }} />
 
       {/* ── Impact 2: centre (t=60%) ── */}
       <div style={{ position:"fixed",top:"48%",left:"44%",width:"min(50vw,50vh)",height:"min(50vw,50vh)",maxWidth:520,maxHeight:520,borderRadius:"50%",
         background:"radial-gradient(circle, rgba(255,220,100,0.92) 0%, rgba(220,80,20,0.55) 30%, rgba(160,20,10,0.2) 60%, transparent 75%)",
-        pointerEvents:"none", animation:"clashFlash2 24s linear infinite" }} />
+        pointerEvents:"none", animation:"clashFlash2 24s linear infinite", willChange:"transform, opacity" }} />
       <div style={{ position:"fixed",top:"48%",left:"44%",width:"min(72vw,72vh)",height:"min(72vw,72vh)",maxWidth:740,maxHeight:740,borderRadius:"50%",
         border:"2px solid rgba(255,195,60,0.7)", background:"transparent",
-        pointerEvents:"none", animation:"shockRing2 24s linear infinite" }} />
+        pointerEvents:"none", animation:"shockRing2 24s linear infinite", willChange:"transform, opacity" }} />
 
       {/* ── Impact 3: lower-left (t=93%) ── */}
       <div style={{ position:"fixed",top:"75%",left:"18%",width:"min(50vw,50vh)",height:"min(50vw,50vh)",maxWidth:520,maxHeight:520,borderRadius:"50%",
         background:"radial-gradient(circle, rgba(255,220,100,0.92) 0%, rgba(220,80,20,0.55) 30%, rgba(160,20,10,0.2) 60%, transparent 75%)",
-        pointerEvents:"none", animation:"clashFlash3 24s linear infinite" }} />
+        pointerEvents:"none", animation:"clashFlash3 24s linear infinite", willChange:"transform, opacity" }} />
       <div style={{ position:"fixed",top:"75%",left:"18%",width:"min(72vw,72vh)",height:"min(72vw,72vh)",maxWidth:740,maxHeight:740,borderRadius:"50%",
         border:"2px solid rgba(255,195,60,0.7)", background:"transparent",
-        pointerEvents:"none", animation:"shockRing3 24s linear infinite" }} />
+        pointerEvents:"none", animation:"shockRing3 24s linear infinite", willChange:"transform, opacity" }} />
 
       {/* ── Main content ── */}
       <div style={{ display:"flex",flexDirection:"column",alignItems:"center",maxWidth:500,width:"100%",position:"relative",zIndex:1 }}>
@@ -2198,30 +2199,30 @@ function App() {
       {/* ── Background blobs — ~60% of login intensity ── */}
       <div style={{ position:"fixed",top:"-8%",left:"-8%",width:"min(58vw,58vh)",height:"min(58vw,58vh)",maxWidth:640,borderRadius:"50%",
         background:"radial-gradient(circle, rgba(255,230,110,0.15) 0%, rgba(201,168,76,0.08) 38%, transparent 70%)",
-        pointerEvents:"none", animation:"holyClash 24s linear infinite" }} />
+        pointerEvents:"none", animation:"holyClash 24s linear infinite", willChange:"transform, opacity" }} />
       <div style={{ position:"fixed",bottom:"-8%",right:"-8%",width:"min(58vw,58vh)",height:"min(58vw,58vh)",maxWidth:640,borderRadius:"50%",
         background:"radial-gradient(circle, rgba(210,35,20,0.18) 0%, rgba(140,20,15,0.09) 38%, transparent 70%)",
-        pointerEvents:"none", animation:"demonicClash 24s linear infinite" }} />
+        pointerEvents:"none", animation:"demonicClash 24s linear infinite", willChange:"transform, opacity" }} />
 
       {/* ── Impact flashes — ~65% of login opacity ── */}
       <div style={{ position:"fixed",top:"12%",left:"72%",width:"min(50vw,50vh)",height:"min(50vw,50vh)",maxWidth:520,borderRadius:"50%",
         background:"radial-gradient(circle, rgba(255,220,100,0.6) 0%, rgba(220,80,20,0.36) 30%, rgba(160,20,10,0.13) 60%, transparent 75%)",
-        pointerEvents:"none", animation:"clashFlash1 24s linear infinite" }} />
+        pointerEvents:"none", animation:"clashFlash1 24s linear infinite", willChange:"transform, opacity" }} />
       <div style={{ position:"fixed",top:"12%",left:"72%",width:"min(72vw,72vh)",height:"min(72vw,72vh)",maxWidth:740,borderRadius:"50%",
         border:"2px solid rgba(255,195,60,0.5)",background:"transparent",
-        pointerEvents:"none", animation:"shockRing1 24s linear infinite" }} />
+        pointerEvents:"none", animation:"shockRing1 24s linear infinite", willChange:"transform, opacity" }} />
       <div style={{ position:"fixed",top:"48%",left:"44%",width:"min(50vw,50vh)",height:"min(50vw,50vh)",maxWidth:520,borderRadius:"50%",
         background:"radial-gradient(circle, rgba(255,220,100,0.6) 0%, rgba(220,80,20,0.36) 30%, rgba(160,20,10,0.13) 60%, transparent 75%)",
-        pointerEvents:"none", animation:"clashFlash2 24s linear infinite" }} />
+        pointerEvents:"none", animation:"clashFlash2 24s linear infinite", willChange:"transform, opacity" }} />
       <div style={{ position:"fixed",top:"48%",left:"44%",width:"min(72vw,72vh)",height:"min(72vw,72vh)",maxWidth:740,borderRadius:"50%",
         border:"2px solid rgba(255,195,60,0.5)",background:"transparent",
-        pointerEvents:"none", animation:"shockRing2 24s linear infinite" }} />
+        pointerEvents:"none", animation:"shockRing2 24s linear infinite", willChange:"transform, opacity" }} />
       <div style={{ position:"fixed",top:"75%",left:"18%",width:"min(50vw,50vh)",height:"min(50vw,50vh)",maxWidth:520,borderRadius:"50%",
         background:"radial-gradient(circle, rgba(255,220,100,0.6) 0%, rgba(220,80,20,0.36) 30%, rgba(160,20,10,0.13) 60%, transparent 75%)",
-        pointerEvents:"none", animation:"clashFlash3 24s linear infinite" }} />
+        pointerEvents:"none", animation:"clashFlash3 24s linear infinite", willChange:"transform, opacity" }} />
       <div style={{ position:"fixed",top:"75%",left:"18%",width:"min(72vw,72vh)",height:"min(72vw,72vh)",maxWidth:740,borderRadius:"50%",
         border:"2px solid rgba(255,195,60,0.5)",background:"transparent",
-        pointerEvents:"none", animation:"shockRing3 24s linear infinite" }} />
+        pointerEvents:"none", animation:"shockRing3 24s linear infinite", willChange:"transform, opacity" }} />
 
       {/* Scrollable content column */}
       <div style={{ maxWidth:520,margin:"0 auto",padding:"24px 20px",paddingBottom:"max(32px, env(safe-area-inset-bottom))",minHeight:"100dvh",display:"flex",flexDirection:"column",position:"relative",zIndex:1 }}>
@@ -2401,7 +2402,7 @@ function App() {
   );
 
   return (
-    <div style={{ fontFamily:T.fBody,fontSize:14,color:T.ink,display:"flex",flexDirection:"column",height:"100vh",background:T.bg }}>
+    <div style={{ fontFamily:T.fBody,fontSize:14,color:T.ink,display:"flex",flexDirection:"column",height:"100dvh",background:T.bg }}>
       {/* Header */}
       <div style={{ display:"flex",alignItems:"center",gap:10,padding:"0 14px",minHeight:52,borderBottom:`2px solid ${T.gold}44`,background:T.header,flexShrink:0 }}>
         {/* Back to campaign list */}
@@ -2699,7 +2700,8 @@ function App() {
                 </div>
               ) : (
                 <div ref={mapTransformDivRef} style={{ position:"absolute",transform: mapInteracting ? `translate3d(${Math.round(transform.x)}px,${Math.round(transform.y)}px,0) scale(${transform.scale})` : `translate(${Math.round(transform.x)}px,${Math.round(transform.y)}px) scale(${transform.scale})`,transformOrigin:"0 0",willChange:mapInteracting?"transform":"auto" }}>
-                  <img src={currentMap.src} alt="map" style={{ display:"block",maxWidth:"none" }} draggable={false} onLoad={onImgLoad} />
+                  <img src={currentMap.src} alt="map" style={{ display:"block",maxWidth:"none" }} draggable={false} onLoad={onImgLoad}
+                    onError={e=>{ e.target.style.display="none"; }} />
                   {/* Overlay image layers — per-user opacity/visibility */}
                   {mapOverlays.map(ov => {
                     const s = overlaySettings[ov.id] || { opacity: 80, visible: true };
