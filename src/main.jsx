@@ -245,6 +245,49 @@ function getSizeScale(id) { return POI_SIZES.find(s => s.id === id)?.scale ?? 1.
 
 const IS = { width: "100%", padding: "7px 11px", borderRadius: 8, border: `1px solid ${T.border}`, fontSize: 13, background: "#fffbf2", color: T.ink, boxSizing: "border-box", fontFamily: T.fBody };
 
+const VERLANTIS_QUOTES = [
+  { quote: "Lakariss died in our land. His corpse is still killing us. Four hundred years later and we are still cleaning up after a demon who lost.", attribution: "Sal Vesla Elder" },
+  { quote: "Nobody warned us. Nobody asked us. One morning the sky cracked open and the Eternal Conflict had opinions about our continent.", attribution: "Unnamed farmer, Aavarhi border region" },
+  { quote: "The gods intervene with overwhelming force and absolute certainty. I have seen that certainty. It looks exactly like rubble.", attribution: "Bastion of the Purgatory field medic" },
+  { quote: "Deamoth crossed the Dread Sea and we crashed an entire city into his army to stop him. Halo doesn't exist anymore. He does. Make of that what you will.", attribution: "Star Gazer salvager, Tarcia wreckage site" },
+  { quote: "They stripped him of immortality as a punishment. He took it as a revelation. The gods have not publicly addressed the difference.", attribution: "Verandin Liberty resistance archivist, on Lucifer" },
+  { quote: "The First Fallen kept their powers, their reduced aging, their domain instincts. The gods called the punishment imperfect. We called it living next to something that used to be an angel and still mostly acts like one.", attribution: "Unnamed innkeeper, Roussi" },
+  { quote: "My father died in Lucifer's Crusade. Not fighting demons. Caught in the middle of an angel's idea of protection.", attribution: "Bastion recruit, EC2 descendants registry" },
+  { quote: "She fell not for what she did. She fell for refusing to stop caring about what was done to us. I don't know whether to call that noble or devastating.", attribution: "Lunare Patron archivist, on Lucinda" },
+  { quote: "The Matriarch of Death governs the Cycle independently. She answers to no god, no pact, no realm. She is the only authority in Verlantis I find genuinely comforting. That probably says something about the rest of them.", attribution: "Eye of the Nightingale senior agent" },
+  { quote: "Zagreek survived the First Eternal Conflict through unity and distrust of outworldly power. That distrust never cooled. Honestly, fair enough.", attribution: "Tranquil Circle envoy, failed diplomatic visit" },
+  { quote: "The Prometheans fight for free will. The Bastion fights for mortal survival. They clash constantly because protecting something and liberating it are not always the same thing.", attribution: "Unnamed scholar, Tessibloom Academy" },
+  { quote: "The Eye of the Nightingale began as custodians of ancient knowledge. Now they are the most effective intelligence network in Verlantis. I'm not sure when one became the other. I don't think they are either.", attribution: "Zagreek Magister, closed session record" },
+  { quote: "Nekapolis doesn't harvest souls. It annihilates them. No reincarnation. No resurrection. No contribution to the Cycle. Just nothing. Two mortals built that. Two mortals decided nothing was a resource.", attribution: "Matriarch of Death, recorded address to the Ashen Reapers" },
+  { quote: "I lost my brother to Necrolyte. There was no body. There was no soul to mourn. There was just the space where he used to be.", attribution: "Unnamed Fragmented, Lunare haven" },
+  { quote: "They stole a realm from the wreckage of a divine war and built something worse inside it. The terrifying part isn't that they did it. It's that it worked.", attribution: "Veil Siphoner remnant scholar" },
+  { quote: "The Cycle of Life and Death has turned since before the gods named it. Nekapolis is the first thing in recorded history that genuinely threatens to starve it. Sleep well.", attribution: "Bastion of the Purgatory intelligence briefing, EC3" },
+  { quote: "She studied what her father burned through. She built what he couldn't imagine. She vanished before anyone could take it from her. I think that was the point.", attribution: "Unnamed Lunare Patron citizen" },
+  { quote: "Lucinda Morningstar refused redemption from the Silver City, refused to be claimed by the Underworld, refused to stop working on a problem everyone else had given up on. They called her dangerous. She called it Tuesday.", attribution: "Eye of the Nightingale field record" },
+  { quote: "She scattered her life's work across the world to keep it out of the wrong hands. Every wrong pair of hands that found it anyway proved she was right to be afraid.", attribution: "Lunare Patron archivist" },
+  { quote: "Most people who vanish in Verlantis are dead. Lucinda Morningstar is the exception that makes that fact considerably worse.", attribution: "Bastion of the Purgatory intelligence report, EC4" },
+  { quote: "Something cut every outworldly connection to the Material Realm simultaneously. It lasted four seconds. Every realm felt it. None of them have stopped thinking about it since.", attribution: "Tranquil Circle senior envoy, internal dispatch" },
+  { quote: "Lucifer is free. The Corruption Plains are mutating. There is a power somewhere that briefly made the gods go quiet. I am choosing to interpret this as progress.", attribution: "Ruby Cerberus caravan captain, overheard in a Roussi tavern" },
+  { quote: "EC4 has barely started and we have already freed an imprisoned angel, grown a Titan tree in a demon's corpse, and discovered a weapon that scares every realm simultaneously. I've been a Bastion soldier for thirty years. I have never been this tired.", attribution: "Bastion veteran, 78th Battalion" },
+  { quote: "The rest of this era's history has not yet been written. That is either the most hopeful or most terrifying sentence in this entire record. I genuinely cannot decide.", attribution: "Verlantis Encyclopedia, closing note, EC4 entry" },
+  { quote: "The gods made the rules. The mortals paid the fines.", attribution: "Unnamed dockworker, Salisport" },
+  { quote: "No one asked us if we wanted to be the battleground.", attribution: "Unnamed refugee, Aavarhi displacement record" },
+  { quote: "Celestial or Fiendish, the rubble looks the same from underneath.", attribution: "Unnamed Bastion field surgeon" },
+  { quote: "They fight for the fate of all existence. We fight to keep our doors on the hinges.", attribution: "Unnamed village elder, Crogrelee outskirts" },
+  { quote: "Blessed by the gods, they said. The blessed ones are the ones who died quickly.", attribution: "Unnamed EC1 survivor, Aavarhi oral history" },
+  { quote: "Forty percent of Aavarhi is a demon's rotting corpse. And somehow that's not the worst thing happening right now.", attribution: "Unnamed cartographer, EC4 survey notes" },
+  { quote: "The Eternal Conflict has been going on longer than recorded history. Encouraging, isn't it.", attribution: "Unnamed Tessibloom Academy lecturer" },
+  { quote: "Our kingdom has survived three Eternal Conflicts. The fourth one is looking optimistic.", attribution: "Unnamed Zagreek guard captain" },
+  { quote: "The Fallen chose mortality as punishment. The rest of us didn't get a choice.", attribution: "Unnamed Verandin Liberty citizen" },
+  { quote: "Immortals call it the Eternal Conflict. We call it Tuesday.", attribution: "Unnamed Ruby Cerberus trader" },
+  { quote: "No mortal kingdom voted for the Eternal War. Every mortal kingdom is paying for it.", attribution: "Unnamed Montagna war correspondent" },
+  { quote: "The world mortals built in spite of all this is the only proof that any of it was worth surviving.", attribution: "Unnamed Tessibloom historian" },
+  { quote: "We are not a stage. We are an aftermath. And we are still here.", attribution: "Unnamed Bastion of the Purgatory oath ceremony, traditional closing" },
+  { quote: "Mortals age, suffer, and die. Immortals call that weakness. We call it everything we have.", attribution: "Unnamed Zagreek philosopher" },
+  { quote: "Every era ends. Every kingdom falls. Mortalkind endures anyway. No deity has figured out why.", attribution: "Unnamed Eye of the Nightingale senior archivist" },
+  { quote: "The stars are a dead god's remains. We built a faith around them anyway. That's what mortals do.", attribution: "Unnamed Amber Hearth initiate, first sermon" },
+];
+
 function Btn({ style, variant, size, onClick, children, disabled }) {
   const base = { padding: size === "sm" ? "5px 12px" : "7px 16px", fontSize: size === "sm" ? 12 : 13, borderRadius: 8, border: `1px solid ${T.border}`, background: T.bg, cursor: disabled ? "default" : "pointer", fontWeight: 500, color: T.ink, fontFamily: T.fBody, lineHeight: 1.35 };
   const v = variant === "primary" ? { background: T.purple, color: T.headerFg, border: "none" }
@@ -1145,6 +1188,8 @@ function App() {
   }
 
   const isGM = memberRole === "gm";
+  // Pick a random quote once per page load (stable — useMemo with empty deps)
+  const randomQuote = useMemo(() => VERLANTIS_QUOTES[Math.floor(Math.random() * VERLANTIS_QUOTES.length)], []);
   // ── Memoised derived data — only recompute when their dependencies change ──
   const currentMap     = useMemo(() => maps.find(m => m.id === activeMapId),                                          [maps, activeMapId]);
   const mapPOIs        = useMemo(() => pois.filter(p => p.map_id === activeMapId && (isGM || p.revealed)),            [pois, activeMapId, isGM]);
@@ -2005,26 +2050,31 @@ function App() {
       background:"linear-gradient(135deg, #0C0618 0%, #070310 40%, #110308 100%)",
       backgroundSize:"300% 300%", animation:"bgShift 20s ease-in-out infinite" }}>
 
-      {/* ── Holy light (top-left) ── */}
-      <div style={{ position:"fixed",top:"-5%",left:"-5%",width:"55vw",height:"55vw",maxWidth:600,maxHeight:600,borderRadius:"50%",
-        background:"radial-gradient(circle, rgba(255,220,100,0.18) 0%, rgba(201,168,76,0.1) 30%, transparent 70%)",
-        pointerEvents:"none", animation:"holyDrift 10s ease-in-out infinite" }} />
-      <div style={{ position:"fixed",top:"10%",left:"5%",width:"30vw",height:"30vw",maxWidth:320,maxHeight:320,borderRadius:"50%",
-        background:"radial-gradient(circle, rgba(255,240,180,0.12) 0%, rgba(220,180,80,0.06) 40%, transparent 70%)",
-        pointerEvents:"none", animation:"holyDrift 14s ease-in-out infinite 2s" }} />
+      {/* ── Holy blobs — patrol top-left, sprint to centre at impact ── */}
+      <div style={{ position:"fixed",top:"-8%",left:"-8%",width:"58vw",height:"58vw",maxWidth:640,maxHeight:640,borderRadius:"50%",
+        background:"radial-gradient(circle, rgba(255,230,110,0.22) 0%, rgba(201,168,76,0.12) 35%, transparent 70%)",
+        pointerEvents:"none", animation:"holyClash 24s ease-in-out infinite" }} />
+      <div style={{ position:"fixed",top:"2%",left:"2%",width:"32vw",height:"32vw",maxWidth:340,maxHeight:340,borderRadius:"50%",
+        background:"radial-gradient(circle, rgba(255,245,190,0.14) 0%, rgba(220,185,80,0.07) 45%, transparent 70%)",
+        pointerEvents:"none", animation:"holyClash 24s ease-in-out infinite 1.2s" }} />
 
-      {/* ── Demonic fire (bottom-right) ── */}
-      <div style={{ position:"fixed",bottom:"-5%",right:"-5%",width:"55vw",height:"55vw",maxWidth:600,maxHeight:600,borderRadius:"50%",
-        background:"radial-gradient(circle, rgba(180,30,20,0.22) 0%, rgba(139,20,20,0.12) 30%, transparent 70%)",
-        pointerEvents:"none", animation:"demonicDrift 11s ease-in-out infinite" }} />
-      <div style={{ position:"fixed",bottom:"10%",right:"5%",width:"28vw",height:"28vw",maxWidth:300,maxHeight:300,borderRadius:"50%",
-        background:"radial-gradient(circle, rgba(220,80,20,0.14) 0%, rgba(160,40,10,0.07) 40%, transparent 70%)",
-        pointerEvents:"none", animation:"demonicDrift 15s ease-in-out infinite 3s" }} />
+      {/* ── Demonic blobs — patrol bottom-right, sprint to centre at impact ── */}
+      <div style={{ position:"fixed",bottom:"-8%",right:"-8%",width:"58vw",height:"58vw",maxWidth:640,maxHeight:640,borderRadius:"50%",
+        background:"radial-gradient(circle, rgba(200,35,20,0.26) 0%, rgba(140,20,15,0.14) 35%, transparent 70%)",
+        pointerEvents:"none", animation:"demonicClash 24s ease-in-out infinite" }} />
+      <div style={{ position:"fixed",bottom:"2%",right:"2%",width:"30vw",height:"30vw",maxWidth:320,maxHeight:320,borderRadius:"50%",
+        background:"radial-gradient(circle, rgba(230,90,20,0.16) 0%, rgba(170,45,10,0.08) 45%, transparent 70%)",
+        pointerEvents:"none", animation:"demonicClash 24s ease-in-out infinite 1.2s" }} />
 
-      {/* ── Centre clash ── */}
-      <div style={{ position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:"40vw",height:"40vw",maxWidth:420,maxHeight:420,borderRadius:"50%",
-        background:"radial-gradient(circle, rgba(100,40,120,0.2) 0%, rgba(60,20,80,0.1) 40%, transparent 70%)",
-        pointerEvents:"none", animation:"clashPulse 7s ease-in-out infinite" }} />
+      {/* ── Clash flash — only visible at impact moment ── */}
+      <div style={{ position:"fixed",top:"50%",left:"50%",width:"50vw",height:"50vw",maxWidth:520,maxHeight:520,borderRadius:"50%",
+        background:"radial-gradient(circle, rgba(255,200,80,0.55) 0%, rgba(200,60,20,0.35) 40%, transparent 70%)",
+        pointerEvents:"none", animation:"clashFlash 24s ease-in-out infinite" }} />
+
+      {/* ── Shockwave ring ── */}
+      <div style={{ position:"fixed",top:"50%",left:"50%",width:"70vw",height:"70vw",maxWidth:700,maxHeight:700,borderRadius:"50%",
+        border:"2px solid rgba(255,180,60,0.6)",
+        pointerEvents:"none", animation:"shockRing 24s ease-in-out infinite" }} />
 
       {/* ── Main content ── */}
       <div style={{ display:"flex",flexDirection:"column",alignItems:"center",maxWidth:500,width:"100%",position:"relative",zIndex:1 }}>
@@ -2063,10 +2113,14 @@ function App() {
           <div style={{ flex:1,height:1,background:"linear-gradient(to left, transparent, rgba(180,40,20,0.6), rgba(180,40,20,0.3))" }} />
         </div>
 
-        {/* Flavour text */}
-        <div style={{ color:"#C0B0D8",fontSize:13,textAlign:"center",maxWidth:300,fontStyle:"italic",lineHeight:1.9,
-          animation:"textFadeUp 1s ease-out 1.4s forwards",opacity:0,marginBottom:28,fontFamily:T.fBody }}>
-          "A world caught between the grace of light<br/>and the fury of the fallen."
+        {/* Random Verlantis quote */}
+        <div style={{ animation:"textFadeUp 1s ease-out 1.4s forwards",opacity:0,marginBottom:28,maxWidth:340,textAlign:"center" }}>
+          <div style={{ color:"#C0B0D8",fontSize:12,fontStyle:"italic",lineHeight:1.85,fontFamily:T.fBody }}>
+            "{randomQuote.quote}"
+          </div>
+          <div style={{ color:"rgba(201,168,76,0.55)",fontSize:10,letterSpacing:"0.08em",marginTop:8,fontFamily:T.fHead }}>
+            — {randomQuote.attribution}
+          </div>
         </div>
 
         {/* Sign in button */}

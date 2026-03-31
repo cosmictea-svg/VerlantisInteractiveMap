@@ -29,27 +29,76 @@
         0%,100% { opacity: 0.5; }
         50%     { opacity: 1;   }
       }
-      /* Holy light — drifts from top-left */
-      @keyframes holyDrift {
-        0%,100% { transform: translate(0,0)       scale(1);    opacity: 0.55; }
-        33%     { transform: translate(20px,-28px) scale(1.09); opacity: 0.75; }
-        66%     { transform: translate(-14px,18px) scale(0.93); opacity: 0.45; }
-      }
-      /* Demonic fire — drifts from bottom-right */
-      @keyframes demonicDrift {
-        0%,100% { transform: translate(0,0)        scale(1);    opacity: 0.6;  }
-        33%     { transform: translate(-22px,20px) scale(1.11); opacity: 0.85; }
-        66%     { transform: translate(16px,-14px) scale(0.91); opacity: 0.5;  }
-      }
-      /* Centre clash pulse */
-      @keyframes clashPulse {
-        0%,100% { opacity: 0.25; transform: scale(1);    }
-        50%     { opacity: 0.5;  transform: scale(1.08); }
-      }
-      /* Slow diagonal bg-gradient shift */
+      /* Slow diagonal bg shift */
       @keyframes bgShift {
-        0%,100% { background-position: 0% 0%;   }
+        0%,100% { background-position: 0% 0%; }
         50%     { background-position: 100% 100%; }
+      }
+
+      /*
+        HOLY CLASH — 24s cycle
+        0–58%  : lazy patrol (drifting top-left area)
+        58–75% : holy senses the demon — starts accelerating
+        75–86% : full sprint toward center
+        86–90% : IMPACT — peak size, max brightness
+        90–94% : recoil / shockwave
+        94–100%: retreat back to corner
+      */
+      @keyframes holyClash {
+        0%   { transform: translate(0px,   0px)   scale(1.0);  opacity: 0.50; }
+        10%  { transform: translate(18px,  30px)  scale(1.04); opacity: 0.55; }
+        22%  { transform: translate(-8px,  50px)  scale(0.97); opacity: 0.45; }
+        35%  { transform: translate(28px,  15px)  scale(1.06); opacity: 0.58; }
+        48%  { transform: translate(5px,   42px)  scale(0.99); opacity: 0.48; }
+        58%  { transform: translate(22px,  36px)  scale(1.03); opacity: 0.55; }
+        /* acceleration */
+        68%  { transform: translate(55px,  85px)  scale(1.18); opacity: 0.70; }
+        78%  { transform: translate(110px, 155px) scale(1.45); opacity: 0.85; }
+        /* impact */
+        86%  { transform: translate(150px, 210px) scale(2.00); opacity: 1.00; }
+        90%  { transform: translate(165px, 225px) scale(2.20); opacity: 0.95; }
+        /* recoil */
+        94%  { transform: translate(40px,  65px)  scale(0.85); opacity: 0.35; }
+        100% { transform: translate(0px,   0px)   scale(1.0);  opacity: 0.50; }
+      }
+
+      /*
+        DEMONIC CLASH — same 24s cycle, mirrored
+      */
+      @keyframes demonicClash {
+        0%   { transform: translate(0px,    0px)    scale(1.0);  opacity: 0.55; }
+        10%  { transform: translate(-20px, -25px)   scale(1.05); opacity: 0.62; }
+        22%  { transform: translate(10px,  -42px)   scale(0.96); opacity: 0.48; }
+        35%  { transform: translate(-24px, -12px)   scale(1.08); opacity: 0.65; }
+        48%  { transform: translate(-6px,  -38px)   scale(1.01); opacity: 0.52; }
+        58%  { transform: translate(-19px, -32px)   scale(1.04); opacity: 0.60; }
+        /* acceleration */
+        68%  { transform: translate(-52px, -80px)   scale(1.20); opacity: 0.75; }
+        78%  { transform: translate(-105px,-148px)  scale(1.50); opacity: 0.90; }
+        /* impact */
+        86%  { transform: translate(-145px,-205px)  scale(2.05); opacity: 1.00; }
+        90%  { transform: translate(-160px,-220px)  scale(2.25); opacity: 0.95; }
+        /* recoil */
+        94%  { transform: translate(-38px, -60px)   scale(0.83); opacity: 0.35; }
+        100% { transform: translate(0px,   0px)     scale(1.0);  opacity: 0.55; }
+      }
+
+      /* Centre clash flash — invisible during patrol, explodes at impact */
+      @keyframes clashFlash {
+        0%,  83%  { opacity: 0;    transform: translate(-50%,-50%) scale(0.2); }
+        87%       { opacity: 0.55; transform: translate(-50%,-50%) scale(1.0); }
+        90%       { opacity: 1.00; transform: translate(-50%,-50%) scale(1.8); }
+        92%       { opacity: 0.70; transform: translate(-50%,-50%) scale(1.4); }
+        96%       { opacity: 0.10; transform: translate(-50%,-50%) scale(0.6); }
+        100%      { opacity: 0;    transform: translate(-50%,-50%) scale(0.2); }
+      }
+
+      /* Shockwave ring that expands from clash point */
+      @keyframes shockRing {
+        0%,  88%  { opacity: 0;    transform: translate(-50%,-50%) scale(0.1); }
+        90%       { opacity: 0.8;  transform: translate(-50%,-50%) scale(0.8); }
+        95%       { opacity: 0.15; transform: translate(-50%,-50%) scale(2.5); }
+        100%      { opacity: 0;    transform: translate(-50%,-50%) scale(0.1); }
       }
     </style>
   </head>
