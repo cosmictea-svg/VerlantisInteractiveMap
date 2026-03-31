@@ -4384,4 +4384,28 @@ function AnnouncementModal({ form, onSave, onClose }) {
   );
 }
 
-createRoot(document.getElementById("root")).render(<App />);
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { err: null }; }
+  static getDerivedStateFromError(err) { return { err }; }
+  render() {
+    if (this.state.err) return (
+      <div style={{ position:"fixed",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+        background:"#080510",color:"#C9A84C",fontFamily:"'Cinzel',serif",padding:32,gap:16,textAlign:"center" }}>
+        <div style={{ fontSize:32 }}>⚠</div>
+        <div style={{ fontSize:16,letterSpacing:"0.08em" }}>Something went wrong</div>
+        <div style={{ fontSize:12,color:"rgba(201,168,76,0.55)",maxWidth:360,lineHeight:1.7 }}>
+          {String(this.state.err?.message || this.state.err)}
+        </div>
+        <button onClick={()=>window.location.reload()}
+          style={{ marginTop:8,padding:"9px 24px",borderRadius:20,border:"1px solid rgba(201,168,76,0.4)",
+            background:"rgba(201,168,76,0.1)",color:"#C9A84C",fontSize:13,cursor:"pointer",fontFamily:"inherit",letterSpacing:"0.06em" }}>
+          Reload
+        </button>
+      </div>
+    );
+    return this.props.children;
+  }
+}
+
+import React from "react";
+createRoot(document.getElementById("root")).render(<ErrorBoundary><App /></ErrorBoundary>);
