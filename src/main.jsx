@@ -246,46 +246,84 @@ function getSizeScale(id) { return POI_SIZES.find(s => s.id === id)?.scale ?? 1.
 const IS = { width: "100%", padding: "7px 11px", borderRadius: 8, border: `1px solid ${T.border}`, fontSize: 13, background: "#fffbf2", color: T.ink, boxSizing: "border-box", fontFamily: T.fBody };
 
 const VERLANTIS_QUOTES = [
-  { quote: "Lakariss died in our land. His corpse is still killing us. Four hundred years later and we are still cleaning up after a demon who lost.", attribution: "Sal Vesla Elder" },
+  // --- Named NPCs ---
+  // Elenadara Winter
+  { quote: "Three hundred years of governance and the thing mortals remember most is the Flash Blizzard. A ritual that killed her family. Gratitude is a strange thing to receive for a grief that never ended.", attribution: "On Elenadara Winter, Aegis of Winter field record" },
+  { quote: "The Aegis of Winter was built to be her eyes and ears across Verlantis. After three centuries the eyes have seen enough. The ears stopped being surprised a long time ago.", attribution: "Aegis of Winter internal record, on Elenadara Winter" },
+  { quote: "She does not call herself a hero. Heroes finish.", attribution: "Aegis of Winter field record, on Elenadara Winter" },
+  // Nkrabea, Matriarch of Death
+  { quote: "The Cycle does not mourn. It does not celebrate. It turns. Everything else is mortal interpretation.", attribution: "Nkrabea, Matriarch of Death" },
+  { quote: "Nekapolis offends the Cycle in ways that war, plague, and famine never have. Those things feed it. Nekapolis starves it. The distinction is not philosophical. It is existential.", attribution: "Nkrabea, Matriarch of Death" },
+  { quote: "She does not hate Nekapolis for what it is. She hates it for what it prevents.", attribution: "Ashen Reaper briefing document, on Nkrabea" },
+  { quote: "Every realm calls itself righteous. None of them send their dead back.", attribution: "Nkrabea, Matriarch of Death, recorded address to the Ashen Reapers" },
+  // Gorlaya'Kasa
+  { quote: "The Prometheans redirected toward the Pact of Agony because Korcent Valiz made it convenient. Gorlaya'Kasa did not care about the politics. He cared about the provocation.", attribution: "Bastion of the Purgatory intelligence briefing, EC3" },
+  { quote: "Arrabii took centuries to build. It took him considerably less time to disagree with its existence.", attribution: "Ruby Cerberus merchant guild record, on Gorlaya'Kasa" },
+  { quote: "The Scorch Fiery Badlands were not always a death desert. That transformation has a name. It simply does not negotiate.", attribution: "Unnamed Ruby Cerberus cartographer, EC3 survey" },
+  // Yaharrom Marox
+  { quote: "The ritual should have been impossible. The consensus of every living scholar at the time confirmed this. Yaharrom and Lissandra Marox were not living scholars. They were mortals with access to a divine catastrophe and a very specific plan.", attribution: "Veil Siphoner remnant archive" },
+  { quote: "Nekapolis was not stolen. It was claimed from wreckage that every outworldly power had written off. The fact that it worked has been making those powers uncomfortable ever since.", attribution: "Yaharrom Marox, Damned Crown founding record" },
+  // Lissandra Marox
+  { quote: "Zontraxsa arrived broken. The Judas Heart had seen to that thoroughly. Lissandra rebuilt him with Necrolyte because she was curious whether it could be done and because she needed to know if the result would be loyal.", attribution: "Damned Crown founding record, on Lissandra Marox" },
+  { quote: "She does not describe Necrolyte as power. She describes it as a property of existence that everyone else refuses to engage with honestly.", attribution: "Eye of the Nightingale intelligence file, on Lissandra Marox" },
+  { quote: "The Underworld harvests. Nekapolis consumes. Lissandra calls the distinction a matter of philosophy and declines to elaborate.", attribution: "Eye of the Nightingale intelligence file, on Lissandra Marox" },
+  // Ariel, Arch Seraph of Valor
+  { quote: "Sent to end Lucifer's Crusade. Ended it. Three years, countless dead, the optimal solution available was an arrest. The Silver City called it resolved. Ariel has not used that word.", attribution: "Domain of Valor internal record, on Ariel" },
+  { quote: "Valor is not the same as being correct. The Silver City has never formally asked its Arch Seraphs to examine that distinction. Ariel has noticed.", attribution: "Domain of Valor internal record, on Ariel" },
+  // Iofiel, Arch Seraph of Hope
+  { quote: "Descended to the Material Realm to restore faith in the Silver City. The mortals who had lost the most faith had lost it for the most understandable reasons. The report back to the Silver City was carefully worded.", attribution: "Domain of Hope field record, on Iofiel" },
+  { quote: "Hope is not optimism. Optimism requires no evidence. Hope requires maintaining something in spite of the evidence. Iofiel has seen the evidence.", attribution: "Iofiel, Arch Seraph of Hope" },
+  // Zarkenko Darogo
+  { quote: "The Tranquil Circle has been attempting to regulate his court for longer than most mortal civilizations have existed. He finds this the most consistently entertaining thing in any realm.", attribution: "Tranquil Circle internal advisory, on Zarkenko Darogo" },
+  { quote: "He does not lie. He arranges truths until they face the wrong direction.", attribution: "Tranquil Circle internal advisory, on Zarkenko Darogo" },
+  { quote: "Asked once what he wanted from Verlantis, Zarkenko said consequences. Nobody asked a follow-up question.", attribution: "Tranquil Circle senior envoy, on Zarkenko Darogo" },
+  // Sultana Alvahra Rheiss
+  { quote: "The Scorch Fiery Badlands have no mercy built into them. The Ruby Cerberus did not develop resilience. They developed competence. The distinction matters to them.", attribution: "Ruby Cerberus merchant guild charter, on Sultana Alvahra Rheiss" },
+  { quote: "Arrabii was the grand merchant capital of her people. Gorlaya'Kasa destroyed it in a tantrum redirected there by political manipulation. The Sultana has noted that nobody responsible for that chain of events has been held accountable. She has noted it very quietly.", attribution: "Ruby Cerberus merchant guild record, on Sultana Alvahra Rheiss" },
+  { quote: "Fresh water. Gemstones. Trust. In the Scorch Fiery Badlands all three are finite, all three are traded, and all three are guarded the same way.", attribution: "Sultana Alvahra Rheiss, Ruby Cerberus merchant guild charter" },
+  // Lanathar
+  { quote: "He did not come because the Silver City sent him. The Silver City had not yet decided. By the time it did, Lanathar was already in the Material Realm.", attribution: "Amber Hearth Starbound oral tradition, on Lanathar" },
+  { quote: "The stars are not a memorial. That is the part the Starbound keep getting wrong.", attribution: "Attributed to Lanathar, Amber Hearth founding record" },
+  // Griffin Dominiks
+  { quote: "In charge of dismantling the Prometheans and the Amber Hearth simultaneously. Both factions believe they are protecting mortals. Both factions cause significant collateral damage protecting mortals. Dominiks finds the overlap instructive.", attribution: "Bastion of the Purgatory command record, on Griffin Dominiks" },
+  { quote: "Lucifer returned. The Prometheans reactivated within the week. Thirty years of containment work, undone by a ritual inversion nobody predicted. Dominiks filed the report. It was not a short report.", attribution: "Bastion of the Purgatory command record, Griffin Dominiks" },
+  // Zariah Yagata
+  { quote: "Seventeen volumes of aftermath documentation. Eighteenth in progress. The work does not get lighter. The handwriting gets steadier. She is not sure whether that is professional development or something else.", attribution: "Bastion of the Purgatory scribe record, on Zariah Yagata" },
+  { quote: "She prefers to be on site. She hates engaging in combat. These two preferences are in constant conflict and the conflict has never been resolved.", attribution: "Bastion of the Purgatory personnel record, on Zariah Yagata" },
+  // Cedric de Noirterre
+  { quote: "The Alabaster Hunger infected hundreds before Lucinda stopped it. The Undying Umbral severed the connection to every one of them. Whether that constitutes freedom or abandonment depends on which direction the question faces.", attribution: "Cedric de Noirterre, Verandin Liberty resistance archive" },
+  { quote: "His house fell. He sought Lucinda's help. He found someone attempting to end a war older than every noble house that ever existed. His house stopped feeling like the priority fairly quickly.", attribution: "Verandin Liberty resistance archive, on Cedric de Noirterre" },
+  { quote: "The vampiric curse left marble veins across his skin and a cold stillness in his eyes. Yisces designed it to hollow things out from the inside. Lucinda interrupted the process. Cedric de Noirterre has not decided yet whether to be grateful.", attribution: "Eye of the Nightingale field record, on Cedric de Noirterre" },
+  // Kussoth
+  { quote: "Every other Elemental Lord calls the alliances reckless. Kussoth calls their neutrality a comfort they cannot afford to examine honestly. Neither side has changed the other's position in several thousand years.", attribution: "Primordial Plane record, on Kussoth" },
+  { quote: "Connected to the Charred Children, to a Celestial order, to fiendish powers within the Underworld simultaneously. Asked about the contradictions, Kussoth has never found them contradictory.", attribution: "Veil Siphoner remnant archive, on Kussoth" },
+  // Lucinda Morningstar
+  { quote: "She studied what her father burned through. She built what he couldn't imagine. She vanished before anyone could take it from her. I think that was the point.", attribution: "Unnamed Lunare Patron citizen, on Lucinda Morningstar" },
+  { quote: "Lucinda Morningstar refused redemption from the Silver City, refused to be claimed by the Underworld, refused to stop working on a problem everyone else had given up on. They called her dangerous. She called it Tuesday.", attribution: "Eye of the Nightingale field record, on Lucinda Morningstar" },
+  { quote: "She scattered her life's work across the world to keep it out of the wrong hands. Every wrong pair of hands that found it anyway proved she was right to be afraid.", attribution: "Lunare Patron archivist, on Lucinda Morningstar" },
+  { quote: "Most people who vanish in Verlantis are dead. Lucinda Morningstar is the exception that makes that fact considerably worse.", attribution: "Bastion of the Purgatory intelligence report, EC4" },
+  // Lucifer Morningstar
+  { quote: "They stripped him of immortality as a punishment. He took it as a revelation. The gods have not publicly addressed the difference.", attribution: "Verandin Liberty resistance archivist, on Lucifer Morningstar" },
+  // --- Nameless NPCs ---
   { quote: "Nobody warned us. Nobody asked us. One morning the sky cracked open and the Eternal Conflict had opinions about our continent.", attribution: "Unnamed farmer, Aavarhi border region" },
   { quote: "The gods intervene with overwhelming force and absolute certainty. I have seen that certainty. It looks exactly like rubble.", attribution: "Bastion of the Purgatory field medic" },
   { quote: "Deamoth crossed the Dread Sea and we crashed an entire city into his army to stop him. Halo doesn't exist anymore. He does. Make of that what you will.", attribution: "Star Gazer salvager, Tarcia wreckage site" },
-  { quote: "They stripped him of immortality as a punishment. He took it as a revelation. The gods have not publicly addressed the difference.", attribution: "Verandin Liberty resistance archivist, on Lucifer" },
-  { quote: "The First Fallen kept their powers, their reduced aging, their domain instincts. The gods called the punishment imperfect. We called it living next to something that used to be an angel and still mostly acts like one.", attribution: "Unnamed innkeeper, Roussi" },
   { quote: "My father died in Lucifer's Crusade. Not fighting demons. Caught in the middle of an angel's idea of protection.", attribution: "Bastion recruit, EC2 descendants registry" },
-  { quote: "She fell not for what she did. She fell for refusing to stop caring about what was done to us. I don't know whether to call that noble or devastating.", attribution: "Lunare Patron archivist, on Lucinda" },
-  { quote: "The Matriarch of Death governs the Cycle independently. She answers to no god, no pact, no realm. She is the only authority in Verlantis I find genuinely comforting. That probably says something about the rest of them.", attribution: "Eye of the Nightingale senior agent" },
-  { quote: "Zagreek survived the First Eternal Conflict through unity and distrust of outworldly power. That distrust never cooled. Honestly, fair enough.", attribution: "Tranquil Circle envoy, failed diplomatic visit" },
-  { quote: "The Prometheans fight for free will. The Bastion fights for mortal survival. They clash constantly because protecting something and liberating it are not always the same thing.", attribution: "Unnamed scholar, Tessibloom Academy" },
-  { quote: "The Eye of the Nightingale began as custodians of ancient knowledge. Now they are the most effective intelligence network in Verlantis. I'm not sure when one became the other. I don't think they are either.", attribution: "Zagreek Magister, closed session record" },
-  { quote: "Nekapolis doesn't harvest souls. It annihilates them. No reincarnation. No resurrection. No contribution to the Cycle. Just nothing. Two mortals built that. Two mortals decided nothing was a resource.", attribution: "Matriarch of Death, recorded address to the Ashen Reapers" },
   { quote: "I lost my brother to Necrolyte. There was no body. There was no soul to mourn. There was just the space where he used to be.", attribution: "Unnamed Fragmented, Lunare haven" },
   { quote: "They stole a realm from the wreckage of a divine war and built something worse inside it. The terrifying part isn't that they did it. It's that it worked.", attribution: "Veil Siphoner remnant scholar" },
-  { quote: "The Cycle of Life and Death has turned since before the gods named it. Nekapolis is the first thing in recorded history that genuinely threatens to starve it. Sleep well.", attribution: "Bastion of the Purgatory intelligence briefing, EC3" },
-  { quote: "She studied what her father burned through. She built what he couldn't imagine. She vanished before anyone could take it from her. I think that was the point.", attribution: "Unnamed Lunare Patron citizen" },
-  { quote: "Lucinda Morningstar refused redemption from the Silver City, refused to be claimed by the Underworld, refused to stop working on a problem everyone else had given up on. They called her dangerous. She called it Tuesday.", attribution: "Eye of the Nightingale field record" },
-  { quote: "She scattered her life's work across the world to keep it out of the wrong hands. Every wrong pair of hands that found it anyway proved she was right to be afraid.", attribution: "Lunare Patron archivist" },
-  { quote: "Most people who vanish in Verlantis are dead. Lucinda Morningstar is the exception that makes that fact considerably worse.", attribution: "Bastion of the Purgatory intelligence report, EC4" },
+  { quote: "Forty percent of Aavarhi is a demon's rotting corpse. And somehow that's not the worst thing happening right now.", attribution: "Unnamed cartographer, EC4 survey notes" },
+  { quote: "The Prometheans fight for free will. The Bastion fights for mortal survival. They clash constantly because protecting something and liberating it are not always the same thing.", attribution: "Unnamed scholar, Tessibloom Academy" },
   { quote: "Something cut every outworldly connection to the Material Realm simultaneously. It lasted four seconds. Every realm felt it. None of them have stopped thinking about it since.", attribution: "Tranquil Circle senior envoy, internal dispatch" },
   { quote: "Lucifer is free. The Corruption Plains are mutating. There is a power somewhere that briefly made the gods go quiet. I am choosing to interpret this as progress.", attribution: "Ruby Cerberus caravan captain, overheard in a Roussi tavern" },
   { quote: "EC4 has barely started and we have already freed an imprisoned angel, grown a Titan tree in a demon's corpse, and discovered a weapon that scares every realm simultaneously. I've been a Bastion soldier for thirty years. I have never been this tired.", attribution: "Bastion veteran, 78th Battalion" },
-  { quote: "The rest of this era's history has not yet been written. That is either the most hopeful or most terrifying sentence in this entire record. I genuinely cannot decide.", attribution: "Verlantis Encyclopedia, closing note, EC4 entry" },
   { quote: "The gods made the rules. The mortals paid the fines.", attribution: "Unnamed dockworker, Salisport" },
-  { quote: "No one asked us if we wanted to be the battleground.", attribution: "Unnamed refugee, Aavarhi displacement record" },
   { quote: "Celestial or Fiendish, the rubble looks the same from underneath.", attribution: "Unnamed Bastion field surgeon" },
-  { quote: "They fight for the fate of all existence. We fight to keep our doors on the hinges.", attribution: "Unnamed village elder, Crogrelee outskirts" },
-  { quote: "Blessed by the gods, they said. The blessed ones are the ones who died quickly.", attribution: "Unnamed EC1 survivor, Aavarhi oral history" },
-  { quote: "Forty percent of Aavarhi is a demon's rotting corpse. And somehow that's not the worst thing happening right now.", attribution: "Unnamed cartographer, EC4 survey notes" },
   { quote: "The Eternal Conflict has been going on longer than recorded history. Encouraging, isn't it.", attribution: "Unnamed Tessibloom Academy lecturer" },
-  { quote: "Our kingdom has survived three Eternal Conflicts. The fourth one is looking optimistic.", attribution: "Unnamed Zagreek guard captain" },
   { quote: "The Fallen chose mortality as punishment. The rest of us didn't get a choice.", attribution: "Unnamed Verandin Liberty citizen" },
   { quote: "Immortals call it the Eternal Conflict. We call it Tuesday.", attribution: "Unnamed Ruby Cerberus trader" },
-  { quote: "No mortal kingdom voted for the Eternal War. Every mortal kingdom is paying for it.", attribution: "Unnamed Montagna war correspondent" },
-  { quote: "The world mortals built in spite of all this is the only proof that any of it was worth surviving.", attribution: "Unnamed Tessibloom historian" },
-  { quote: "We are not a stage. We are an aftermath. And we are still here.", attribution: "Unnamed Bastion of the Purgatory oath ceremony, traditional closing" },
-  { quote: "Mortals age, suffer, and die. Immortals call that weakness. We call it everything we have.", attribution: "Unnamed Zagreek philosopher" },
+  { quote: "We are not a stage. We are an aftermath. And we are still here.", attribution: "Bastion of the Purgatory oath ceremony, traditional closing" },
   { quote: "Every era ends. Every kingdom falls. Mortalkind endures anyway. No deity has figured out why.", attribution: "Unnamed Eye of the Nightingale senior archivist" },
-  { quote: "The stars are a dead god's remains. We built a faith around them anyway. That's what mortals do.", attribution: "Unnamed Amber Hearth initiate, first sermon" },
+  { quote: "The rest of this era's history has not yet been written. That is either the most hopeful or most terrifying sentence in this entire record. I genuinely cannot decide.", attribution: "Verlantis Encyclopedia, closing note, EC4 entry" },
 ];
 
 function Btn({ style, variant, size, onClick, children, disabled }) {
