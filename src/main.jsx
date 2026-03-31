@@ -2193,33 +2193,53 @@ function App() {
   );
 
   if (!activeCampaign) return (
-    <div style={{ position:"fixed",inset:0,overflowY:"auto",background:"linear-gradient(135deg, #0C0618 0%, #070310 50%, #110308 100%)",fontFamily:T.fBody }}>
+    <div style={{ position:"fixed",inset:0,overflowY:"auto",background:"linear-gradient(135deg, #0C0618 0%, #070310 50%, #110308 100%)",fontFamily:T.fBody,WebkitFontSmoothing:"antialiased",MozOsxFontSmoothing:"grayscale" }}>
 
-      {/* Subtle background blobs — same animation, much lower opacity than login */}
-      <div style={{ position:"fixed",top:"-10%",left:"-10%",width:"min(55vw,55vh)",height:"min(55vw,55vh)",maxWidth:540,borderRadius:"50%",
-        background:"radial-gradient(circle, rgba(255,230,110,0.07) 0%, rgba(201,168,76,0.03) 40%, transparent 70%)",
+      {/* ── Background blobs — ~60% of login intensity ── */}
+      <div style={{ position:"fixed",top:"-8%",left:"-8%",width:"min(58vw,58vh)",height:"min(58vw,58vh)",maxWidth:640,borderRadius:"50%",
+        background:"radial-gradient(circle, rgba(255,230,110,0.15) 0%, rgba(201,168,76,0.08) 38%, transparent 70%)",
         pointerEvents:"none", animation:"holyClash 24s linear infinite" }} />
-      <div style={{ position:"fixed",bottom:"-10%",right:"-10%",width:"min(55vw,55vh)",height:"min(55vw,55vh)",maxWidth:540,borderRadius:"50%",
-        background:"radial-gradient(circle, rgba(200,35,20,0.09) 0%, rgba(140,20,15,0.04) 40%, transparent 70%)",
+      <div style={{ position:"fixed",bottom:"-8%",right:"-8%",width:"min(58vw,58vh)",height:"min(58vw,58vh)",maxWidth:640,borderRadius:"50%",
+        background:"radial-gradient(circle, rgba(210,35,20,0.18) 0%, rgba(140,20,15,0.09) 38%, transparent 70%)",
         pointerEvents:"none", animation:"demonicClash 24s linear infinite" }} />
+
+      {/* ── Impact flashes — ~65% of login opacity ── */}
+      <div style={{ position:"fixed",top:"12%",left:"72%",width:"min(50vw,50vh)",height:"min(50vw,50vh)",maxWidth:520,borderRadius:"50%",
+        background:"radial-gradient(circle, rgba(255,220,100,0.6) 0%, rgba(220,80,20,0.36) 30%, rgba(160,20,10,0.13) 60%, transparent 75%)",
+        pointerEvents:"none", animation:"clashFlash1 24s linear infinite" }} />
+      <div style={{ position:"fixed",top:"12%",left:"72%",width:"min(72vw,72vh)",height:"min(72vw,72vh)",maxWidth:740,borderRadius:"50%",
+        border:"2px solid rgba(255,195,60,0.5)",background:"transparent",
+        pointerEvents:"none", animation:"shockRing1 24s linear infinite" }} />
+      <div style={{ position:"fixed",top:"48%",left:"44%",width:"min(50vw,50vh)",height:"min(50vw,50vh)",maxWidth:520,borderRadius:"50%",
+        background:"radial-gradient(circle, rgba(255,220,100,0.6) 0%, rgba(220,80,20,0.36) 30%, rgba(160,20,10,0.13) 60%, transparent 75%)",
+        pointerEvents:"none", animation:"clashFlash2 24s linear infinite" }} />
+      <div style={{ position:"fixed",top:"48%",left:"44%",width:"min(72vw,72vh)",height:"min(72vw,72vh)",maxWidth:740,borderRadius:"50%",
+        border:"2px solid rgba(255,195,60,0.5)",background:"transparent",
+        pointerEvents:"none", animation:"shockRing2 24s linear infinite" }} />
+      <div style={{ position:"fixed",top:"75%",left:"18%",width:"min(50vw,50vh)",height:"min(50vw,50vh)",maxWidth:520,borderRadius:"50%",
+        background:"radial-gradient(circle, rgba(255,220,100,0.6) 0%, rgba(220,80,20,0.36) 30%, rgba(160,20,10,0.13) 60%, transparent 75%)",
+        pointerEvents:"none", animation:"clashFlash3 24s linear infinite" }} />
+      <div style={{ position:"fixed",top:"75%",left:"18%",width:"min(72vw,72vh)",height:"min(72vw,72vh)",maxWidth:740,borderRadius:"50%",
+        border:"2px solid rgba(255,195,60,0.5)",background:"transparent",
+        pointerEvents:"none", animation:"shockRing3 24s linear infinite" }} />
 
       {/* Scrollable content column */}
       <div style={{ maxWidth:520,margin:"0 auto",padding:"24px 20px",paddingBottom:"max(32px, env(safe-area-inset-bottom))",minHeight:"100dvh",display:"flex",flexDirection:"column",position:"relative",zIndex:1 }}>
 
         {/* ── Header ── */}
-        <div style={{ display:"flex",alignItems:"center",gap:12,marginBottom:24,paddingBottom:16,borderBottom:"1px solid rgba(201,168,76,0.15)" }}>
+        <div style={{ display:"flex",alignItems:"center",gap:12,marginBottom:24,paddingBottom:16,borderBottom:"1px solid rgba(201,168,76,0.2)" }}>
           <img src="/logo.png" alt="Verlantis"
-            style={{ width:36,height:"auto",opacity:0.85,filter:"drop-shadow(0 0 10px rgba(201,168,76,0.35))",flexShrink:0 }}
+            style={{ width:36,height:"auto",opacity:0.9,filter:"drop-shadow(0 0 10px rgba(201,168,76,0.4))",flexShrink:0 }}
             onError={e=>e.target.style.display="none"} />
           <div style={{ flex:1,minWidth:0 }}>
-            <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:17,color:"#C9A84C",letterSpacing:"0.16em",textTransform:"uppercase",textShadow:"0 0 18px rgba(201,168,76,0.3)",lineHeight:1.15 }}>Verlantis</div>
-            <div style={{ fontSize:9,color:"rgba(201,168,76,0.45)",letterSpacing:"0.2em",textTransform:"uppercase",fontFamily:T.fHead }}>Interactive Map</div>
+            <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:17,color:"#C9A84C",letterSpacing:"0.14em",textShadow:"0 0 18px rgba(201,168,76,0.35)",lineHeight:1.15 }}>Verlantis</div>
+            <div style={{ fontSize:10,color:"rgba(201,168,76,0.65)",letterSpacing:"0.16em",textTransform:"uppercase",fontFamily:T.fHead }}>Interactive Map</div>
           </div>
           <button onClick={async()=>{await signOut(session.access_token);setUser(null);setSession(null);}}
-            style={{ padding:"5px 14px",borderRadius:20,border:"1px solid rgba(201,168,76,0.22)",background:"transparent",
-              color:"rgba(201,168,76,0.55)",fontSize:11,cursor:"pointer",fontFamily:T.fHead,letterSpacing:"0.07em",flexShrink:0,transition:"border-color 0.2s,color 0.2s" }}
-            onMouseEnter={e=>{ e.currentTarget.style.borderColor="rgba(201,168,76,0.55)"; e.currentTarget.style.color="#C9A84C"; }}
-            onMouseLeave={e=>{ e.currentTarget.style.borderColor="rgba(201,168,76,0.22)"; e.currentTarget.style.color="rgba(201,168,76,0.55)"; }}>
+            style={{ padding:"5px 14px",borderRadius:20,border:"1px solid rgba(201,168,76,0.35)",background:"transparent",
+              color:"rgba(201,168,76,0.75)",fontSize:11,cursor:"pointer",fontFamily:T.fHead,letterSpacing:"0.07em",flexShrink:0,transition:"border-color 0.2s,color 0.2s" }}
+            onMouseEnter={e=>{ e.currentTarget.style.borderColor="rgba(201,168,76,0.7)"; e.currentTarget.style.color="#C9A84C"; }}
+            onMouseLeave={e=>{ e.currentTarget.style.borderColor="rgba(201,168,76,0.35)"; e.currentTarget.style.color="rgba(201,168,76,0.75)"; }}>
             Sign out
           </button>
         </div>
@@ -2241,14 +2261,14 @@ function App() {
 
         {/* ── Empty state ── */}
         {!campaignLoading && campaigns.length === 0 && (
-          <div style={{ textAlign:"center",padding:"48px 20px",color:"rgba(180,160,220,0.45)",fontSize:13,fontStyle:"italic",lineHeight:1.8 }}>
+          <div style={{ textAlign:"center",padding:"48px 20px",color:"rgba(200,185,240,0.65)",fontSize:13,fontStyle:"italic",lineHeight:1.8 }}>
             No campaigns yet.<br/>Create one or join with a campaign ID from your GM.
           </div>
         )}
 
         {/* ── Section label ── */}
         {!campaignLoading && campaigns.length > 0 && (
-          <div style={{ fontSize:9,letterSpacing:"0.22em",textTransform:"uppercase",color:"rgba(201,168,76,0.38)",fontFamily:T.fHead,marginBottom:10 }}>
+          <div style={{ fontSize:10,letterSpacing:"0.2em",textTransform:"uppercase",color:"rgba(201,168,76,0.65)",fontFamily:T.fHead,marginBottom:10 }}>
             Your Campaigns
           </div>
         )}
@@ -2258,36 +2278,36 @@ function App() {
           const isGMRole = c.myRole === "gm";
           return (
             <div key={c.id} onClick={()=>loadCampaignData(c,c.myRole)}
-              style={{ padding:"14px 16px",background:"rgba(255,255,255,0.03)",borderRadius:12,marginBottom:9,cursor:"pointer",
-                border:`1.5px solid ${isGMRole?"rgba(201,168,76,0.18)":"rgba(120,90,200,0.18)"}`,
-                boxShadow:"0 2px 14px rgba(0,0,0,0.3)",transition:"border-color 0.18s,background 0.18s",position:"relative" }}
-              onMouseEnter={e=>{ e.currentTarget.style.borderColor=isGMRole?"rgba(201,168,76,0.52)":"rgba(150,115,230,0.48)"; e.currentTarget.style.background="rgba(255,255,255,0.055)"; }}
-              onMouseLeave={e=>{ e.currentTarget.style.borderColor=isGMRole?"rgba(201,168,76,0.18)":"rgba(120,90,200,0.18)"; e.currentTarget.style.background="rgba(255,255,255,0.03)"; }}>
+              style={{ padding:"14px 16px",background:"rgba(255,255,255,0.045)",borderRadius:12,marginBottom:9,cursor:"pointer",
+                border:`1.5px solid ${isGMRole?"rgba(201,168,76,0.28)":"rgba(130,100,210,0.28)"}`,
+                boxShadow:"0 2px 14px rgba(0,0,0,0.35)",transition:"border-color 0.18s,background 0.18s",position:"relative" }}
+              onMouseEnter={e=>{ e.currentTarget.style.borderColor=isGMRole?"rgba(201,168,76,0.65)":"rgba(155,120,235,0.6)"; e.currentTarget.style.background="rgba(255,255,255,0.075)"; }}
+              onMouseLeave={e=>{ e.currentTarget.style.borderColor=isGMRole?"rgba(201,168,76,0.28)":"rgba(130,100,210,0.28)"; e.currentTarget.style.background="rgba(255,255,255,0.045)"; }}>
               <div style={{ display:"flex",alignItems:"center",gap:12 }}>
                 {/* Role badge */}
                 <div style={{ width:38,height:38,borderRadius:"50%",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,
-                  background:isGMRole?"rgba(201,168,76,0.11)":"rgba(120,80,200,0.1)",
-                  border:`1.5px solid ${isGMRole?"rgba(201,168,76,0.38)":"rgba(140,100,220,0.32)"}` }}>
+                  background:isGMRole?"rgba(201,168,76,0.15)":"rgba(120,80,200,0.14)",
+                  border:`1.5px solid ${isGMRole?"rgba(201,168,76,0.5)":"rgba(150,110,230,0.45)"}` }}>
                   {isGMRole ? "👑" : "⚔"}
                 </div>
                 {/* Info */}
                 <div style={{ flex:1,minWidth:0 }}>
-                  <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:14,color:"#E8DFC8",letterSpacing:"0.04em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{c.name}</div>
-                  {c.sub_header && <div style={{ fontSize:11,color:"rgba(201,168,76,0.6)",fontStyle:"italic",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{c.sub_header}</div>}
-                  <div style={{ fontSize:9,color:isGMRole?"rgba(201,168,76,0.42)":"rgba(160,140,210,0.5)",marginTop:3,letterSpacing:"0.1em",textTransform:"uppercase",fontFamily:T.fHead }}>{isGMRole?"Game Master":"Player"}</div>
+                  <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:14,color:"#EDE4CC",letterSpacing:"0.04em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{c.name}</div>
+                  {c.sub_header && <div style={{ fontSize:11,color:"rgba(215,185,100,0.85)",fontStyle:"italic",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{c.sub_header}</div>}
+                  <div style={{ fontSize:10,color:isGMRole?"rgba(201,168,76,0.7)":"rgba(180,158,230,0.7)",marginTop:3,letterSpacing:"0.08em",textTransform:"uppercase",fontFamily:T.fHead }}>{isGMRole?"Game Master":"Player"}</div>
                 </div>
                 {/* Delete (GM only) */}
                 {isGMRole && (
                   <button onClick={e=>{ e.stopPropagation(); setCampDeleteConfirm(c); }}
                     onTouchEnd={e=>{ e.stopPropagation(); e.preventDefault(); setCampDeleteConfirm(c); }}
                     title="Delete campaign"
-                    style={{ background:"none",border:"1px solid rgba(200,50,40,0.28)",borderRadius:8,color:"rgba(200,80,70,0.65)",cursor:"pointer",padding:"5px 8px",fontSize:13,lineHeight:1,flexShrink:0,transition:"border-color 0.15s,color 0.15s" }}
-                    onMouseEnter={e=>{ e.currentTarget.style.borderColor="rgba(200,50,40,0.6)"; e.currentTarget.style.color="#E06060"; }}
-                    onMouseLeave={e=>{ e.currentTarget.style.borderColor="rgba(200,50,40,0.28)"; e.currentTarget.style.color="rgba(200,80,70,0.65)"; }}>
+                    style={{ background:"none",border:"1px solid rgba(200,50,40,0.4)",borderRadius:8,color:"rgba(220,100,90,0.8)",cursor:"pointer",padding:"5px 8px",fontSize:13,lineHeight:1,flexShrink:0,transition:"border-color 0.15s,color 0.15s" }}
+                    onMouseEnter={e=>{ e.currentTarget.style.borderColor="rgba(200,50,40,0.75)"; e.currentTarget.style.color="#E86060"; }}
+                    onMouseLeave={e=>{ e.currentTarget.style.borderColor="rgba(200,50,40,0.4)"; e.currentTarget.style.color="rgba(220,100,90,0.8)"; }}>
                     🗑
                   </button>
                 )}
-                <span style={{ fontSize:16,color:"rgba(201,168,76,0.3)",flexShrink:0 }}>›</span>
+                <span style={{ fontSize:16,color:"rgba(201,168,76,0.55)",flexShrink:0 }}>›</span>
               </div>
             </div>
           );
@@ -2299,30 +2319,30 @@ function App() {
             <div style={{ display:"flex",gap:10 }}>
               <button
                 onClick={()=>{ if(atLimit){setError("You've reached the 5 campaign limit. Delete an existing campaign to create a new one.");return;} setShowCampaignModal(true); }}
-                style={{ flex:1,padding:"11px 0",borderRadius:12,border:`1px solid ${atLimit?"rgba(201,168,76,0.15)":"rgba(201,168,76,0.32)"}`,
-                  background:atLimit?"rgba(255,255,255,0.02)":"rgba(201,168,76,0.09)",
-                  color:atLimit?"rgba(201,168,76,0.3)":"#C9A84C",fontSize:13,fontFamily:T.fHead,fontWeight:600,
+                style={{ flex:1,padding:"11px 0",borderRadius:12,border:`1px solid ${atLimit?"rgba(201,168,76,0.2)":"rgba(201,168,76,0.45)"}`,
+                  background:atLimit?"rgba(255,255,255,0.02)":"rgba(201,168,76,0.12)",
+                  color:atLimit?"rgba(201,168,76,0.35)":"#C9A84C",fontSize:13,fontFamily:T.fHead,fontWeight:600,
                   letterSpacing:"0.07em",cursor:atLimit?"not-allowed":"pointer",transition:"background 0.2s,border-color 0.2s" }}
-                onMouseEnter={e=>{ if(!atLimit){ e.currentTarget.style.background="rgba(201,168,76,0.17)"; e.currentTarget.style.borderColor="rgba(201,168,76,0.58)"; } }}
-                onMouseLeave={e=>{ if(!atLimit){ e.currentTarget.style.background="rgba(201,168,76,0.09)"; e.currentTarget.style.borderColor="rgba(201,168,76,0.32)"; } }}>
+                onMouseEnter={e=>{ if(!atLimit){ e.currentTarget.style.background="rgba(201,168,76,0.22)"; e.currentTarget.style.borderColor="rgba(201,168,76,0.7)"; } }}
+                onMouseLeave={e=>{ if(!atLimit){ e.currentTarget.style.background="rgba(201,168,76,0.12)"; e.currentTarget.style.borderColor="rgba(201,168,76,0.45)"; } }}>
                 ＋ Create Campaign
               </button>
               <button
                 onClick={()=>setShowJoinModal(true)}
-                style={{ flex:1,padding:"11px 0",borderRadius:12,border:"1px solid rgba(120,90,200,0.28)",
-                  background:"rgba(120,80,200,0.06)",color:"rgba(180,158,230,0.8)",fontSize:13,
+                style={{ flex:1,padding:"11px 0",borderRadius:12,border:"1px solid rgba(140,105,220,0.42)",
+                  background:"rgba(120,80,200,0.1)",color:"rgba(200,182,245,0.9)",fontSize:13,
                   fontFamily:T.fHead,fontWeight:600,letterSpacing:"0.07em",cursor:"pointer",transition:"background 0.2s,border-color 0.2s" }}
-                onMouseEnter={e=>{ e.currentTarget.style.background="rgba(120,80,200,0.14)"; e.currentTarget.style.borderColor="rgba(150,115,230,0.52)"; }}
-                onMouseLeave={e=>{ e.currentTarget.style.background="rgba(120,80,200,0.06)"; e.currentTarget.style.borderColor="rgba(120,90,200,0.28)"; }}>
+                onMouseEnter={e=>{ e.currentTarget.style.background="rgba(120,80,200,0.2)"; e.currentTarget.style.borderColor="rgba(160,125,240,0.65)"; }}
+                onMouseLeave={e=>{ e.currentTarget.style.background="rgba(120,80,200,0.1)"; e.currentTarget.style.borderColor="rgba(140,105,220,0.42)"; }}>
                 Join Campaign
               </button>
             </div>
-            {ownedCount > 0 && <div style={{ fontSize:10,color:atLimit?"#E06060":"rgba(201,168,76,0.32)",textAlign:"center",fontStyle:"italic" }}>You own {ownedCount}/5 campaigns{atLimit?" — limit reached":""}</div>}
+            {ownedCount > 0 && <div style={{ fontSize:11,color:atLimit?"#E06060":"rgba(201,168,76,0.55)",textAlign:"center",fontStyle:"italic" }}>You own {ownedCount}/5 campaigns{atLimit?" — limit reached":""}</div>}
           </div>
         ); })()}
 
         {/* Version */}
-        <div style={{ fontSize:9,color:"rgba(120,100,160,0.28)",letterSpacing:"0.1em",textAlign:"center",marginTop:"auto",paddingTop:28,fontFamily:T.fHead }}>{VERSION}</div>
+        <div style={{ fontSize:9,color:"rgba(140,120,180,0.45)",letterSpacing:"0.1em",textAlign:"center",marginTop:"auto",paddingTop:28,fontFamily:T.fHead }}>{VERSION}</div>
 
       </div>
 
