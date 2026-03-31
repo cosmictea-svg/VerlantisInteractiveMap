@@ -1993,21 +1993,64 @@ function App() {
   const TAB_LABELS = { map: "🗺 Map", info: "📜 Info", library: "📚 Library", profile: "👤 Profile" };
   const buildVersion = (typeof __BUILD_DATE__ !== "undefined" && typeof __COMMIT__ !== "undefined") ? `v${__BUILD_DATE__}-${__COMMIT__}` : "vdev";
 
-  if (loading) return <div style={{ display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",fontFamily:T.fHead,color:T.muted,fontSize:16,background:T.bg,letterSpacing:"0.1em" }}>Loading...</div>;
+  if (loading) return (
+    <div style={{ position:"fixed",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"radial-gradient(ellipse at 30% 20%, #1A0A2E 0%, #080510 55%, #0A0508 100%)",gap:20 }}>
+      <img src="/logo.png" alt="" style={{ width:100,height:"auto",opacity:0.7,animation:"shimmer 2s ease-in-out infinite" }} onError={e=>e.target.style.display="none"} />
+      <div style={{ fontFamily:T.fHead,color:"#C9A84C",fontSize:13,letterSpacing:"0.25em",textTransform:"uppercase",opacity:0.8 }}>Loading…</div>
+    </div>
+  );
 
   if (!user) return (
-    <div style={{ fontFamily:T.fBody,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"100vh",gap:20,padding:32,background:T.bg }}>
-      {/* Cartography-style decorative header */}
-      <div style={{ fontSize:64,filter:"drop-shadow(0 3px 12px rgba(201,168,76,0.45))",marginBottom:4 }}>🗺</div>
-      <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:28,color:T.ink,letterSpacing:"0.1em",textAlign:"center",lineHeight:1.2 }}>Verlantis</div>
-      <div style={{ fontFamily:T.fHead,fontWeight:400,fontSize:14,color:T.goldDim,letterSpacing:"0.18em",textTransform:"uppercase",marginTop:-12 }}>Interactive Map</div>
-      <div style={{ width:60,height:1,background:`linear-gradient(to right, transparent, ${T.gold}, transparent)`,margin:"4px 0" }} />
-      <div style={{ color:T.muted,fontSize:13,textAlign:"center",maxWidth:300,fontStyle:"italic",lineHeight:1.7 }}>Sign in with your Google account to access your campaigns.</div>
-      <button onClick={signInWithGoogle}
-        style={{ display:"flex",alignItems:"center",gap:10,padding:"12px 28px",fontSize:14,borderRadius:30,border:`1.5px solid ${T.border}`,background:T.surface,cursor:"pointer",fontWeight:600,color:T.ink,fontFamily:T.fBody,boxShadow:"0 3px 16px rgba(26,16,53,0.12)",marginTop:4 }}>
-        <img src="https://www.google.com/favicon.ico" width={18} height={18} alt="" />
-        Sign in with Google
-      </button>
+    <div style={{ position:"fixed",inset:0,overflowY:"auto",background:"radial-gradient(ellipse at 30% 20%, #1A0A2E 0%, #080510 55%, #0A0508 100%)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"100vh",padding:32,fontFamily:T.fBody }}>
+      {/* Ambient glow blobs */}
+      <div style={{ position:"fixed",top:"12%",left:"8%",width:340,height:340,borderRadius:"50%",background:"radial-gradient(circle, rgba(201,168,76,0.07) 0%, transparent 70%)",pointerEvents:"none",animation:"ambientFloat 9s ease-in-out infinite" }} />
+      <div style={{ position:"fixed",bottom:"18%",right:"8%",width:300,height:300,borderRadius:"50%",background:"radial-gradient(circle, rgba(139,32,32,0.1) 0%, transparent 70%)",pointerEvents:"none",animation:"ambientFloat 11s ease-in-out infinite reverse" }} />
+      <div style={{ position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:600,height:600,borderRadius:"50%",background:"radial-gradient(circle, rgba(45,27,105,0.12) 0%, transparent 70%)",pointerEvents:"none",animation:"ambientFloat 14s ease-in-out infinite 3s" }} />
+
+      {/* Main content */}
+      <div style={{ display:"flex",flexDirection:"column",alignItems:"center",maxWidth:480,width:"100%",position:"relative",zIndex:1 }}>
+
+        {/* Campaign logo — fades in */}
+        <img
+          src="/logo.png" alt="Fallen"
+          style={{ width:"min(340px, 85vw)",height:"auto",animation:"logoFadeIn 1.8s ease-out forwards",opacity:0,filter:"drop-shadow(0 0 40px rgba(201,168,76,0.25))" }}
+          onError={e=>{ e.target.style.display="none"; }}
+        />
+
+        {/* Title */}
+        <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:42,color:"#C9A84C",letterSpacing:"0.22em",textTransform:"uppercase",textAlign:"center",animation:"textFadeUp 1s ease-out 0.9s forwards",opacity:0,textShadow:"0 0 48px rgba(201,168,76,0.35), 0 2px 10px rgba(0,0,0,0.9)",marginTop:-16,lineHeight:1 }}>
+          Fallen
+        </div>
+        <div style={{ fontFamily:T.fHead,fontWeight:400,fontSize:11,color:"#7A5C10",letterSpacing:"0.35em",textTransform:"uppercase",animation:"textFadeUp 1s ease-out 1.1s forwards",opacity:0,marginTop:8 }}>
+          Interactive Map
+        </div>
+
+        {/* Gold divider */}
+        <div style={{ display:"flex",alignItems:"center",gap:14,margin:"22px 0 18px",width:"100%",maxWidth:280,animation:"textFadeUp 1s ease-out 1.3s forwards",opacity:0 }}>
+          <div style={{ flex:1,height:1,background:"linear-gradient(to right, transparent, rgba(201,168,76,0.4))" }} />
+          <span style={{ color:"rgba(201,168,76,0.5)",fontSize:12,animation:"shimmer 3s ease-in-out infinite" }}>✦</span>
+          <div style={{ flex:1,height:1,background:"linear-gradient(to left, transparent, rgba(201,168,76,0.4))" }} />
+        </div>
+
+        {/* Flavour text */}
+        <div style={{ color:"#7A6890",fontSize:13,textAlign:"center",maxWidth:310,fontStyle:"italic",lineHeight:1.9,animation:"textFadeUp 1s ease-out 1.4s forwards",opacity:0,marginBottom:30 }}>
+          "A world caught between the grace of light<br/>and the fury of the fallen."
+        </div>
+
+        {/* Sign in button */}
+        <button onClick={signInWithGoogle}
+          onMouseEnter={e=>{ e.currentTarget.style.borderColor="#C9A84C"; e.currentTarget.style.boxShadow="0 6px 36px rgba(201,168,76,0.18), inset 0 1px 0 rgba(201,168,76,0.2)"; }}
+          onMouseLeave={e=>{ e.currentTarget.style.borderColor="rgba(201,168,76,0.3)"; e.currentTarget.style.boxShadow="0 4px 24px rgba(0,0,0,0.5), inset 0 1px 0 rgba(201,168,76,0.1)"; }}
+          style={{ display:"flex",alignItems:"center",gap:10,padding:"13px 36px",fontSize:14,borderRadius:30,border:"1.5px solid rgba(201,168,76,0.3)",background:"linear-gradient(135deg, rgba(45,27,105,0.5) 0%, rgba(139,32,32,0.25) 100%)",cursor:"pointer",fontWeight:600,color:"#E8DCC8",fontFamily:T.fBody,boxShadow:"0 4px 24px rgba(0,0,0,0.5), inset 0 1px 0 rgba(201,168,76,0.1)",animation:"textFadeUp 1s ease-out 1.6s forwards",opacity:0,transition:"border-color 0.2s, box-shadow 0.2s",letterSpacing:"0.04em" }}>
+          <img src="https://www.google.com/favicon.ico" width={16} height={16} alt="" style={{ opacity:0.85 }} />
+          Sign in with Google
+        </button>
+
+        {/* Version */}
+        <div style={{ color:"#3A2860",fontSize:10,letterSpacing:"0.12em",marginTop:32,animation:"textFadeUp 1s ease-out 1.8s forwards",opacity:0,fontFamily:T.fHead }}>
+          {VERSION}
+        </div>
+      </div>
     </div>
   );
 

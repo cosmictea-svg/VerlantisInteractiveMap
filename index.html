@@ -6,15 +6,34 @@
     <title>Verlantis Interactive Map</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=Exo+2:wght@400;600;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=Exo+2:wght@400;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet" />
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
-      body { font-family: 'Lora', Georgia, serif; background: #F5EDDA; }
+      body { font-family: 'Lora', Georgia, serif; background: #080510; }
       #root { max-width: 1200px; margin: 0 auto; height: 100vh; }
       ::-webkit-scrollbar { width: 6px; height: 6px; }
-      ::-webkit-scrollbar-track { background: #EDE0C4; }
-      ::-webkit-scrollbar-thumb { background: #B8A88A; border-radius: 3px; }
-      ::-webkit-scrollbar-thumb:hover { background: #8B6914; }
+      ::-webkit-scrollbar-track { background: #12091E; }
+      ::-webkit-scrollbar-thumb { background: #3A2860; border-radius: 3px; }
+      ::-webkit-scrollbar-thumb:hover { background: #C9A84C; }
+
+      /* ── Landing page animations ── */
+      @keyframes logoFadeIn {
+        from { opacity: 0; transform: scale(0.92) translateY(24px); }
+        to   { opacity: 1; transform: scale(1)    translateY(0);    }
+      }
+      @keyframes textFadeUp {
+        from { opacity: 0; transform: translateY(14px); }
+        to   { opacity: 1; transform: translateY(0);    }
+      }
+      @keyframes ambientFloat {
+        0%,100% { transform: scale(1)    translate(0,    0);    }
+        33%     { transform: scale(1.06) translate(12px, -18px); }
+        66%     { transform: scale(0.96) translate(-9px,  12px); }
+      }
+      @keyframes shimmer {
+        0%,100% { opacity: 0.5; }
+        50%     { opacity: 1;   }
+      }
     </style>
   </head>
   <body>
