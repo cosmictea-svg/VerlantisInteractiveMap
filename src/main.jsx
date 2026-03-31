@@ -1,5 +1,5 @@
 // Verlantis Interactive Map
-import React, { useState, useRef, useEffect, useMemo, memo } from "react";
+import React, { useState, useRef, useEffect, useMemo, memo, Component } from "react";
 import { createRoot } from "react-dom/client";
 
 const VERSION = (typeof __BUILD_DATE__ !== "undefined" && typeof __COMMIT__ !== "undefined")
@@ -4385,7 +4385,7 @@ function AnnouncementModal({ form, onSave, onClose }) {
   );
 }
 
-class ErrorBoundary extends React.Component {
+class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { err: null }; }
   static getDerivedStateFromError(err) { return { err }; }
   render() {
