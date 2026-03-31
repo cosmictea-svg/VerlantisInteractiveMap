@@ -2050,31 +2050,45 @@ function App() {
       background:"linear-gradient(135deg, #0C0618 0%, #070310 40%, #110308 100%)",
       backgroundSize:"300% 300%", animation:"bgShift 20s ease-in-out infinite" }}>
 
-      {/* ── Holy blobs — patrol top-left, sprint to centre at impact ── */}
+      {/* ── Holy blob (top-left origin) ── */}
       <div style={{ position:"fixed",top:"-8%",left:"-8%",width:"58vw",height:"58vw",maxWidth:640,maxHeight:640,borderRadius:"50%",
         background:"radial-gradient(circle, rgba(255,230,110,0.22) 0%, rgba(201,168,76,0.12) 35%, transparent 70%)",
-        pointerEvents:"none", animation:"holyClash 24s ease-in-out infinite" }} />
-      <div style={{ position:"fixed",top:"2%",left:"2%",width:"32vw",height:"32vw",maxWidth:340,maxHeight:340,borderRadius:"50%",
-        background:"radial-gradient(circle, rgba(255,245,190,0.14) 0%, rgba(220,185,80,0.07) 45%, transparent 70%)",
-        pointerEvents:"none", animation:"holyClash 24s ease-in-out infinite 1.2s" }} />
+        pointerEvents:"none", animation:"holyClash 24s linear infinite" }} />
+      <div style={{ position:"fixed",top:"0%",left:"0%",width:"28vw",height:"28vw",maxWidth:300,maxHeight:300,borderRadius:"50%",
+        background:"radial-gradient(circle, rgba(255,245,190,0.12) 0%, rgba(220,185,80,0.06) 45%, transparent 70%)",
+        pointerEvents:"none", animation:"ambientHoly 13s ease-in-out infinite" }} />
 
-      {/* ── Demonic blobs — patrol bottom-right, sprint to centre at impact ── */}
+      {/* ── Demonic blob (bottom-right origin) ── */}
       <div style={{ position:"fixed",bottom:"-8%",right:"-8%",width:"58vw",height:"58vw",maxWidth:640,maxHeight:640,borderRadius:"50%",
         background:"radial-gradient(circle, rgba(200,35,20,0.26) 0%, rgba(140,20,15,0.14) 35%, transparent 70%)",
-        pointerEvents:"none", animation:"demonicClash 24s ease-in-out infinite" }} />
-      <div style={{ position:"fixed",bottom:"2%",right:"2%",width:"30vw",height:"30vw",maxWidth:320,maxHeight:320,borderRadius:"50%",
-        background:"radial-gradient(circle, rgba(230,90,20,0.16) 0%, rgba(170,45,10,0.08) 45%, transparent 70%)",
-        pointerEvents:"none", animation:"demonicClash 24s ease-in-out infinite 1.2s" }} />
+        pointerEvents:"none", animation:"demonicClash 24s linear infinite" }} />
+      <div style={{ position:"fixed",bottom:"0%",right:"0%",width:"26vw",height:"26vw",maxWidth:280,maxHeight:280,borderRadius:"50%",
+        background:"radial-gradient(circle, rgba(230,90,20,0.14) 0%, rgba(170,45,10,0.07) 45%, transparent 70%)",
+        pointerEvents:"none", animation:"ambientDemonic 15s ease-in-out infinite" }} />
 
-      {/* ── Clash flash — only visible at impact moment ── */}
-      <div style={{ position:"fixed",top:"50%",left:"50%",width:"50vw",height:"50vw",maxWidth:520,maxHeight:520,borderRadius:"50%",
-        background:"radial-gradient(circle, rgba(255,200,80,0.55) 0%, rgba(200,60,20,0.35) 40%, transparent 70%)",
-        pointerEvents:"none", animation:"clashFlash 24s ease-in-out infinite" }} />
+      {/* ── Clash 1 flash+ring — upper-right (~22%) ── */}
+      <div style={{ position:"fixed",top:"18%",left:"60%",width:"44vw",height:"44vw",maxWidth:460,maxHeight:460,borderRadius:"50%",
+        background:"radial-gradient(circle, rgba(255,210,80,0.9) 0%, rgba(200,60,20,0.5) 35%, transparent 70%)",
+        pointerEvents:"none", animation:"clashFlash1 24s linear infinite" }} />
+      <div style={{ position:"fixed",top:"18%",left:"60%",width:"60vw",height:"60vw",maxWidth:620,maxHeight:620,borderRadius:"50%",
+        border:"2px solid rgba(255,190,50,0.75)",
+        pointerEvents:"none", animation:"shockRing1 24s linear infinite" }} />
 
-      {/* ── Shockwave ring ── */}
-      <div style={{ position:"fixed",top:"50%",left:"50%",width:"70vw",height:"70vw",maxWidth:700,maxHeight:700,borderRadius:"50%",
-        border:"2px solid rgba(255,180,60,0.6)",
-        pointerEvents:"none", animation:"shockRing 24s ease-in-out infinite" }} />
+      {/* ── Clash 2 flash+ring — centre (~50%) ── */}
+      <div style={{ position:"fixed",top:"38%",left:"28%",width:"44vw",height:"44vw",maxWidth:460,maxHeight:460,borderRadius:"50%",
+        background:"radial-gradient(circle, rgba(255,210,80,0.9) 0%, rgba(200,60,20,0.5) 35%, transparent 70%)",
+        pointerEvents:"none", animation:"clashFlash2 24s linear infinite" }} />
+      <div style={{ position:"fixed",top:"38%",left:"28%",width:"60vw",height:"60vw",maxWidth:620,maxHeight:620,borderRadius:"50%",
+        border:"2px solid rgba(255,190,50,0.75)",
+        pointerEvents:"none", animation:"shockRing2 24s linear infinite" }} />
+
+      {/* ── Clash 3 flash+ring — lower-left (~80%) ── */}
+      <div style={{ position:"fixed",top:"58%",left:"10%",width:"44vw",height:"44vw",maxWidth:460,maxHeight:460,borderRadius:"50%",
+        background:"radial-gradient(circle, rgba(255,210,80,0.9) 0%, rgba(200,60,20,0.5) 35%, transparent 70%)",
+        pointerEvents:"none", animation:"clashFlash3 24s linear infinite" }} />
+      <div style={{ position:"fixed",top:"58%",left:"10%",width:"60vw",height:"60vw",maxWidth:620,maxHeight:620,borderRadius:"50%",
+        border:"2px solid rgba(255,190,50,0.75)",
+        pointerEvents:"none", animation:"shockRing3 24s linear infinite" }} />
 
       {/* ── Main content ── */}
       <div style={{ display:"flex",flexDirection:"column",alignItems:"center",maxWidth:500,width:"100%",position:"relative",zIndex:1 }}>
