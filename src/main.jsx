@@ -2001,53 +2001,91 @@ function App() {
   );
 
   if (!user) return (
-    <div style={{ position:"fixed",inset:0,overflowY:"auto",background:"radial-gradient(ellipse at 30% 20%, #1A0A2E 0%, #080510 55%, #0A0508 100%)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"100vh",padding:32,fontFamily:T.fBody }}>
-      {/* Ambient glow blobs */}
-      <div style={{ position:"fixed",top:"12%",left:"8%",width:340,height:340,borderRadius:"50%",background:"radial-gradient(circle, rgba(201,168,76,0.07) 0%, transparent 70%)",pointerEvents:"none",animation:"ambientFloat 9s ease-in-out infinite" }} />
-      <div style={{ position:"fixed",bottom:"18%",right:"8%",width:300,height:300,borderRadius:"50%",background:"radial-gradient(circle, rgba(139,32,32,0.1) 0%, transparent 70%)",pointerEvents:"none",animation:"ambientFloat 11s ease-in-out infinite reverse" }} />
-      <div style={{ position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:600,height:600,borderRadius:"50%",background:"radial-gradient(circle, rgba(45,27,105,0.12) 0%, transparent 70%)",pointerEvents:"none",animation:"ambientFloat 14s ease-in-out infinite 3s" }} />
+    <div style={{ position:"fixed",inset:0,overflowY:"auto",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"100vh",padding:32,fontFamily:T.fBody,
+      background:"linear-gradient(135deg, #0C0618 0%, #070310 40%, #110308 100%)",
+      backgroundSize:"300% 300%", animation:"bgShift 20s ease-in-out infinite" }}>
 
-      {/* Main content */}
-      <div style={{ display:"flex",flexDirection:"column",alignItems:"center",maxWidth:480,width:"100%",position:"relative",zIndex:1 }}>
+      {/* ── Holy light (top-left) ── */}
+      <div style={{ position:"fixed",top:"-5%",left:"-5%",width:"55vw",height:"55vw",maxWidth:600,maxHeight:600,borderRadius:"50%",
+        background:"radial-gradient(circle, rgba(255,220,100,0.18) 0%, rgba(201,168,76,0.1) 30%, transparent 70%)",
+        pointerEvents:"none", animation:"holyDrift 10s ease-in-out infinite" }} />
+      <div style={{ position:"fixed",top:"10%",left:"5%",width:"30vw",height:"30vw",maxWidth:320,maxHeight:320,borderRadius:"50%",
+        background:"radial-gradient(circle, rgba(255,240,180,0.12) 0%, rgba(220,180,80,0.06) 40%, transparent 70%)",
+        pointerEvents:"none", animation:"holyDrift 14s ease-in-out infinite 2s" }} />
 
-        {/* Campaign logo — fades in */}
-        <img
-          src="/logo.png" alt="Fallen"
-          style={{ width:"min(340px, 85vw)",height:"auto",animation:"logoFadeIn 1.8s ease-out forwards",opacity:0,filter:"drop-shadow(0 0 40px rgba(201,168,76,0.25))" }}
-          onError={e=>{ e.target.style.display="none"; }}
-        />
+      {/* ── Demonic fire (bottom-right) ── */}
+      <div style={{ position:"fixed",bottom:"-5%",right:"-5%",width:"55vw",height:"55vw",maxWidth:600,maxHeight:600,borderRadius:"50%",
+        background:"radial-gradient(circle, rgba(180,30,20,0.22) 0%, rgba(139,20,20,0.12) 30%, transparent 70%)",
+        pointerEvents:"none", animation:"demonicDrift 11s ease-in-out infinite" }} />
+      <div style={{ position:"fixed",bottom:"10%",right:"5%",width:"28vw",height:"28vw",maxWidth:300,maxHeight:300,borderRadius:"50%",
+        background:"radial-gradient(circle, rgba(220,80,20,0.14) 0%, rgba(160,40,10,0.07) 40%, transparent 70%)",
+        pointerEvents:"none", animation:"demonicDrift 15s ease-in-out infinite 3s" }} />
 
-        {/* Title */}
-        <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:42,color:"#C9A84C",letterSpacing:"0.22em",textTransform:"uppercase",textAlign:"center",animation:"textFadeUp 1s ease-out 0.9s forwards",opacity:0,textShadow:"0 0 48px rgba(201,168,76,0.35), 0 2px 10px rgba(0,0,0,0.9)",marginTop:-16,lineHeight:1 }}>
-          Fallen
+      {/* ── Centre clash ── */}
+      <div style={{ position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:"40vw",height:"40vw",maxWidth:420,maxHeight:420,borderRadius:"50%",
+        background:"radial-gradient(circle, rgba(100,40,120,0.2) 0%, rgba(60,20,80,0.1) 40%, transparent 70%)",
+        pointerEvents:"none", animation:"clashPulse 7s ease-in-out infinite" }} />
+
+      {/* ── Main content ── */}
+      <div style={{ display:"flex",flexDirection:"column",alignItems:"center",maxWidth:500,width:"100%",position:"relative",zIndex:1 }}>
+
+        {/* Logo */}
+        <img src="/logo.png" alt="Verlantis"
+          style={{ width:"min(320px, 82vw)",height:"auto",animation:"logoFadeIn 1.8s ease-out forwards",opacity:0,
+            filter:"drop-shadow(0 0 30px rgba(201,168,76,0.2)) drop-shadow(0 0 60px rgba(160,30,20,0.15))" }}
+          onError={e=>{ e.target.style.display="none"; }} />
+
+        {/* VERLANTIS title */}
+        <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:"clamp(28px,7vw,46px)",color:"#C9A84C",letterSpacing:"0.28em",textTransform:"uppercase",textAlign:"center",
+          animation:"textFadeUp 1s ease-out 0.9s forwards",opacity:0,lineHeight:1,marginTop:4,
+          textShadow:"0 0 60px rgba(201,168,76,0.4), 0 0 20px rgba(201,168,76,0.2), 0 2px 8px rgba(0,0,0,0.9)" }}>
+          Verlantis
         </div>
-        <div style={{ fontFamily:T.fHead,fontWeight:400,fontSize:11,color:"rgba(201,168,76,0.65)",letterSpacing:"0.35em",textTransform:"uppercase",animation:"textFadeUp 1s ease-out 1.1s forwards",opacity:0,marginTop:8 }}>
+
+        {/* Divider with clash colours */}
+        <div style={{ display:"flex",alignItems:"center",gap:10,margin:"10px 0 8px",width:"100%",maxWidth:320,animation:"textFadeUp 1s ease-out 1.05s forwards",opacity:0 }}>
+          <div style={{ flex:1,height:1,background:"linear-gradient(to right, transparent, rgba(255,200,60,0.5))" }} />
+          <span style={{ fontSize:10,letterSpacing:"0.15em",color:"rgba(201,168,76,0.7)",fontFamily:T.fHead }}>✦</span>
+          <div style={{ flex:1,height:1,background:"linear-gradient(to left, transparent, rgba(255,200,60,0.5))" }} />
+        </div>
+
+        {/* Interactive Map subtitle */}
+        <div style={{ fontFamily:T.fHead,fontWeight:400,fontSize:"clamp(9px,2.2vw,12px)",color:"rgba(201,168,76,0.7)",letterSpacing:"0.4em",textTransform:"uppercase",
+          animation:"textFadeUp 1s ease-out 1.1s forwards",opacity:0 }}>
           Interactive Map
         </div>
 
-        {/* Gold divider */}
-        <div style={{ display:"flex",alignItems:"center",gap:14,margin:"22px 0 18px",width:"100%",maxWidth:280,animation:"textFadeUp 1s ease-out 1.3s forwards",opacity:0 }}>
-          <div style={{ flex:1,height:1,background:"linear-gradient(to right, transparent, rgba(201,168,76,0.5))" }} />
-          <span style={{ color:"rgba(201,168,76,0.8)",fontSize:12,animation:"shimmer 3s ease-in-out infinite" }}>✦</span>
-          <div style={{ flex:1,height:1,background:"linear-gradient(to left, transparent, rgba(201,168,76,0.5))" }} />
+        {/* Holy / Demonic clash divider */}
+        <div style={{ display:"flex",alignItems:"center",gap:0,margin:"24px 0 20px",width:"100%",maxWidth:340,animation:"textFadeUp 1s ease-out 1.3s forwards",opacity:0 }}>
+          <div style={{ flex:1,height:1,background:"linear-gradient(to right, transparent, rgba(255,220,80,0.6), rgba(255,220,80,0.3))" }} />
+          <div style={{ width:8,height:8,borderRadius:"50%",background:"radial-gradient(circle, #FFD700, #C9A84C)",boxShadow:"0 0 8px rgba(255,215,0,0.8)",margin:"0 6px",animation:"shimmer 2s ease-in-out infinite" }} />
+          <div style={{ width:6,height:6,borderRadius:"50%",background:"radial-gradient(circle, #A83220, #6B1010)",boxShadow:"0 0 6px rgba(180,40,20,0.7)",margin:"0 6px",animation:"shimmer 2s ease-in-out infinite 1s" }} />
+          <div style={{ flex:1,height:1,background:"linear-gradient(to left, transparent, rgba(180,40,20,0.6), rgba(180,40,20,0.3))" }} />
         </div>
 
         {/* Flavour text */}
-        <div style={{ color:"#C0B0D8",fontSize:13,textAlign:"center",maxWidth:310,fontStyle:"italic",lineHeight:1.9,animation:"textFadeUp 1s ease-out 1.4s forwards",opacity:0,marginBottom:30 }}>
+        <div style={{ color:"#C0B0D8",fontSize:13,textAlign:"center",maxWidth:300,fontStyle:"italic",lineHeight:1.9,
+          animation:"textFadeUp 1s ease-out 1.4s forwards",opacity:0,marginBottom:28,fontFamily:T.fBody }}>
           "A world caught between the grace of light<br/>and the fury of the fallen."
         </div>
 
         {/* Sign in button */}
         <button onClick={signInWithGoogle}
-          onMouseEnter={e=>{ e.currentTarget.style.borderColor="#C9A84C"; e.currentTarget.style.boxShadow="0 6px 36px rgba(201,168,76,0.18), inset 0 1px 0 rgba(201,168,76,0.2)"; }}
-          onMouseLeave={e=>{ e.currentTarget.style.borderColor="rgba(201,168,76,0.3)"; e.currentTarget.style.boxShadow="0 4px 24px rgba(0,0,0,0.5), inset 0 1px 0 rgba(201,168,76,0.1)"; }}
-          style={{ display:"flex",alignItems:"center",gap:10,padding:"13px 36px",fontSize:14,borderRadius:30,border:"1.5px solid rgba(201,168,76,0.3)",background:"linear-gradient(135deg, rgba(45,27,105,0.5) 0%, rgba(139,32,32,0.25) 100%)",cursor:"pointer",fontWeight:600,color:"#E8DCC8",fontFamily:T.fBody,boxShadow:"0 4px 24px rgba(0,0,0,0.5), inset 0 1px 0 rgba(201,168,76,0.1)",animation:"textFadeUp 1s ease-out 1.6s forwards",opacity:0,transition:"border-color 0.2s, box-shadow 0.2s",letterSpacing:"0.04em" }}>
+          onMouseEnter={e=>{ e.currentTarget.style.borderColor="rgba(201,168,76,0.7)"; e.currentTarget.style.boxShadow="0 6px 36px rgba(201,168,76,0.15), 0 6px 36px rgba(160,30,20,0.1), inset 0 1px 0 rgba(201,168,76,0.2)"; }}
+          onMouseLeave={e=>{ e.currentTarget.style.borderColor="rgba(201,168,76,0.25)"; e.currentTarget.style.boxShadow="0 4px 24px rgba(0,0,0,0.5)"; }}
+          style={{ display:"flex",alignItems:"center",gap:10,padding:"13px 36px",fontSize:14,borderRadius:30,
+            border:"1.5px solid rgba(201,168,76,0.25)",
+            background:"linear-gradient(135deg, rgba(30,15,70,0.7) 0%, rgba(100,20,20,0.5) 100%)",
+            cursor:"pointer",fontWeight:600,color:"#E8DCC8",fontFamily:T.fBody,
+            boxShadow:"0 4px 24px rgba(0,0,0,0.5)",
+            animation:"textFadeUp 1s ease-out 1.6s forwards",opacity:0,
+            transition:"border-color 0.25s, box-shadow 0.25s",letterSpacing:"0.04em" }}>
           <img src="https://www.google.com/favicon.ico" width={16} height={16} alt="" style={{ opacity:0.85 }} />
           Sign in with Google
         </button>
 
         {/* Version */}
-        <div style={{ color:"#6A5888",fontSize:10,letterSpacing:"0.12em",marginTop:32,animation:"textFadeUp 1s ease-out 1.8s forwards",opacity:0,fontFamily:T.fHead }}>
+        <div style={{ color:"#5A4878",fontSize:10,letterSpacing:"0.12em",marginTop:28,animation:"textFadeUp 1s ease-out 1.8s forwards",opacity:0,fontFamily:T.fHead }}>
           {VERSION}
         </div>
       </div>

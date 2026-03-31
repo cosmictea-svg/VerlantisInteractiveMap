@@ -25,14 +25,31 @@
         from { opacity: 0; transform: translateY(14px); }
         to   { opacity: 1; transform: translateY(0);    }
       }
-      @keyframes ambientFloat {
-        0%,100% { transform: scale(1)    translate(0,    0);    }
-        33%     { transform: scale(1.06) translate(12px, -18px); }
-        66%     { transform: scale(0.96) translate(-9px,  12px); }
-      }
       @keyframes shimmer {
         0%,100% { opacity: 0.5; }
         50%     { opacity: 1;   }
+      }
+      /* Holy light — drifts from top-left */
+      @keyframes holyDrift {
+        0%,100% { transform: translate(0,0)       scale(1);    opacity: 0.55; }
+        33%     { transform: translate(20px,-28px) scale(1.09); opacity: 0.75; }
+        66%     { transform: translate(-14px,18px) scale(0.93); opacity: 0.45; }
+      }
+      /* Demonic fire — drifts from bottom-right */
+      @keyframes demonicDrift {
+        0%,100% { transform: translate(0,0)        scale(1);    opacity: 0.6;  }
+        33%     { transform: translate(-22px,20px) scale(1.11); opacity: 0.85; }
+        66%     { transform: translate(16px,-14px) scale(0.91); opacity: 0.5;  }
+      }
+      /* Centre clash pulse */
+      @keyframes clashPulse {
+        0%,100% { opacity: 0.25; transform: scale(1);    }
+        50%     { opacity: 0.5;  transform: scale(1.08); }
+      }
+      /* Slow diagonal bg-gradient shift */
+      @keyframes bgShift {
+        0%,100% { background-position: 0% 0%;   }
+        50%     { background-position: 100% 100%; }
       }
     </style>
   </head>
