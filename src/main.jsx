@@ -682,7 +682,7 @@ function ProfileTab({ user, members, myColor, takenColors, isGM, onColorChange, 
         <div style={{ fontSize:13,color:T.ink,fontWeight:500 }}>{user.user_metadata?.full_name || "—"}</div>
         <div style={{ fontSize:12,color:T.muted,marginTop:2 }}>{user.email}</div>
         <div style={{ display:"flex",alignItems:"center",gap:10,marginTop:8,flexWrap:"wrap" }}>
-          <div style={{ fontSize:11,color:T.muted,padding:"3px 10px",background:isGM?`${T.gold}20`:T.bg,borderRadius:20,border:`1px solid ${isGM?`${T.gold}44`:T.border}`,color:isGM?T.goldDim:T.muted,fontWeight:600 }}>{isGM ? "👑 Game Master" : "⚔ Player"}</div>
+          <div style={{ fontSize:11,padding:"3px 10px",background:isGM?`${T.gold}20`:T.bg,borderRadius:20,border:`1px solid ${isGM?`${T.gold}44`:T.border}`,color:isGM?T.goldDim:T.muted,fontWeight:600 }}>{isGM ? "👑 Game Master" : "⚔ Player"}</div>
           {!isGM && onLeaveCampaign && (
             <Btn size="sm" variant="danger" onClick={()=>{ if(window.confirm("Leave this campaign? Your markers will be removed.")) onLeaveCampaign(); }}>
               Leave Campaign
