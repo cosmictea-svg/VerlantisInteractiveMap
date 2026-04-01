@@ -629,16 +629,16 @@ function TutorialOverlay({ steps, stepIndex, onNext, onPrev, onExit }) {
       </svg>
       {rect && <div style={{ position: "absolute", top: ringTop, left: ringLeft, width: ringW, height: ringH, borderRadius: 8, border: `2px solid ${gold}`, boxShadow: `0 0 0 3px rgba(201,168,76,0.25),0 0 20px rgba(201,168,76,0.3)`, pointerEvents: "none", animation: "tutPulse 2s ease-in-out infinite" }} />}
       <div style={cardStyle}>
-        <div style={{ fontSize: 10, color: "rgba(201,168,76,0.5)", letterSpacing: "0.15em", marginBottom: 8, textTransform: "uppercase" }}>Step {stepIndex + 1} of {steps.length}</div>
-        <div style={{ fontSize: 16, fontWeight: 700, color: gold, letterSpacing: "0.06em", marginBottom: 8, lineHeight: 1.3 }}>{step.title}</div>
-        <div style={{ fontSize: 13, color: "rgba(220,210,240,0.85)", lineHeight: 1.7, fontFamily: "'Georgia', serif", marginBottom: 18 }}>{step.desc}</div>
+        <div style={{ fontSize: 10, color: "rgba(201,168,76,0.65)", letterSpacing: "0.15em", marginBottom: 8, textTransform: "uppercase" }}>Step {stepIndex + 1} of {steps.length}</div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: "#F0D98A", letterSpacing: "0.06em", marginBottom: 8, lineHeight: 1.3 }}>{step.title}</div>
+        <div style={{ fontSize: 13, color: "#E8E0F5", lineHeight: 1.75, fontFamily: "'Georgia', serif", marginBottom: 18 }}>{step.desc}</div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-          <button onClick={onExit} style={{ background: "none", border: "none", color: "rgba(201,168,76,0.5)", fontSize: 11, cursor: "pointer", fontFamily: fHead, letterSpacing: "0.06em", padding: 0 }}>✕ Exit tour</button>
+          <button onClick={onExit} style={{ background: "none", border: "none", color: "rgba(220,200,255,0.55)", fontSize: 11, cursor: "pointer", fontFamily: fHead, letterSpacing: "0.06em", padding: 0 }}>✕ Exit</button>
           <div style={{ display: "flex", gap: 8 }}>
-            {stepIndex > 0 && <button onClick={onPrev} style={{ padding: "7px 16px", borderRadius: 20, border: `1px solid rgba(201,168,76,0.35)`, background: "transparent", color: gold, fontSize: 12, cursor: "pointer", fontFamily: fHead }}>← Back</button>}
+            {stepIndex > 0 && <button onClick={onPrev} style={{ padding: "7px 16px", borderRadius: 20, border: "1px solid rgba(220,200,255,0.3)", background: "rgba(255,255,255,0.07)", color: "#E8E0F5", fontSize: 12, cursor: "pointer", fontFamily: fHead }}>← Back</button>}
             {stepIndex < steps.length - 1
-              ? <button onClick={onNext} style={{ padding: "7px 18px", borderRadius: 20, border: "none", background: "linear-gradient(135deg,rgba(201,168,76,0.9),rgba(170,135,55,0.9))", color: "#12082A", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: fHead }}>Next →</button>
-              : <button onClick={onExit} style={{ padding: "7px 18px", borderRadius: 20, border: "none", background: "linear-gradient(135deg,rgba(201,168,76,0.9),rgba(170,135,55,0.9))", color: "#12082A", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: fHead }}>Done ✓</button>
+              ? <button onClick={onNext} style={{ padding: "7px 18px", borderRadius: 20, border: "none", background: "#C9A84C", color: "#0E0620", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: fHead }}>Next →</button>
+              : <button onClick={onExit} style={{ padding: "7px 18px", borderRadius: 20, border: "none", background: "#C9A84C", color: "#0E0620", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: fHead }}>Done ✓</button>
             }
           </div>
         </div>
@@ -1027,12 +1027,7 @@ function App() {
         myColor: memberData.find(m => m.campaign_id === c.id)?.player_color
       }));
       setCampaigns(loaded);
-      // Auto-load last campaign so players land straight back in after a page refresh
-      const lastId = localStorage.getItem("sb_last_campaign");
-      if (lastId) {
-        const last = loaded.find(c => c.id === lastId);
-        if (last) loadCampaignData(last, last.myRole);
-      }
+      localStorage.removeItem("sb_last_campaign");
     } catch(e) { setError(e.message); }
   }
 
@@ -2390,6 +2385,11 @@ function App() {
             <div style={{ fontFamily:T.fHead,fontWeight:700,fontSize:17,color:"#C9A84C",letterSpacing:"0.14em",textShadow:"0 0 18px rgba(201,168,76,0.35)",lineHeight:1.15 }}>Verlantis</div>
             <div style={{ fontSize:10,color:"rgba(201,168,76,0.65)",letterSpacing:"0.16em",textTransform:"uppercase",fontFamily:T.fHead }}>Interactive Map</div>
           </div>
+          <button onClick={()=>{setTutMode("campaign");setTutStep(0);}}
+            style={{ padding:"5px 10px",borderRadius:20,border:"1px solid rgba(201,168,76,0.25)",background:"transparent",
+              color:"rgba(201,168,76,0.6)",fontSize:11,cursor:"pointer",fontFamily:T.fHead,letterSpacing:"0.05em",flexShrink:0 }}>
+            ? Tutorial
+          </button>
           <button onClick={async()=>{await signOut(session.access_token);setUser(null);setSession(null);}}
             style={{ padding:"5px 14px",borderRadius:20,border:"1px solid rgba(201,168,76,0.35)",background:"transparent",
               color:"rgba(201,168,76,0.75)",fontSize:11,cursor:"pointer",fontFamily:T.fHead,letterSpacing:"0.07em",flexShrink:0,transition:"border-color 0.2s,color 0.2s" }}
@@ -2580,7 +2580,7 @@ function App() {
         {/* Role badge */}
         <span data-tut="tut-role-badge" style={{ fontSize:10,padding:"3px 10px",borderRadius:20,background:isGM?`${T.gold}30`:`${T.headerFg}18`,color:isGM?T.gold:`${T.headerFg}cc`,fontWeight:700,border:`1px solid ${isGM?`${T.gold}55`:`${T.headerFg}30`}`,fontFamily:T.fHead,letterSpacing:"0.06em",flexShrink:0 }}>{isGM?"GM":"Player"}</span>
         {/* Tutorial */}
-        <button onClick={()=>{setTutMode(isGM?"gm":"player");setTutStep(0);}} title="Start guided tour" style={{ background:"none",border:`1px solid ${T.headerFg}33`,borderRadius:20,padding:"3px 9px",color:`${T.headerFg}99`,fontSize:10,cursor:"pointer",fontFamily:T.fBody,flexShrink:0 }}>? Tour</button>
+        <button onClick={()=>{setTutMode(isGM?"gm":"player");setTutStep(0);}} title="Start guided tutorial" style={{ background:"none",border:`1px solid ${T.headerFg}33`,borderRadius:20,padding:"3px 9px",color:`${T.headerFg}99`,fontSize:10,cursor:"pointer",fontFamily:T.fBody,flexShrink:0 }}>? Tutorial</button>
         {/* Bell */}
         <button data-tut="tut-bell" onClick={()=>{setShowBell(b=>!b);setUnreadCount(0);}}
           style={{ position:"relative",background:"none",border:"none",cursor:"pointer",color:T.headerFg,fontSize:18,padding:"4px 2px",flexShrink:0,lineHeight:1 }} title="Notifications">
