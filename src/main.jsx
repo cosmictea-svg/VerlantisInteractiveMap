@@ -2706,6 +2706,32 @@ function App() {
                 </span>
               )}
             </div>
+            {/* Row 3: Search bar */}
+            {(()=>{
+              const q = searchQuery.trim().toLowerCase();
+              const tagMatch = q ? CATEGORIES.find(c => c.label.toLowerCase().includes(q) || c.id.toLowerCase().includes(q)) : null;
+              const nameMatch = q && !tagMatch ? (mapPOIs.find(p=>p.name?.toLowerCase().includes(q)) || mapNPCs.find(n=>(isGM||n.show_name)&&n.name?.toLowerCase().includes(q))) : null;
+              const hint = !q ? "" : tagMatch ? `Showing: ${tagMatch.label}` : nameMatch ? `Found: ${nameMatch.name}` : "No match";
+              const hintColor = !q ? T.muted : (tagMatch||nameMatch) ? T.goldDim : "#E06060";
+              return (
+                <div style={{ display:"flex",alignItems:"center",gap:6,padding:"0 14px 8px",opacity:searchMoving?0.6:1,transition:"opacity 0.3s" }}>
+                  <div style={{ display:"flex",alignItems:"center",flex:1,background:T.bg,border:`1px solid ${q?(tagMatch?T.gold:"rgba(120,80,200,0.6)"):T.border}`,borderRadius:20,height:32,minWidth:0 }}>
+                    <span style={{ padding:"0 8px",fontSize:13,color:T.muted,flexShrink:0 }}>🔍</span>
+                    <input
+                      value={searchQuery}
+                      onChange={e=>{ const v=e.target.value; setSearchQuery(v); if(!v.trim()){setSearchPing(null);} }}
+                      onKeyDown={e=>{ if(e.key==="Enter") handleSearch(e.target.value); }}
+                      placeholder="Search POI, NPC, or tag…"
+                      style={{ border:"none",outline:"none",background:"transparent",fontSize:13,color:T.ink,fontFamily:T.fBody,flex:1,minWidth:0,padding:"0 4px",lineHeight:1 }}
+                    />
+                    {searchQuery && (
+                      <button onClick={()=>{ setSearchQuery(""); setSearchPing(null); }} style={{ background:"none",border:"none",cursor:"pointer",color:T.muted,fontSize:16,padding:"0 8px",lineHeight:1,flexShrink:0 }}>✕</button>
+                    )}
+                  </div>
+                  {q && <span style={{ fontSize:11,color:hintColor,whiteSpace:"nowrap",flexShrink:0 }}>{hint}</span>}
+                </div>
+              );
+            })()}
           </div>
           {/* ── Personal visibility filter dropdown ── */}
           {showFilter && (()=>{
@@ -2796,37 +2822,6 @@ function App() {
             );
           })()}
 
-
-          {/* ── Search bar ── */}
-          {(()=>{
-            const q = searchQuery.trim().toLowerCase();
-            const tagMatch = q ? CATEGORIES.find(c => c.label.toLowerCase().includes(q) || c.id.toLowerCase().includes(q)) : null;
-            const nameMatch = q && !tagMatch ? (mapPOIs.find(p=>p.name?.toLowerCase().includes(q)) || mapNPCs.find(n=>(isGM||n.show_name)&&n.name?.toLowerCase().includes(q))) : null;
-            const hint = !q ? "" : tagMatch ? `Showing: ${tagMatch.label}` : nameMatch ? `Found: ${nameMatch.name}` : "No match";
-            const hintColor = !q ? T.muted : (tagMatch||nameMatch) ? T.goldDim : "#E06060";
-            return (
-              <div style={{ position:"absolute",top:8,left:"50%",transform:"translateX(-50%)",zIndex:280,display:"flex",alignItems:"center",gap:6,opacity:searchMoving?0.6:1,transition:"opacity 0.3s",pointerEvents:"all" }}>
-                <div style={{ display:"flex",alignItems:"center",background:T.bg,border:`1px solid ${q?(tagMatch?T.gold:"rgba(120,80,200,0.6)"):T.border}`,borderRadius:24,boxShadow:"0 2px 12px rgba(0,0,0,0.35)",overflow:"hidden",height:34,minWidth:0 }}>
-                  <span style={{ padding:"0 10px",fontSize:14,color:T.muted,flexShrink:0 }}>🔍</span>
-                  <input
-                    value={searchQuery}
-                    onChange={e=>{
-                      const v = e.target.value;
-                      setSearchQuery(v);
-                      if (!v.trim()) { setSearchPing(null); }
-                    }}
-                    onKeyDown={e=>{ if(e.key==="Enter") handleSearch(e.target.value); }}
-                    placeholder="Search POI, NPC, or tag…"
-                    style={{ border:"none",outline:"none",background:"transparent",fontSize:13,color:T.ink,fontFamily:T.fBody,width:"min(200px,42vw)",padding:"0 4px",lineHeight:1 }}
-                  />
-                  {searchQuery && (
-                    <button onClick={()=>{ setSearchQuery(""); setSearchPing(null); }} style={{ background:"none",border:"none",cursor:"pointer",color:T.muted,fontSize:16,padding:"0 10px",lineHeight:1,flexShrink:0 }}>✕</button>
-                  )}
-                </div>
-                {q && <span style={{ fontSize:11,color:hintColor,whiteSpace:"nowrap",background:`${T.bg}dd`,padding:"2px 8px",borderRadius:12,border:`1px solid ${T.border}` }}>{hint}</span>}
-              </div>
-            );
-          })()}
 
           {/* ── Layers & Zones floating panel — appears over the map ── */}
           {showLayerControls && (
