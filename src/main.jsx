@@ -593,6 +593,61 @@ function ProfileTab({ user, members, myColor, takenColors, isGM, onColorChange, 
 }
 
 // ── App ───────────────────────────────────────────────────────────────────────
+function TutorialOverlay({ steps, stepIndex, onNext, onPrev, onExit }) {
+  const gold = "#C9A84C";
+  const fHead = "'Cinzel', 'Georgia', serif";
+  const [rect, setRect] = useState(null);
+  useEffect(() => {
+    const step = steps[stepIndex];
+    if (!step) return;
+    const el = document.querySelector(`[data-tut="${step.target}"]`);
+    if (el) {
+      const r = el.getBoundingClientRect();
+      setRect({ top: r.top, left: r.left, width: r.width, height: r.height });
+    } else {
+      setRect(null);
+    }
+  }, [stepIndex, steps]);
+  const step = steps[stepIndex];
+  if (!step) return null;
+  const PAD = 8;
+  const ringTop = rect ? rect.top - PAD : 0;
+  const ringLeft = rect ? rect.left - PAD : 0;
+  const ringW = rect ? rect.width + PAD * 2 : 0;
+  const ringH = rect ? rect.height + PAD * 2 : 0;
+  const cardBase = { position: "absolute", left: "50%", width: "min(340px, 90vw)", background: "linear-gradient(145deg, #12082A, #0E0620)", border: `1.5px solid rgba(201,168,76,0.45)`, borderRadius: 14, padding: "20px 22px", boxShadow: "0 8px 40px rgba(0,0,0,0.6)", fontFamily: fHead, pointerEvents: "all" };
+  const cardStyle = !rect
+    ? { ...cardBase, top: "50%", transform: "translate(-50%, -50%)" }
+    : rect.top + rect.height + 180 < window.innerHeight
+      ? { ...cardBase, top: rect.top + rect.height + PAD + 12, transform: "translateX(-50%)" }
+      : { ...cardBase, top: rect.top - PAD - 12, transform: "translate(-50%, -100%)" };
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 9000, pointerEvents: "none" }}>
+      <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
+        <defs><mask id="tut-mask"><rect width="100%" height="100%" fill="white" />{rect && <rect x={ringLeft} y={ringTop} width={ringW} height={ringH} rx={8} fill="black" />}</mask></defs>
+        <rect width="100%" height="100%" fill="rgba(0,0,0,0.65)" mask="url(#tut-mask)" />
+      </svg>
+      {rect && <div style={{ position: "absolute", top: ringTop, left: ringLeft, width: ringW, height: ringH, borderRadius: 8, border: `2px solid ${gold}`, boxShadow: `0 0 0 3px rgba(201,168,76,0.25),0 0 20px rgba(201,168,76,0.3)`, pointerEvents: "none", animation: "tutPulse 2s ease-in-out infinite" }} />}
+      <div style={cardStyle}>
+        <div style={{ fontSize: 10, color: "rgba(201,168,76,0.5)", letterSpacing: "0.15em", marginBottom: 8, textTransform: "uppercase" }}>Step {stepIndex + 1} of {steps.length}</div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: gold, letterSpacing: "0.06em", marginBottom: 8, lineHeight: 1.3 }}>{step.title}</div>
+        <div style={{ fontSize: 13, color: "rgba(220,210,240,0.85)", lineHeight: 1.7, fontFamily: "'Georgia', serif", marginBottom: 18 }}>{step.desc}</div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <button onClick={onExit} style={{ background: "none", border: "none", color: "rgba(201,168,76,0.5)", fontSize: 11, cursor: "pointer", fontFamily: fHead, letterSpacing: "0.06em", padding: 0 }}>✕ Exit tour</button>
+          <div style={{ display: "flex", gap: 8 }}>
+            {stepIndex > 0 && <button onClick={onPrev} style={{ padding: "7px 16px", borderRadius: 20, border: `1px solid rgba(201,168,76,0.35)`, background: "transparent", color: gold, fontSize: 12, cursor: "pointer", fontFamily: fHead }}>← Back</button>}
+            {stepIndex < steps.length - 1
+              ? <button onClick={onNext} style={{ padding: "7px 18px", borderRadius: 20, border: "none", background: "linear-gradient(135deg,rgba(201,168,76,0.9),rgba(170,135,55,0.9))", color: "#12082A", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: fHead }}>Next →</button>
+              : <button onClick={onExit} style={{ padding: "7px 18px", borderRadius: 20, border: "none", background: "linear-gradient(135deg,rgba(201,168,76,0.9),rgba(170,135,55,0.9))", color: "#12082A", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: fHead }}>Done ✓</button>
+            }
+          </div>
+        </div>
+      </div>
+      <style>{`@keyframes tutPulse{0%,100%{opacity:1;box-shadow:0 0 0 3px rgba(201,168,76,0.25),0 0 20px rgba(201,168,76,0.3)}50%{opacity:0.8;box-shadow:0 0 0 5px rgba(201,168,76,0.15),0 0 30px rgba(201,168,76,0.2)}}`}</style>
+    </div>
+  );
+}
+
 function App() {
   const [session, setSession] = useState(null);
   const [user, setUser] = useState(null);
@@ -705,6 +760,41 @@ function App() {
   const notifLimitRef = useRef(20);
   const [mapFadeState, setMapFadeState] = useState(null); // null | "covering" | "revealing"
   const mapFadeTimerRef = useRef(null);
+  const [tutMode, setTutMode] = useState(null); // "campaign" | "player" | "gm" | null
+  const [tutStep, setTutStep] = useState(0);
+
+  const CAMPAIGN_STEPS = [
+    { target: "tut-campaigns-label", title: "Your Campaigns", desc: "All campaigns you belong to appear here — ones you manage as GM and ones you've joined as a player." },
+    { target: "tut-create-btn",      title: "Create a Campaign", desc: "Start a new campaign as GM. You can own up to 5 campaigns at once." },
+    { target: "tut-join-btn",        title: "Join a Campaign", desc: "Got a campaign ID from your GM? Paste it here to join their world as a player." },
+  ];
+  const PLAYER_STEPS = [
+    { target: "tut-back-btn",    title: "Campaign List",    desc: "Tap the arrow to return to your campaign list at any time." },
+    { target: "tut-role-badge",  title: "Your Role",        desc: "You're a Player in this campaign. Your GM controls what's revealed to you." },
+    { target: "tut-bell",        title: "Notifications",    desc: "POI discoveries, announcements, and GM events appear here in real time." },
+    { target: "tut-tab-map",     title: "The Map",          desc: "Explore your world here. Tap any revealed POI to read its details." },
+    { target: "tut-marker-btn",  title: "Your Markers",     desc: "Drop personal pins on the map to remember locations. Only you can see them." },
+  ];
+  const GM_STEPS = [
+    { target: "tut-back-btn",      title: "Campaign List",       desc: "Return to all your campaigns from here." },
+    { target: "tut-role-badge",    title: "You're the GM",       desc: "As GM you have full control — reveal POIs, manage NPCs, and shape the world." },
+    { target: "tut-invite-bar",    title: "Invite Your Players", desc: "Share this campaign ID with your players so they can join. Tap Copy to grab it." },
+    { target: "tut-bell",          title: "Notifications",       desc: "Track every event across your campaign — POI reveals, announcements, and player activity." },
+    { target: "tut-tab-map",       title: "The Map",             desc: "Your primary tool. Players see only what you choose to reveal." },
+    { target: "tut-poi-btn",       title: "Add POIs",            desc: "Press + POI then click the map to place a Point of Interest. Control what players can see." },
+    { target: "tut-npc-btn",       title: "Add NPCs",            desc: "Track characters on the map with names, status, and aura radius." },
+    { target: "tut-marker-btn",    title: "Markers",             desc: "Quick temporary pins for yourself or to mark player positions." },
+    { target: "tut-tab-library",   title: "Library",             desc: "Manage all your maps, image overlays, and folders here." },
+    { target: "tut-tab-settings",  title: "Settings",            desc: "Configure campaign settings and manage your players from here." },
+  ];
+  function tutNext() { setTutStep(s => s + 1); }
+  function tutPrev() { setTutStep(s => s - 1); }
+  function tutDone() {
+    const key = tutMode === "campaign" ? "tut_campaign_v1" : `tut_${tutMode}_v1`;
+    localStorage.setItem(key, "1");
+    setTutMode(null);
+    setTutStep(0);
+  }
 
   useEffect(() => { placingRef.current = placingMode; }, [placingMode]);
   useEffect(() => { transformRef.current = transform; }, [transform]);
@@ -727,6 +817,19 @@ function App() {
   useEffect(() => { soundVolumeRef.current = soundVolume; localStorage.setItem("sound_volume", String(soundVolume)); }, [soundVolume]);
   useEffect(() => { notifLimitRef.current = notifLimit; localStorage.setItem("notif_limit", String(notifLimit)); }, [notifLimit]);
   useEffect(() => { npcsRef.current = npcs; }, [npcs]);
+  // Auto-trigger campaign tutorial on first visit
+  useEffect(() => {
+    if (!activeCampaign && user && !localStorage.getItem("tut_campaign_v1")) {
+      setTutMode("campaign"); setTutStep(0);
+    }
+  }, [activeCampaign, user]);
+  // Auto-trigger player/gm tutorial on first entry to a campaign
+  useEffect(() => {
+    if (activeCampaign && memberRole) {
+      const key = `tut_${memberRole}_v1`;
+      if (!localStorage.getItem(key)) { setTutMode(memberRole); setTutStep(0); }
+    }
+  }, [activeCampaign?.id, memberRole]);
   // Restore per-user overlay opacity/visibility and master zone opacity from localStorage
   useEffect(() => {
     if (!activeCampaign) return;
@@ -2269,7 +2372,7 @@ function App() {
 
         {/* ── Section label ── */}
         {!campaignLoading && campaigns.length > 0 && (
-          <div style={{ fontSize:10,letterSpacing:"0.2em",textTransform:"uppercase",color:"rgba(201,168,76,0.65)",fontFamily:T.fHead,marginBottom:10 }}>
+          <div data-tut="tut-campaigns-label" style={{ fontSize:10,letterSpacing:"0.2em",textTransform:"uppercase",color:"rgba(201,168,76,0.65)",fontFamily:T.fHead,marginBottom:10 }}>
             Your Campaigns
           </div>
         )}
@@ -2319,6 +2422,7 @@ function App() {
           <div style={{ marginTop:campaigns.length>0?14:0,display:"flex",flexDirection:"column",gap:10 }}>
             <div style={{ display:"flex",gap:10 }}>
               <button
+                data-tut="tut-create-btn"
                 onClick={()=>{ if(atLimit){setError("You've reached the 5 campaign limit. Delete an existing campaign to create a new one.");return;} setShowCampaignModal(true); }}
                 style={{ flex:1,padding:"11px 0",borderRadius:12,border:`1px solid ${atLimit?"rgba(201,168,76,0.2)":"rgba(201,168,76,0.45)"}`,
                   background:atLimit?"rgba(255,255,255,0.02)":"rgba(201,168,76,0.12)",
@@ -2329,6 +2433,7 @@ function App() {
                 ＋ Create Campaign
               </button>
               <button
+                data-tut="tut-join-btn"
                 onClick={()=>setShowJoinModal(true)}
                 style={{ flex:1,padding:"11px 0",borderRadius:12,border:"1px solid rgba(140,105,220,0.42)",
                   background:"rgba(120,80,200,0.1)",color:"rgba(200,182,245,0.9)",fontSize:13,
@@ -2346,6 +2451,8 @@ function App() {
         <div style={{ fontSize:9,color:"rgba(140,120,180,0.45)",letterSpacing:"0.1em",textAlign:"center",marginTop:"auto",paddingTop:28,fontFamily:T.fHead }}>{VERSION}</div>
 
       </div>
+
+      {tutMode === "campaign" && <TutorialOverlay steps={CAMPAIGN_STEPS} stepIndex={tutStep} onNext={tutNext} onPrev={tutPrev} onExit={tutDone} />}
 
       {/* ── Create Campaign modal ── */}
       {showCampaignModal && (
@@ -2406,7 +2513,7 @@ function App() {
       {/* Header */}
       <div style={{ display:"flex",alignItems:"center",gap:10,padding:"0 14px",minHeight:52,borderBottom:`2px solid ${T.gold}44`,background:T.header,flexShrink:0 }}>
         {/* Back to campaign list */}
-        <button onClick={()=>{setActiveCampaign(null);localStorage.removeItem("sb_last_campaign");if(realtimeRef.current)realtimeRef.current.unsubscribe();}}
+        <button data-tut="tut-back-btn" onClick={()=>{setActiveCampaign(null);localStorage.removeItem("sb_last_campaign");if(realtimeRef.current)realtimeRef.current.unsubscribe();}}
           title="All Campaigns"
           style={{ background:"none",border:"none",cursor:"pointer",fontSize:20,padding:"12px 6px 12px 0",color:T.headerFg,lineHeight:1,flexShrink:0 }}>←</button>
         {/* Campaign name + subtitle */}
@@ -2420,11 +2527,11 @@ function App() {
           {mapStack.length>1 && <button onClick={goHome} style={{ padding:"5px 12px",borderRadius:20,border:`1px solid ${T.gold}55`,background:"transparent",color:T.gold,fontSize:11,cursor:"pointer",fontFamily:T.fBody,flexShrink:0 }}>⌂ Main</button>}
         </>}
         {/* Role badge */}
-        <span style={{ fontSize:10,padding:"3px 10px",borderRadius:20,background:isGM?`${T.gold}30`:`${T.headerFg}18`,color:isGM?T.gold:`${T.headerFg}cc`,fontWeight:700,border:`1px solid ${isGM?`${T.gold}55`:`${T.headerFg}30`}`,fontFamily:T.fHead,letterSpacing:"0.06em",flexShrink:0 }}>{isGM?"GM":"Player"}</span>
-        {/* Tutorial placeholder */}
-        <button onClick={()=>{}} title="Tutorial coming soon" style={{ background:"none",border:`1px solid ${T.headerFg}33`,borderRadius:20,padding:"3px 9px",color:`${T.headerFg}77`,fontSize:10,cursor:"not-allowed",fontFamily:T.fBody,flexShrink:0 }}>? Tutorial</button>
+        <span data-tut="tut-role-badge" style={{ fontSize:10,padding:"3px 10px",borderRadius:20,background:isGM?`${T.gold}30`:`${T.headerFg}18`,color:isGM?T.gold:`${T.headerFg}cc`,fontWeight:700,border:`1px solid ${isGM?`${T.gold}55`:`${T.headerFg}30`}`,fontFamily:T.fHead,letterSpacing:"0.06em",flexShrink:0 }}>{isGM?"GM":"Player"}</span>
+        {/* Tutorial */}
+        <button onClick={()=>{setTutMode(isGM?"gm":"player");setTutStep(0);}} title="Start guided tour" style={{ background:"none",border:`1px solid ${T.headerFg}33`,borderRadius:20,padding:"3px 9px",color:`${T.headerFg}99`,fontSize:10,cursor:"pointer",fontFamily:T.fBody,flexShrink:0 }}>? Tour</button>
         {/* Bell */}
-        <button onClick={()=>{setShowBell(b=>!b);setUnreadCount(0);}}
+        <button data-tut="tut-bell" onClick={()=>{setShowBell(b=>!b);setUnreadCount(0);}}
           style={{ position:"relative",background:"none",border:"none",cursor:"pointer",color:T.headerFg,fontSize:18,padding:"4px 2px",flexShrink:0,lineHeight:1 }} title="Notifications">
           🔔
           {unreadCount>0 && <span style={{ position:"absolute",top:-1,right:-2,background:T.danger,color:"#fff",fontSize:9,fontWeight:700,borderRadius:"50%",minWidth:14,height:14,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1,padding:"0 2px" }}>{unreadCount>9?"9+":unreadCount}</span>}
@@ -2438,7 +2545,7 @@ function App() {
 
       {error && <div style={{ background:"#f5d5d5",color:T.danger,padding:"5px 14px",fontSize:12,borderBottom:`1px solid ${T.danger}44` }}>{error}<button onClick={()=>setError("")} style={{ marginLeft:8,border:"none",background:"none",cursor:"pointer",color:T.danger }}>✕</button></div>}
       {isGM && (
-        <div style={{ display:"flex",alignItems:"center",gap:8,padding:"4px 14px",background:`${T.gold}12`,fontSize:11,color:T.goldDim,borderBottom:`1px solid ${T.border}` }}>
+        <div data-tut="tut-invite-bar" style={{ display:"flex",alignItems:"center",gap:8,padding:"4px 14px",background:`${T.gold}12`,fontSize:11,color:T.goldDim,borderBottom:`1px solid ${T.border}` }}>
           <span style={{ color:T.muted }}>Invite code:</span>
           <code style={{ fontFamily:"monospace",fontSize:11,background:T.surface,color:T.ink,padding:"1px 8px",borderRadius:6,border:`1px solid ${T.border}`,letterSpacing:"0.02em" }}>{activeCampaign.id}</code>
           <button onClick={()=>{
@@ -2458,7 +2565,7 @@ function App() {
       {/* Tabs */}
       <div style={{ display:"flex",borderBottom:`1px solid ${T.border}`,padding:"0 10px",background:T.surface,overflowX:"auto" }}>
         {tabs.map(t=>(
-          <button key={t} onClick={()=>setTab(t)}
+          <button key={t} data-tut={`tut-tab-${t}`} onClick={()=>setTab(t)}
             style={{ padding:"10px 14px",border:"none",borderBottom:tab===t?`2.5px solid ${T.gold}`:"2.5px solid transparent",background:"transparent",cursor:"pointer",fontSize:13,fontWeight:tab===t?700:400,color:tab===t?T.goldDim:T.muted,fontFamily:T.fBody,letterSpacing:"0.01em",whiteSpace:"nowrap" }}>
             {TAB_LABELS[t]||t}
           </button>
@@ -2475,16 +2582,16 @@ function App() {
               {/* Placement actions */}
               <div style={{ display:"flex",gap:4,flexShrink:0 }}>
                 {isGM && <>
-                  <Btn size="sm" onClick={()=>setPlacingMode(p=>p==="poi"?null:"poi")} style={{ background:placingMode==="poi"?`${T.gold}22`:undefined,borderColor:placingMode==="poi"?T.gold:undefined }}>＋ POI</Btn>
-                  <Btn size="sm" onClick={()=>setNpcForm({npc:null,name:"",status:"Alive",border_color:"#C9A84C",aura_radius:80,show_name:true,show_status:true,show_aura:true,is_visible_to_players:false,x:200,y:200})}>＋ NPC</Btn>
+                  <span data-tut="tut-poi-btn"><Btn size="sm" onClick={()=>setPlacingMode(p=>p==="poi"?null:"poi")} style={{ background:placingMode==="poi"?`${T.gold}22`:undefined,borderColor:placingMode==="poi"?T.gold:undefined }}>＋ POI</Btn></span>
+                  <span data-tut="tut-npc-btn"><Btn size="sm" onClick={()=>setNpcForm({npc:null,name:"",status:"Alive",border_color:"#C9A84C",aura_radius:80,show_name:true,show_status:true,show_aura:true,is_visible_to_players:false,x:200,y:200})}>＋ NPC</Btn></span>
                   <Btn size="sm" onClick={()=>setTextForm({text:null,content:"New Text",font_size:28,color:"#FFFFFF",font_weight:"700",fade_enabled:false,fade_invert:false,x:Math.round(imgSize.w/2),y:Math.round(imgSize.h/2)})}>＋ Text</Btn>
                 </>}
-                <Btn size="sm" onClick={()=>{
+                <span data-tut="tut-marker-btn"><Btn size="sm" onClick={()=>{
                   if (!myColor && !isGM) { setShowColorPicker(true); return; }
                   setPlacingMode(p=>p==="marker"?null:"marker");
                 }} style={{ background:placingMode==="marker"?`${T.gold}22`:undefined,borderColor:placingMode==="marker"?T.gold:undefined }}>
                   ＋ Marker{!isGM ? ` (${myMarkers.length}/${markerLimit}${myMarkers.length>=markerLimit?" full":""})` : ""}
-                </Btn>
+                </Btn></span>
               </div>
               {/* Visual separator */}
               <div style={{ width:1,height:20,background:T.border,flexShrink:0 }} />
@@ -3780,6 +3887,7 @@ function App() {
       <div style={{ padding:"4px 14px",paddingBottom:"max(8px, env(safe-area-inset-bottom))",background:T.surface,borderTop:`1px solid ${T.border}`,fontSize:10,color:T.muted,textAlign:"center",flexShrink:0,fontFamily:T.fBody }}>
         {buildVersion}
       </div>
+      {(tutMode === "player" || tutMode === "gm") && <TutorialOverlay steps={tutMode === "gm" ? GM_STEPS : PLAYER_STEPS} stepIndex={tutStep} onNext={tutNext} onPrev={tutPrev} onExit={tutDone} />}
     </div>
   );
 }
