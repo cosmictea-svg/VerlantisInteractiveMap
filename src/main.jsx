@@ -702,6 +702,10 @@ function App() {
   const [copiedCode, setCopiedCode] = useState(false);
   const [visFilter, setVisFilter] = useState({ categories: {}, players: {}, zones: {}, npcs: {}, portals: {} });
   const [showFilter, setShowFilter] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchPing, setSearchPing] = useState(null); // { x, y }
+  const [searchMoving, setSearchMoving] = useState(false);
+  const searchAnimRef = useRef(null);
   const [renamingOverlay, setRenamingOverlay] = useState(null); // { id, name }
   const [campInfoEdit, setCampInfoEdit] = useState(null); // { name, sub_header, description } or null
   const [poiFolders, setPoiFolders] = useState([]);
@@ -1395,6 +1399,51 @@ function App() {
   }
   function getContainerRect() { return mapRef.current?.getBoundingClientRect() || { width: window.innerWidth, height: window.innerHeight, left: 0, top: 0 }; }
   function resetView() { const fit = fitToContainer(imgSize.w, imgSize.h); setTransform(fit); setFitScale(fit.scale); }
+
+  function animateTo(targetX, targetY, targetScale) {
+    if (searchAnimRef.current) cancelAnimationFrame(searchAnimRef.current);
+    const rect = mapRef.current?.getBoundingClientRect() || { width: window.innerWidth, height: window.innerHeight };
+    const destX = rect.width / 2 - targetX * targetScale;
+    const destY = rect.height / 2 - targetY * targetScale;
+    const start = { ...transformRef.current };
+    const startTime = performance.now();
+    const DURATION = 550;
+    setSearchMoving(true);
+    function step(now) {
+      const t = Math.min(1, (now - startTime) / DURATION);
+      const ease = 1 - Math.pow(1 - t, 3);
+      setTransform({
+        scale: start.scale + (targetScale - start.scale) * ease,
+        x: start.x + (destX - start.x) * ease,
+        y: start.y + (destY - start.y) * ease,
+      });
+      if (t < 1) { searchAnimRef.current = requestAnimationFrame(step); }
+      else { setSearchMoving(false); }
+    }
+    searchAnimRef.current = requestAnimationFrame(step);
+  }
+
+  function handleSearch(q) {
+    const query = (q || searchQuery).trim().toLowerCase();
+    if (!query) { setSearchPing(null); return; }
+    // Name match: POI first, then NPC
+    const poiMatch = mapPOIs.find(p => p.name?.toLowerCase().includes(query));
+    if (poiMatch) {
+      setSearchPing({ x: poiMatch.x, y: poiMatch.y });
+      const targetScale = Math.max(fitScale * 3, 1.5);
+      animateTo(poiMatch.x, poiMatch.y, targetScale);
+      return;
+    }
+    const npcMatch = mapNPCs.find(n => (isGM || n.show_name) && n.name?.toLowerCase().includes(query));
+    if (npcMatch) {
+      setSearchPing({ x: npcMatch.x, y: npcMatch.y });
+      const targetScale = Math.max(fitScale * 3, 1.5);
+      animateTo(npcMatch.x, npcMatch.y, targetScale);
+      return;
+    }
+    // No name match — tag search handles visibility via rendering, no action needed
+    setSearchPing(null);
+  }
   function onImgLoad(e) {
     const w = e.target.naturalWidth, h = e.target.naturalHeight;
     setImgSize({ w, h });
@@ -1841,6 +1890,8 @@ function App() {
   function switchToMap(id, { push = false } = {}) {
     if (!id) return;
     if (push) setMapStack(s => [...s, activeMapId]);
+    setSearchPing(null);
+    if (searchAnimRef.current) { cancelAnimationFrame(searchAnimRef.current); setSearchMoving(false); }
     clearTimeout(mapFadeTimerRef.current);
     setMapFadeState("covering");
     // Allow the cover animation to start before we swap the map
@@ -2746,6 +2797,37 @@ function App() {
           })()}
 
 
+          {/* ── Search bar ── */}
+          {(()=>{
+            const q = searchQuery.trim().toLowerCase();
+            const tagMatch = q ? CATEGORIES.find(c => c.label.toLowerCase().includes(q) || c.id.toLowerCase().includes(q)) : null;
+            const nameMatch = q && !tagMatch ? (mapPOIs.find(p=>p.name?.toLowerCase().includes(q)) || mapNPCs.find(n=>(isGM||n.show_name)&&n.name?.toLowerCase().includes(q))) : null;
+            const hint = !q ? "" : tagMatch ? `Showing: ${tagMatch.label}` : nameMatch ? `Found: ${nameMatch.name}` : "No match";
+            const hintColor = !q ? T.muted : (tagMatch||nameMatch) ? T.goldDim : "#E06060";
+            return (
+              <div style={{ position:"absolute",top:8,left:"50%",transform:"translateX(-50%)",zIndex:280,display:"flex",alignItems:"center",gap:6,opacity:searchMoving?0.6:1,transition:"opacity 0.3s",pointerEvents:"all" }}>
+                <div style={{ display:"flex",alignItems:"center",background:T.bg,border:`1px solid ${q?(tagMatch?T.gold:"rgba(120,80,200,0.6)"):T.border}`,borderRadius:24,boxShadow:"0 2px 12px rgba(0,0,0,0.35)",overflow:"hidden",height:34,minWidth:0 }}>
+                  <span style={{ padding:"0 10px",fontSize:14,color:T.muted,flexShrink:0 }}>🔍</span>
+                  <input
+                    value={searchQuery}
+                    onChange={e=>{
+                      const v = e.target.value;
+                      setSearchQuery(v);
+                      if (!v.trim()) { setSearchPing(null); }
+                    }}
+                    onKeyDown={e=>{ if(e.key==="Enter") handleSearch(e.target.value); }}
+                    placeholder="Search POI, NPC, or tag…"
+                    style={{ border:"none",outline:"none",background:"transparent",fontSize:13,color:T.ink,fontFamily:T.fBody,width:"min(200px,42vw)",padding:"0 4px",lineHeight:1 }}
+                  />
+                  {searchQuery && (
+                    <button onClick={()=>{ setSearchQuery(""); setSearchPing(null); }} style={{ background:"none",border:"none",cursor:"pointer",color:T.muted,fontSize:16,padding:"0 10px",lineHeight:1,flexShrink:0 }}>✕</button>
+                  )}
+                </div>
+                {q && <span style={{ fontSize:11,color:hintColor,whiteSpace:"nowrap",background:`${T.bg}dd`,padding:"2px 8px",borderRadius:12,border:`1px solid ${T.border}` }}>{hint}</span>}
+              </div>
+            );
+          })()}
+
           {/* ── Layers & Zones floating panel — appears over the map ── */}
           {showLayerControls && (
             <div style={{ position:"absolute",top:0,left:0,right:0,bottom:0,zIndex:250,pointerEvents:"none" }}>
@@ -2937,7 +3019,18 @@ function App() {
                     </svg>
                   )}
                   <div ref={poiLayerRef} style={{ opacity:poiOpacity, transition:"opacity 0.15s ease" }}>
-                  {mapPOIs.filter(p=>inViewport(p.x, p.y) && (p.poi_type==="portal" ? isVisible("portals", p.id) : isVisible("categories", p.category))).map(p=>(
+                  {mapPOIs.filter(p=>{
+                    if (!inViewport(p.x, p.y)) return false;
+                    const baseVisible = p.poi_type==="portal" ? isVisible("portals", p.id) : isVisible("categories", p.category);
+                    if (!baseVisible) return false;
+                    const sq = searchQuery.trim().toLowerCase();
+                    if (!sq) return true;
+                    // If query matches a tag/category label — only show POIs of that category
+                    const tagHit = CATEGORIES.find(c => c.label.toLowerCase().includes(sq) || c.id.toLowerCase().includes(sq));
+                    if (tagHit) return p.category === tagHit.id;
+                    // Otherwise name search — show all (camera handles navigation)
+                    return true;
+                  }).map(p=>(
                     <POIPin key={p.id} poi={p} isGM={isGM}
                       resolvedIconUrl={categoryIcons[p.category]||""}
                       onTap={poi=>{
@@ -3016,6 +3109,13 @@ function App() {
                       </div>
                     );
                   })}
+                  {/* ── Search ping ring ── */}
+                  {searchPing && (
+                    <div style={{ position:"absolute", left:searchPing.x, top:searchPing.y, pointerEvents:"none", zIndex:200 }}>
+                      <div style={{ position:"absolute", transform:"translate(-50%,-50%)", width:48/transform.scale, height:48/transform.scale, borderRadius:"50%", border:`${3/transform.scale}px solid #C9A84C`, boxShadow:`0 0 ${12/transform.scale}px rgba(201,168,76,0.6)`, animation:"searchPing 1.4s ease-out infinite", pointerEvents:"none" }} />
+                      <div style={{ position:"absolute", transform:"translate(-50%,-50%)", width:28/transform.scale, height:28/transform.scale, borderRadius:"50%", border:`${2/transform.scale}px solid rgba(201,168,76,0.7)`, animation:"searchPing 1.4s ease-out infinite", animationDelay:"0.3s", pointerEvents:"none" }} />
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -4158,6 +4258,10 @@ function MarkerFormModal({ form, onSave, onEdit, onCancel }) {
     /* Map-switch overlay covering / revealing */
     @keyframes mapOverlayIn  { from { opacity: 0; } to { opacity: 1; } }
     @keyframes mapOverlayOut { from { opacity: 1; } to { opacity: 0; } }
+    @keyframes searchPing {
+      0%   { transform: translate(-50%,-50%) scale(0.5); opacity: 0.9; }
+      100% { transform: translate(-50%,-50%) scale(2.5); opacity: 0; }
+    }
     /* Tab panel content fade */
     @keyframes tabFadeIn {
       from { opacity: 0; transform: translateY(4px); }
