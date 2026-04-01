@@ -1162,7 +1162,7 @@ function App() {
       // Return to campaign list
       if (realtimeRef.current) realtimeRef.current.unsubscribe();
       setActiveCampaign(null); setMemberRole(""); setMembers([]); setMaps([]); setPois([]);
-      setMarkers([]); setZones([]); setNpcs([]); setOverlays([]); setAnnotations([]);
+      setMarkers([]); setZones([]); setNpcs([]); setOverlays([]);
       setAnnouncements([]); setNotifLog([]); setTab("map");
       await loadCampaigns();
     } catch(e) { setError(e.message || "Could not leave campaign."); }
@@ -1182,7 +1182,7 @@ function App() {
       if (activeCampaign?.id === camp.id) {
         if (realtimeRef.current) realtimeRef.current.unsubscribe();
         setActiveCampaign(null); setMemberRole(""); setMembers([]); setMaps([]); setPois([]);
-        setMarkers([]); setZones([]); setNpcs([]); setOverlays([]); setAnnotations([]);
+        setMarkers([]); setZones([]); setNpcs([]); setOverlays([]);
         setAnnouncements([]); setNotifLog([]); setTab("map");
         localStorage.removeItem("sb_last_campaign");
       }
@@ -2130,11 +2130,15 @@ function App() {
     e.stopPropagation();
     if (npc.locked) return;
     if (dragRef.current.active || isPinchingRef.current) return;
-    const startCx = e.touches?e.touches[0].clientX:e.clientX, startCy = e.touches?e.touches[0].clientY:e.clientY;
-    npcDragState.current = { npcId:npc.id, originX:npc.x, originY:npc.y, startCx, startCy, scaleAtStart:transformRef.current.scale, moved:false, mapX:npc.x, mapY:npc.y };
+    const touch0 = e.touches?.[0];
+    const startCx = touch0 ? touch0.clientX : e.clientX;
+    const startCy = touch0 ? touch0.clientY : e.clientY;
+    const touchId = touch0 ? touch0.identifier : null;
+    npcDragState.current = { npcId:npc.id, originX:npc.x, originY:npc.y, startCx, startCy, touchId, scaleAtStart:transformRef.current.scale, moved:false, mapX:npc.x, mapY:npc.y };
     function onMove(ev) {
       if (!npcDragState.current) return;
-      const cx=ev.touches?ev.touches[0].clientX:ev.clientX, cy=ev.touches?ev.touches[0].clientY:ev.clientY;
+      const touch = ev.touches ? Array.from(ev.touches).find(t=>t.identifier===npcDragState.current.touchId)??ev.touches[0] : null;
+      const cx = touch ? touch.clientX : ev.clientX, cy = touch ? touch.clientY : ev.clientY;
       const dx=cx-npcDragState.current.startCx, dy=cy-npcDragState.current.startCy;
       if (Math.sqrt(dx*dx+dy*dy)>8) npcDragState.current.moved=true;
       const nx=npcDragState.current.originX+dx/npcDragState.current.scaleAtStart, ny=npcDragState.current.originY+dy/npcDragState.current.scaleAtStart;
@@ -2254,9 +2258,11 @@ function App() {
     return { left, top, cardW };
   }
 
-  const poiCardPos = openPOI ? getCardPos(openPOI.x, openPOI.y) : null;
-  const markerCardPos = openMarker ? getCardPos(openMarker.x, openMarker.y) : null;
-  const sortedLibPOIs = [...pois].sort((a,b)=>libSort==="name"?(a.name||"").localeCompare(b.name||""):(a.category||"").localeCompare(b.category||""));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const poiCardPos = useMemo(() => openPOI ? getCardPos(openPOI.x, openPOI.y) : null, [openPOI?.id, transform.x, transform.y, transform.scale]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const markerCardPos = useMemo(() => openMarker ? getCardPos(openMarker.x, openMarker.y) : null, [openMarker?.id, transform.x, transform.y, transform.scale]);
+  const sortedLibPOIs = useMemo(() => [...pois].sort((a,b)=>libSort==="name"?(a.name||"").localeCompare(b.name||""):(a.category||"").localeCompare(b.category||"")), [pois, libSort]);
   // Profile tab is available to everyone; library is GM-only (overlays/zones merged into library)
   const tabs = ["map", "info", ...(isGM ? ["library"] : []), "profile"];
   const TAB_LABELS = { map: "🗺 Map", info: "📜 Info", library: "📚 Library", profile: "👤 Profile" };
@@ -3071,10 +3077,11 @@ function App() {
                           // GM tap on any POI → open edit form (lock only prevents dragging, not editing)
                           setPoiForm({ poi, name:poi.name, description:poi.description, revealed:poi.revealed, category:poi.category||"other", size:poi.size||"large", poi_type:poi.poi_type||"standard", linked_map_id:poi.linked_map_id||null });
                         } else if (poi.poi_type==="portal" && poi.linked_map_id) {
-                          // Player tap on portal → open POI details card; travel button shown inside
-                          if (openPOICard===poi.id) { closePOICard(); } else { closePOICard(); setOpenPOICard(poi.id); }
+                          // Player tap on portal → toggle POI details card
+                          if (openPOICard===poi.id) { closePOICard(); } else { closePOICard(); setTimeout(()=>setOpenPOICard(poi.id),0); }
                         } else {
-                          if (openPOICard===poi.id) { closePOICard(); } else { closePOICard(); setOpenPOICard(poi.id); }
+                          // Player tap on standard POI → toggle details card
+                          if (openPOICard===poi.id) { closePOICard(); } else { closePOICard(); setTimeout(()=>setOpenPOICard(poi.id),0); }
                         }
                       }}
                       onDragStart={startPOIDrag} />
