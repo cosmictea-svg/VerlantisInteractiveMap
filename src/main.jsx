@@ -594,8 +594,6 @@ function ProfileTab({ user, members, myColor, takenColors, isGM, onColorChange, 
 
 // ── App ───────────────────────────────────────────────────────────────────────
 function TutorialOverlay({ steps, stepIndex, onNext, onPrev, onExit }) {
-  const gold = "#C9A84C";
-  const fHead = "'Cinzel', 'Georgia', serif";
   const [rect, setRect] = useState(null);
   useEffect(() => {
     const step = steps[stepIndex];
@@ -611,39 +609,76 @@ function TutorialOverlay({ steps, stepIndex, onNext, onPrev, onExit }) {
   const step = steps[stepIndex];
   if (!step) return null;
   const PAD = 8;
-  const ringTop = rect ? rect.top - PAD : 0;
+  const ringTop  = rect ? rect.top  - PAD : 0;
   const ringLeft = rect ? rect.left - PAD : 0;
-  const ringW = rect ? rect.width + PAD * 2 : 0;
-  const ringH = rect ? rect.height + PAD * 2 : 0;
-  const cardBase = { position: "absolute", left: "50%", width: "min(340px, 90vw)", background: "linear-gradient(145deg, #12082A, #0E0620)", border: `1.5px solid rgba(201,168,76,0.45)`, borderRadius: 14, padding: "20px 22px", boxShadow: "0 8px 40px rgba(0,0,0,0.6)", fontFamily: fHead, pointerEvents: "all" };
+  const ringW    = rect ? rect.width  + PAD * 2 : 0;
+  const ringH    = rect ? rect.height + PAD * 2 : 0;
+  const cardBase = {
+    position: "absolute", left: "50%",
+    width: "min(360px, 92vw)",
+    background: "#1A0D35",
+    border: "1.5px solid rgba(201,168,76,0.5)",
+    borderRadius: 16,
+    padding: "22px 24px",
+    boxShadow: "0 12px 48px rgba(0,0,0,0.75)",
+    pointerEvents: "all",
+    WebkitFontSmoothing: "antialiased",
+    MozOsxFontSmoothing: "grayscale",
+  };
+  const below = rect && (rect.top + rect.height + 200 < window.innerHeight);
   const cardStyle = !rect
-    ? { ...cardBase, top: "50%", transform: "translate(-50%, -50%)" }
-    : rect.top + rect.height + 180 < window.innerHeight
-      ? { ...cardBase, top: rect.top + rect.height + PAD + 12, transform: "translateX(-50%)" }
-      : { ...cardBase, top: rect.top - PAD - 12, transform: "translate(-50%, -100%)" };
+    ? { ...cardBase, top: "50%", transform: "translate(-50%,-50%)" }
+    : below
+      ? { ...cardBase, top: rect.top + rect.height + PAD + 14, transform: "translateX(-50%)" }
+      : { ...cardBase, top: rect.top - PAD - 14, transform: "translate(-50%,-100%)" };
+  const fHead = "'Cinzel','Georgia',serif";
+  const fBody = "system-ui,-apple-system,'Segoe UI',sans-serif";
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 9000, pointerEvents: "none" }}>
       <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
-        <defs><mask id="tut-mask"><rect width="100%" height="100%" fill="white" />{rect && <rect x={ringLeft} y={ringTop} width={ringW} height={ringH} rx={8} fill="black" />}</mask></defs>
-        <rect width="100%" height="100%" fill="rgba(0,0,0,0.65)" mask="url(#tut-mask)" />
+        <defs>
+          <mask id="tut-mask">
+            <rect width="100%" height="100%" fill="white" />
+            {rect && <rect x={ringLeft} y={ringTop} width={ringW} height={ringH} rx={8} fill="black" />}
+          </mask>
+        </defs>
+        <rect width="100%" height="100%" fill="rgba(0,0,0,0.7)" mask="url(#tut-mask)" />
       </svg>
-      {rect && <div style={{ position: "absolute", top: ringTop, left: ringLeft, width: ringW, height: ringH, borderRadius: 8, border: `2px solid ${gold}`, boxShadow: `0 0 0 3px rgba(201,168,76,0.25),0 0 20px rgba(201,168,76,0.3)`, pointerEvents: "none", animation: "tutPulse 2s ease-in-out infinite" }} />}
+      {rect && (
+        <div style={{ position: "absolute", top: ringTop, left: ringLeft, width: ringW, height: ringH, borderRadius: 8, border: "2px solid #C9A84C", boxShadow: "0 0 0 3px rgba(201,168,76,0.2), 0 0 24px rgba(201,168,76,0.35)", pointerEvents: "none", animation: "tutPulse 2s ease-in-out infinite" }} />
+      )}
       <div style={cardStyle}>
-        <div style={{ fontSize: 10, color: "#C9A84C", letterSpacing: "0.15em", marginBottom: 8, textTransform: "uppercase", fontWeight: 600 }}>Step {stepIndex + 1} of {steps.length}</div>
-        <div style={{ fontSize: 16, fontWeight: 700, color: "#F0D98A", letterSpacing: "0.06em", marginBottom: 8, lineHeight: 1.3 }}>{step.title}</div>
-        <div style={{ fontSize: 13, color: "#E8E0F5", lineHeight: 1.75, fontFamily: "'Georgia', serif", marginBottom: 18 }}>{step.desc}</div>
+        {/* Step counter */}
+        <div style={{ fontSize: 11, color: "#C9A84C", letterSpacing: "0.14em", marginBottom: 10, textTransform: "uppercase", fontWeight: 700, fontFamily: fHead }}>
+          Step {stepIndex + 1} of {steps.length}
+        </div>
+        {/* Title */}
+        <div style={{ fontSize: 17, fontWeight: 700, color: "#FFE98A", letterSpacing: "0.04em", marginBottom: 10, lineHeight: 1.3, fontFamily: fHead }}>
+          {step.title}
+        </div>
+        {/* Description */}
+        <div style={{ fontSize: 14, color: "#FFFFFF", lineHeight: 1.7, fontFamily: fBody, marginBottom: 20, opacity: 0.92 }}>
+          {step.desc}
+        </div>
+        {/* Buttons */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-          <button onClick={onExit} style={{ background: "none", border: "none", color: "rgba(220,200,255,0.55)", fontSize: 11, cursor: "pointer", fontFamily: fHead, letterSpacing: "0.06em", padding: 0 }}>✕ Exit</button>
+          <button onClick={onExit} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.4)", fontSize: 12, cursor: "pointer", fontFamily: fBody, padding: 0, letterSpacing: "0.02em" }}>
+            ✕ Exit
+          </button>
           <div style={{ display: "flex", gap: 8 }}>
-            {stepIndex > 0 && <button onClick={onPrev} style={{ padding: "7px 16px", borderRadius: 20, border: "1px solid rgba(220,200,255,0.3)", background: "rgba(255,255,255,0.07)", color: "#E8E0F5", fontSize: 12, cursor: "pointer", fontFamily: fHead }}>← Back</button>}
+            {stepIndex > 0 && (
+              <button onClick={onPrev} style={{ padding: "8px 18px", borderRadius: 20, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.08)", color: "#FFFFFF", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: fBody }}>
+                ← Back
+              </button>
+            )}
             {stepIndex < steps.length - 1
-              ? <button onClick={onNext} style={{ padding: "7px 18px", borderRadius: 20, border: "none", background: "#C9A84C", color: "#0E0620", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: fHead }}>Next →</button>
-              : <button onClick={onExit} style={{ padding: "7px 18px", borderRadius: 20, border: "none", background: "#C9A84C", color: "#0E0620", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: fHead }}>Done ✓</button>
+              ? <button onClick={onNext} style={{ padding: "8px 20px", borderRadius: 20, border: "none", background: "#C9A84C", color: "#1A0D35", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: fBody }}>Next →</button>
+              : <button onClick={onExit} style={{ padding: "8px 20px", borderRadius: 20, border: "none", background: "#C9A84C", color: "#1A0D35", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: fBody }}>Done ✓</button>
             }
           </div>
         </div>
       </div>
-      <style>{`@keyframes tutPulse{0%,100%{opacity:1;box-shadow:0 0 0 3px rgba(201,168,76,0.25),0 0 20px rgba(201,168,76,0.3)}50%{opacity:0.8;box-shadow:0 0 0 5px rgba(201,168,76,0.15),0 0 30px rgba(201,168,76,0.2)}}`}</style>
+      <style>{`@keyframes tutPulse{0%,100%{opacity:1;box-shadow:0 0 0 3px rgba(201,168,76,0.2),0 0 24px rgba(201,168,76,0.35)}50%{opacity:0.85;box-shadow:0 0 0 6px rgba(201,168,76,0.1),0 0 32px rgba(201,168,76,0.2)}}`}</style>
     </div>
   );
 }
@@ -773,25 +808,25 @@ function App() {
     { target: "tut-join-btn",        title: "Join a Campaign", desc: "Got a campaign ID from your GM? Paste it here to join their world as a player." },
   ];
   const PLAYER_STEPS = [
-    { target: "tut-back-btn",    title: "Campaign List",    desc: "Tap the arrow to return to your campaign list at any time." },
-    { target: "tut-role-badge",  title: "Your Role",        desc: "You're a Player in this campaign. Your GM controls what's revealed to you." },
-    { target: "tut-bell",        title: "Notifications",    desc: "POI discoveries, announcements, and GM events appear here in real time." },
-    { target: "tut-tab-map",     title: "The Map",          desc: "Explore your world here. Tap any revealed POI to read its details." },
-    { target: "tut-marker-btn",  title: "Your Markers",     desc: "Drop personal pins on the map to remember locations. Only you can see them." },
-    { target: "tut-search",      title: "Search",           desc: "Find anything on the map by name — type a POI or NPC name and press Enter to jump to it. Type a category like \"Merchants\" or \"Inns\" to filter POIs by type." },
+    { target: "tut-back-btn",    title: "Back to Campaigns",  desc: "Use the arrow to return to your campaign list at any time." },
+    { target: "tut-role-badge",  title: "Your Role",          desc: "You're a Player in this campaign. Your GM decides what locations are revealed to you on the map." },
+    { target: "tut-bell",        title: "Notifications",      desc: "New POI discoveries, GM announcements, and world events show up here in real time." },
+    { target: "tut-tab-map",     title: "The Map",            desc: "Select this tab to explore the world. Tap or click any revealed POI icon to read its details." },
+    { target: "tut-search",      title: "Search",             desc: "Use the search bar to find anything on the map. Type a POI or NPC name then press Enter (or tap Go on mobile) to jump straight to it. You can also type a category like \"Merchants\" or \"Inns\" to filter visible POIs by type." },
+    { target: "tut-marker-btn",  title: "Your Markers",       desc: "Drop a personal pin anywhere on the map to bookmark a location. Only you can see your own markers — use them freely." },
   ];
   const GM_STEPS = [
-    { target: "tut-back-btn",      title: "Campaign List",       desc: "Return to all your campaigns from here." },
-    { target: "tut-role-badge",    title: "You're the GM",       desc: "As GM you have full control — reveal POIs, manage NPCs, and shape the world." },
-    { target: "tut-invite-bar",    title: "Invite Your Players", desc: "Share this campaign ID with your players so they can join. Tap Copy to grab it." },
-    { target: "tut-bell",          title: "Notifications",       desc: "Track every event across your campaign — POI reveals, announcements, and player activity." },
-    { target: "tut-tab-map",       title: "The Map",             desc: "Your primary tool. Players see only what you choose to reveal." },
-    { target: "tut-poi-btn",       title: "Add POIs",            desc: "Press + POI then click the map to place a Point of Interest. Control what players can see." },
-    { target: "tut-npc-btn",       title: "Add NPCs",            desc: "Track characters on the map with names, status, and aura radius." },
-    { target: "tut-marker-btn",    title: "Markers",             desc: "Quick temporary pins for yourself or to mark player positions." },
-    { target: "tut-tab-library",   title: "Library",             desc: "Manage all your maps, image overlays, and folders here." },
-    { target: "tut-tab-settings",  title: "Settings",            desc: "Configure campaign settings and manage your players from here." },
-    { target: "tut-search",        title: "Search",              desc: "Search by exact POI name, NPC name, or POI type to quickly locate anything on the map. Type a name and press Enter to fly the camera there, or type a category like \"Guilds\" to filter POIs by type." },
+    { target: "tut-back-btn",      title: "Back to Campaigns",     desc: "Use the arrow to return to all your campaigns at any time." },
+    { target: "tut-role-badge",    title: "You're the GM",         desc: "You have full control of this campaign — you decide what your players can see, where NPCs appear, and how the world unfolds." },
+    { target: "tut-invite-bar",    title: "Invite Your Players",   desc: "Share this campaign ID with your players so they can join. Select Copy to copy it to your clipboard, then send it however you like." },
+    { target: "tut-bell",          title: "Notifications",         desc: "Every event in your campaign — POI reveals, player activity, and announcements — is logged here in real time." },
+    { target: "tut-tab-map",       title: "The Map",               desc: "Your main workspace. Select this tab to place POIs and NPCs, drag them around, and control what your players can see." },
+    { target: "tut-poi-btn",       title: "Add POIs",              desc: "Select + POI, then tap or click anywhere on the map to place a Point of Interest. You control whether each POI is revealed to players." },
+    { target: "tut-npc-btn",       title: "Add NPCs",              desc: "Select + NPC to place a character on the map. Set their name, status, and aura radius — and choose what players can see." },
+    { target: "tut-search",        title: "Search",                desc: "Use the search bar to locate anything quickly. Type an exact POI or NPC name and press Enter (or tap Go on mobile) to fly the camera there. Type a category like \"Guilds\" or \"Security\" to filter all POIs of that type." },
+    { target: "tut-marker-btn",    title: "Markers",               desc: "Drop quick personal pins on the map to mark positions for yourself. Useful for planning before a session." },
+    { target: "tut-tab-library",   title: "Library",               desc: "Select this tab to manage all your maps, upload new ones, and organise image overlays and POI folders." },
+    { target: "tut-tab-profile",   title: "Profile & Settings",    desc: "Select this tab to manage players, adjust campaign settings, set notification limits, and customise your own profile colour." },
   ];
   function tutNext() { setTutStep(s => s + 1); }
   function tutPrev() { setTutStep(s => s - 1); }
