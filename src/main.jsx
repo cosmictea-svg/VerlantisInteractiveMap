@@ -629,7 +629,7 @@ function TutorialOverlay({ steps, stepIndex, onNext, onPrev, onExit }) {
       </svg>
       {rect && <div style={{ position: "absolute", top: ringTop, left: ringLeft, width: ringW, height: ringH, borderRadius: 8, border: `2px solid ${gold}`, boxShadow: `0 0 0 3px rgba(201,168,76,0.25),0 0 20px rgba(201,168,76,0.3)`, pointerEvents: "none", animation: "tutPulse 2s ease-in-out infinite" }} />}
       <div style={cardStyle}>
-        <div style={{ fontSize: 10, color: "rgba(201,168,76,0.65)", letterSpacing: "0.15em", marginBottom: 8, textTransform: "uppercase" }}>Step {stepIndex + 1} of {steps.length}</div>
+        <div style={{ fontSize: 10, color: "#C9A84C", letterSpacing: "0.15em", marginBottom: 8, textTransform: "uppercase", fontWeight: 600 }}>Step {stepIndex + 1} of {steps.length}</div>
         <div style={{ fontSize: 16, fontWeight: 700, color: "#F0D98A", letterSpacing: "0.06em", marginBottom: 8, lineHeight: 1.3 }}>{step.title}</div>
         <div style={{ fontSize: 13, color: "#E8E0F5", lineHeight: 1.75, fontFamily: "'Georgia', serif", marginBottom: 18 }}>{step.desc}</div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
@@ -778,6 +778,7 @@ function App() {
     { target: "tut-bell",        title: "Notifications",    desc: "POI discoveries, announcements, and GM events appear here in real time." },
     { target: "tut-tab-map",     title: "The Map",          desc: "Explore your world here. Tap any revealed POI to read its details." },
     { target: "tut-marker-btn",  title: "Your Markers",     desc: "Drop personal pins on the map to remember locations. Only you can see them." },
+    { target: "tut-search",      title: "Search",           desc: "Find anything on the map by name — type a POI or NPC name and press Enter to jump to it. Type a category like \"Merchants\" or \"Inns\" to filter POIs by type." },
   ];
   const GM_STEPS = [
     { target: "tut-back-btn",      title: "Campaign List",       desc: "Return to all your campaigns from here." },
@@ -790,6 +791,7 @@ function App() {
     { target: "tut-marker-btn",    title: "Markers",             desc: "Quick temporary pins for yourself or to mark player positions." },
     { target: "tut-tab-library",   title: "Library",             desc: "Manage all your maps, image overlays, and folders here." },
     { target: "tut-tab-settings",  title: "Settings",            desc: "Configure campaign settings and manage your players from here." },
+    { target: "tut-search",        title: "Search",              desc: "Search by exact POI name, NPC name, or POI type to quickly locate anything on the map. Type a name and press Enter to fly the camera there, or type a category like \"Guilds\" to filter POIs by type." },
   ];
   function tutNext() { setTutStep(s => s + 1); }
   function tutPrev() { setTutStep(s => s - 1); }
@@ -2714,7 +2716,7 @@ function App() {
               const hint = !q ? "" : tagMatch ? `Showing: ${tagMatch.label}` : nameMatch ? `Found: ${nameMatch.name}` : "No match";
               const hintColor = !q ? T.muted : (tagMatch||nameMatch) ? T.goldDim : "#E06060";
               return (
-                <div style={{ display:"flex",alignItems:"center",gap:6,padding:"0 14px 8px",opacity:searchMoving?0.6:1,transition:"opacity 0.3s" }}>
+                <div data-tut="tut-search" style={{ display:"flex",alignItems:"center",gap:6,padding:"0 14px 8px",opacity:searchMoving?0.6:1,transition:"opacity 0.3s" }}>
                   <div style={{ display:"flex",alignItems:"center",flex:1,background:T.bg,border:`1px solid ${q?(tagMatch?T.gold:"rgba(120,80,200,0.6)"):T.border}`,borderRadius:20,height:32,minWidth:0 }}>
                     <span style={{ padding:"0 8px",fontSize:13,color:T.muted,flexShrink:0 }}>🔍</span>
                     <input
