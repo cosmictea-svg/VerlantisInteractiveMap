@@ -370,15 +370,17 @@ function MarkerPin({ marker, scale, isOwner, isGM, onTap, onDragStart, displayNa
   const initial = (displayName || marker.user_name || "?")[0].toUpperCase();
   const size = Math.max(20, 24 / scale);
   const fontSize = Math.max(8, 11 / scale);
+  // Minimum 44 screen-pixel touch target regardless of zoom
+  const hitSize = Math.max(44 / scale, size);
 
   return (
     <div
       onMouseDown={e => { if (isOwner) { e.stopPropagation(); onDragStart(e, marker); } }}
       onTouchStart={e => { if (isOwner) { e.stopPropagation(); e.preventDefault(); onDragStart(e, marker); } }}
       onClick={e => { e.stopPropagation(); if (!isOwner) onTap(marker); }}
-      style={{ position: "absolute", left: marker.x - size/2, top: marker.y - size, width: size, height: size, cursor: isOwner ? "grab" : "pointer", zIndex: 25 }}
+      style={{ position: "absolute", left: marker.x - hitSize/2, top: marker.y - hitSize, width: hitSize, height: hitSize, cursor: isOwner ? "grab" : "pointer", zIndex: 40 }}
     >
-      <div style={{ width: size, height: size, borderRadius: "50% 50% 50% 0", transform: "rotate(-45deg)", background: color, border: `${Math.max(1.5, 2/scale)}px solid white`, boxSizing: "border-box", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ position: "absolute", bottom: 0, left: (hitSize - size) / 2, width: size, height: size, borderRadius: "50% 50% 50% 0", transform: "rotate(-45deg)", background: color, border: `${Math.max(1.5, 2/scale)}px solid white`, boxSizing: "border-box", display: "flex", alignItems: "center", justifyContent: "center" }}>
         <span style={{ transform: "rotate(45deg)", color: "white", fontWeight: 800, fontSize, fontFamily: T.fMap, lineHeight: 1, textShadow: "0 0 4px #000, 0 1px 3px #000" }}>{initial}</span>
       </div>
     </div>
@@ -405,7 +407,7 @@ const POIPin = memo(function POIPin({ poi, isGM, onTap, onDragStart, resolvedIco
         onMouseDown={e => { if (isGM) { e.stopPropagation(); onDragStart(e, poi); } }}
         onTouchStart={e => { if (isGM) { e.stopPropagation(); onDragStart(e, poi); } }}
         onClick={e => { e.stopPropagation(); onTap(poi); }}
-        style={{ position:"absolute", left:poi.x-d/2, top:poi.y-d, width:d, height:d, cursor:isGM?(poi.locked?"pointer":"grab"):"pointer", zIndex:22 }}
+        style={{ position:"absolute", left:poi.x-d/2, top:poi.y-d, width:d, height:d, cursor:isGM?(poi.locked?"pointer":"grab"):"pointer", zIndex:32 }}
       >
         <div style={{ position:"absolute", inset:-d*0.3, borderRadius:"50%", border:`${bw}px solid ${cc}`, animation:"portalPulse 2s ease-in-out infinite", pointerEvents:"none" }} />
         <div style={{ position:"absolute", inset:0, transform:"rotate(45deg)", background:cc+"33", border:`${bw}px ${borderStyle} ${cc}`, boxSizing:"border-box" }}>
@@ -426,7 +428,7 @@ const POIPin = memo(function POIPin({ poi, isGM, onTap, onDragStart, resolvedIco
         onMouseDown={e => { if (isGM) { e.stopPropagation(); onDragStart(e, poi); } }}
         onTouchStart={e => { if (isGM) { e.stopPropagation(); onDragStart(e, poi); } }}
         onClick={e => { e.stopPropagation(); onTap(poi); }}
-        style={{ position:"absolute", left:poi.x-size/2, top:poi.y-size, width:size, height:size, cursor:isGM?(poi.locked?"pointer":"grab"):"pointer", zIndex:21, borderRadius:4, border:`${bw}px ${borderStyle} ${cc}`, boxSizing:"border-box", overflow:"hidden", background:cc+"59" }}
+        style={{ position:"absolute", left:poi.x-size/2, top:poi.y-size, width:size, height:size, cursor:isGM?(poi.locked?"pointer":"grab"):"pointer", zIndex:31, borderRadius:4, border:`${bw}px ${borderStyle} ${cc}`, boxSizing:"border-box", overflow:"hidden", background:cc+"59" }}
       >
         {iconUrl
           ? <img src={iconUrl} alt={poi.name} draggable={false} style={{ width:"100%", height:"100%", objectFit:"contain", display:"block", pointerEvents:"none" }} />
@@ -443,7 +445,7 @@ const POIPin = memo(function POIPin({ poi, isGM, onTap, onDragStart, resolvedIco
       onMouseDown={e => { if (isGM) { e.stopPropagation(); onDragStart(e, poi); } }}
       onTouchStart={e => { if (isGM) { e.stopPropagation(); onDragStart(e, poi); } }}
       onClick={e => { e.stopPropagation(); onTap(poi); }}
-      style={{ position:"absolute", left:poi.x-size/2, top:poi.y-size, width:size, height:size, cursor:isGM?(poi.locked?"pointer":"grab"):"pointer", zIndex:20, borderRadius:"50%", border:`${bw}px ${borderStyle} ${cc}`, boxSizing:"border-box", overflow:"hidden", background:cc+"59" }}
+      style={{ position:"absolute", left:poi.x-size/2, top:poi.y-size, width:size, height:size, cursor:isGM?(poi.locked?"pointer":"grab"):"pointer", zIndex:30, borderRadius:"50%", border:`${bw}px ${borderStyle} ${cc}`, boxSizing:"border-box", overflow:"hidden", background:cc+"59" }}
     >
       {iconUrl
         ? <img src={iconUrl} alt={poi.name} draggable={false} onDragStart={e=>e.preventDefault()} style={{ width:"100%", height:"100%", objectFit:"contain", display:"block", pointerEvents:"none" }} />
@@ -1651,10 +1653,12 @@ function App() {
           setPlacingZonePoints(prev => [...(prev || []), coords]);
           return;
         }
+        // Zero ref immediately so synthetic mouse events after touchend can't re-fire placement
+        placingRef.current = null;
         setPlacingMode(null);
         if (mode === "poi") setPoiForm({ poi: null, x: coords.x, y: coords.y, name: "", description: "", revealed: false, category: "other", size: "large" });
         if (mode === "marker") {
-          if (!myColor && !isGM) { setShowColorPicker(true); setPlacingMode(null); return; }
+          if (!myColor && !isGM) { setShowColorPicker(true); return; }
           setMarkerForm({ x: coords.x, y: coords.y });
         }
       }
@@ -3101,7 +3105,7 @@ function App() {
                     const rippleR = ns * 0.88;
                     const rippleDelay = `${(parseInt(npc.id.slice(-4), 16) % 250) / 100}s`;
                     return (
-                      <div key={npc.id} style={{ position:"absolute", left:npc.x-pad, top:npc.y-pad, width:pad*2, height:pad*2, pointerEvents:"none" }}>
+                      <div key={npc.id} style={{ position:"absolute", left:npc.x-pad, top:npc.y-pad, width:pad*2, height:pad*2, pointerEvents:"none", zIndex:20 }}>
                         {showAura && <div style={{ position:"absolute", left:pad-r, top:pad-r, width:r*2, height:r*2, borderRadius:"50%", border:`${bw}px dashed ${npc.border_color}`, background:`${npc.border_color}1A`, pointerEvents:"none" }} />}
                         {/* Sonar-ping ripple — makes NPCs noticeable on crowded maps */}
                         <div style={{ position:"absolute", left:pad-rippleR, top:pad-rippleR, width:rippleR*2, height:rippleR*2, borderRadius:"50%", border:`${Math.max(1,2/transform.scale)}px solid ${npc.border_color}`, animation:"npcRipple 2.6s ease-out infinite", animationDelay:rippleDelay, pointerEvents:"none" }} />
@@ -3143,7 +3147,7 @@ function App() {
                         data-text-overlay={t.id}
                         onMouseDown={isGM && canInteract ? e => { e.stopPropagation(); startTextDrag(e, t); } : undefined}
                         onTouchStart={isGM && canInteract ? e => { e.stopPropagation(); startTextDrag(e, t); } : undefined}
-                        style={{ position:"absolute", left:t.x, top:t.y, fontSize:t.font_size, fontWeight:t.font_weight||"700", fontFamily:T.fMap, color:t.color||"#FFFFFF", opacity, whiteSpace:"pre-wrap", lineHeight:1.4, letterSpacing:"0.02em", textShadow:"0 0 4px #000, 0 0 10px #000, 0 1px 3px #000", pointerEvents:canInteract&&isGM?"all":"none", cursor:isGM?(t.locked?"pointer":"grab"):"default", userSelect:"none", zIndex:60, maxWidth:600 }}>
+                        style={{ position:"absolute", left:t.x, top:t.y, fontSize:t.font_size, fontWeight:t.font_weight||"700", fontFamily:T.fMap, color:t.color||"#FFFFFF", opacity, whiteSpace:"pre-wrap", lineHeight:1.4, letterSpacing:"0.02em", textShadow:"0 0 4px #000, 0 0 10px #000, 0 1px 3px #000", pointerEvents:canInteract&&isGM?"all":"none", cursor:isGM?(t.locked?"pointer":"grab"):"default", userSelect:"none", zIndex:10, maxWidth:600 }}>
                         {t.content}
                       </div>
                     );
