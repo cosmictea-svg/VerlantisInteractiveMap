@@ -782,6 +782,8 @@ function App() {
   // Hold a ref to session so async callbacks always read the latest token
   const sessionRef = useRef(session);
   const zonesRef = useRef(zones);
+  const zoneScrollOffsets = useRef({}); // { [zoneId]: currentOffset } — driven by RAF loop
+  const zoneAnimRAF = useRef(null);
   const addPointZoneRef = useRef(null);
   const zonePointDragRef = useRef(null);
   const npcDragState = useRef(null);
@@ -857,6 +859,32 @@ function App() {
   useEffect(() => { scrollSensRef.current = scrollSens; }, [scrollSens]);
   useEffect(() => { sessionRef.current = session; }, [session]);
   useEffect(() => { zonesRef.current = zones; }, [zones]);
+
+  // ── Zone scroll animation — RAF loop replaces unreliable SVG SMIL animateTransform ──
+  // Runs once on mount; reads zonesRef so it always has fresh data without re-subscribing.
+  useEffect(() => {
+    let lastTime = null;
+    function tick(now) {
+      if (lastTime === null) lastTime = now;
+      const dt = Math.min((now - lastTime) / 1000, 0.1); // cap delta to avoid jump after tab sleep
+      lastTime = now;
+      zonesRef.current.filter(z => z.animate_scroll && z.image_repeat && z.image_url).forEach(z => {
+        if (zoneScrollOffsets.current[z.id] === undefined) zoneScrollOffsets.current[z.id] = 0;
+        const speed = Math.max(1, z.scroll_speed || 20);
+        zoneScrollOffsets.current[z.id] += speed * dt;
+        const bbox = getZoneBBox(z.points);
+        const base = Math.min(bbox.w, bbox.h) * 0.35;
+        const tile = Math.max(8, base * (z.image_scale || 100) / 100);
+        const offset = zoneScrollOffsets.current[z.id] % tile;
+        const el = document.getElementById(`zpat-${z.id}`);
+        if (el) el.setAttribute('patternTransform', `translate(${offset},${offset})`);
+      });
+      zoneAnimRAF.current = requestAnimationFrame(tick);
+    }
+    zoneAnimRAF.current = requestAnimationFrame(tick);
+    return () => { if (zoneAnimRAF.current) cancelAnimationFrame(zoneAnimRAF.current); };
+  }, []); // empty deps — reads live data from zonesRef, never needs to restart
+
   useEffect(() => { soundVolumeRef.current = soundVolume; localStorage.setItem("sound_volume", String(soundVolume)); }, [soundVolume]);
   useEffect(() => { notifLimitRef.current = notifLimit; localStorage.setItem("notif_limit", String(notifLimit)); }, [notifLimit]);
   useEffect(() => { npcsRef.current = npcs; }, [npcs]);
@@ -2950,16 +2978,10 @@ function App() {
                             const bbox = getZoneBBox(z.points);
                             const base = Math.min(bbox.w, bbox.h) * 0.35;
                             const tile = Math.max(8, base * (z.image_scale || 100) / 100);
-                            const speed = Math.max(1, z.scroll_speed || 20);
-                            const dur = `${(tile / speed).toFixed(2)}s`;
                             return (
                               <pattern key={z.id} id={`zpat-${z.id}`} patternUnits="userSpaceOnUse"
                                 x={bbox.x} y={bbox.y} width={tile} height={tile}>
                                 <image href={z.image_url} width={tile} height={tile} preserveAspectRatio="xMidYMid slice" />
-                                {z.animate_scroll && (
-                                  <animateTransform attributeName="patternTransform" type="translate"
-                                    from="0,0" to={`${tile},${tile}`} dur={dur} repeatCount="indefinite" additive="sum" />
-                                )}
                               </pattern>
                             );
                           }
