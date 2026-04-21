@@ -215,6 +215,13 @@ const PLAYER_COLORS = [
   "#FFCC80","#80DEEA","#B0BEC5","#FFAB91","#DCE775",
 ];
 
+// S = 33% smaller than original, M = original, L = 33% larger
+const MARKER_SIZES = [
+  { id: "S", label: "S", base: 16, min: 13 },
+  { id: "M", label: "M", base: 24, min: 20 },
+  { id: "L", label: "L", base: 32, min: 26 },
+];
+
 // ── Parchment & Ink Theme ─────────────────────────────────────────────────────
 const T = {
   bg:       "#F5EDDA",   // parchment — main background
@@ -364,12 +371,12 @@ function readFile(file) {
 
 // ── Marker Pin ────────────────────────────────────────────────────────────────
 // displayName: first letter is shown inside the pin (falls back to user_name then "?")
-function MarkerPin({ marker, scale, isOwner, isGM, onTap, onDragStart, displayName, memberColor }) {
+function MarkerPin({ marker, scale, isOwner, isGM, onTap, onDragStart, displayName, memberColor, sizeBase = 16, sizeMin = 13 }) {
   // memberColor comes from live members state so colour changes sync instantly without a refresh
   const color = memberColor || marker.player_color || "#378ADD";
   const initial = (displayName || marker.user_name || "?")[0].toUpperCase();
-  const size = Math.max(20, 24 / scale);
-  const fontSize = Math.max(8, 11 / scale);
+  const size = Math.max(sizeMin, sizeBase / scale);
+  const fontSize = Math.max(6, (sizeBase * 0.46) / scale);
   // Minimum 44 screen-pixel touch target regardless of zoom
   const hitSize = Math.max(44 / scale, size);
 
@@ -726,6 +733,7 @@ function App() {
   const [newCampaignDescription, setNewCampaignDescription] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [markerLimit, setMarkerLimit] = useState(10);
+  const [markerSizePref, setMarkerSizePref] = useState(() => localStorage.getItem("marker_size") || "S");
   const [error, setError] = useState("");
   const [overlays, setOverlays] = useState([]);
   const [zones, setZones] = useState([]);
@@ -3151,6 +3159,8 @@ function App() {
                       <MarkerPin key={m.id} marker={m} scale={transform.scale} isOwner={isOwner} isGM={isGM}
                         displayName={memberInfo?.display_name}
                         memberColor={memberInfo?.player_color}
+                        sizeBase={MARKER_SIZES.find(s=>s.id===markerSizePref)?.base ?? 16}
+                        sizeMin={MARKER_SIZES.find(s=>s.id===markerSizePref)?.min ?? 13}
                         onTap={marker => { setOpenMarkerCard(openMarkerCard === marker.id ? null : marker.id); }}
                         onDragStart={isOwner ? startMarkerDrag : () => {}} />
                     );
@@ -3275,6 +3285,19 @@ function App() {
                   <div onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()}
                     style={{ padding:"9px 12px",fontSize:12,color:T.muted,lineHeight:1.6,maxHeight:80,overflowY:"auto",touchAction:"pan-y" }}>
                     {openMarker.description}
+                  </div>
+                )}
+                {openMarker.user_id === user.id && (
+                  <div style={{ padding:"6px 12px 4px",display:"flex",alignItems:"center",gap:6,borderTop:`0.5px solid ${T.border}` }}>
+                    <span style={{ fontSize:10,color:T.muted,whiteSpace:"nowrap" }}>Pin size</span>
+                    <div style={{ display:"flex",gap:3 }}>
+                      {MARKER_SIZES.map(s => (
+                        <button key={s.id} onClick={()=>{ setMarkerSizePref(s.id); localStorage.setItem("marker_size", s.id); }}
+                          style={{ width:26,height:22,borderRadius:5,border:`1.5px solid ${markerSizePref===s.id ? openMarkerColor : T.border}`,background:markerSizePref===s.id ? openMarkerColor+"28" : "transparent",color:markerSizePref===s.id ? openMarkerColor : T.muted,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:T.fBody,transition:"all 0.15s" }}>
+                          {s.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
                 <div style={{ padding:"6px 12px 10px",display:"flex",gap:6,justifyContent:"flex-end",borderTop:`0.5px solid ${T.border}` }}>
