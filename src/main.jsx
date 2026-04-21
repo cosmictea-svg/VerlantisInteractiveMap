@@ -733,7 +733,18 @@ function App() {
   const [newCampaignDescription, setNewCampaignDescription] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [markerLimit, setMarkerLimit] = useState(10);
-  const [markerSizePref, setMarkerSizePref] = useState(() => localStorage.getItem("marker_size") || "S");
+  // Per-marker sizes stored as { [markerId]: "S"|"M"|"L" } in localStorage
+  const [markerSizes, setMarkerSizes] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("marker_sizes") || "{}"); } catch { return {}; }
+  });
+  function getMarkerSize(id) { return markerSizes[id] || "S"; }
+  function changeMarkerSize(id, sz) {
+    setMarkerSizes(prev => {
+      const next = { ...prev, [id]: sz };
+      localStorage.setItem("marker_sizes", JSON.stringify(next));
+      return next;
+    });
+  }
   const [error, setError] = useState("");
   const [overlays, setOverlays] = useState([]);
   const [zones, setZones] = useState([]);
@@ -1818,7 +1829,7 @@ function App() {
       setPois(prev => prev.map(p => p.id === id ? { ...p, locked: !current } : p));
     } catch(e) { setError(e.message); }
   }
-  async function saveMarker(label, description) {
+  async function saveMarker(label, description, size = "S") {
     if (!markerForm || !("x" in markerForm)) return;
     if (myMarkers.length >= markerLimit && !isGM) { setError(`Marker limit reached (${markerLimit}). Ask your GM to increase it.`); return; }
     const me = members.find(m => m.user_id === user.id);
@@ -1829,6 +1840,7 @@ function App() {
         player_color: myColor || "#378ADD", label, description: description || "",
         x: markerForm.x, y: markerForm.y
       });
+      changeMarkerSize(nm.id, size);
       setMarkers(prev=>[...prev,nm]); setMarkerForm(null);
       // Notify everyone of new marker placement
       const displayName = members.find(m=>m.user_id===user.id)?.display_name || user.user_metadata?.full_name || "A player";
@@ -1837,10 +1849,11 @@ function App() {
       logNotif("marker_placed", label||`${displayName}'s Marker`, markerMsg, nm.id, { x:markerForm.x, y:markerForm.y, mapId:activeMapId });
     } catch(e) { setError(e.message); }
   }
-  async function editMarker(marker, label, description, locked) {
+  async function editMarker(marker, label, description, locked, size) {
     try {
       await dbUpdate(session.access_token, "markers", marker.id, { label, description, locked: locked||false });
       setMarkers(prev=>prev.map(m=>m.id===marker.id?{...m,label,description,locked:locked||false}:m));
+      if (size) changeMarkerSize(marker.id, size);
       setMarkerForm(null);
     } catch(e) { setError(e.message); }
   }
@@ -3159,8 +3172,8 @@ function App() {
                       <MarkerPin key={m.id} marker={m} scale={transform.scale} isOwner={isOwner} isGM={isGM}
                         displayName={memberInfo?.display_name}
                         memberColor={memberInfo?.player_color}
-                        sizeBase={MARKER_SIZES.find(s=>s.id===markerSizePref)?.base ?? 16}
-                        sizeMin={MARKER_SIZES.find(s=>s.id===markerSizePref)?.min ?? 13}
+                        sizeBase={MARKER_SIZES.find(s=>s.id===getMarkerSize(m.id))?.base ?? 16}
+                        sizeMin={MARKER_SIZES.find(s=>s.id===getMarkerSize(m.id))?.min ?? 13}
                         onTap={marker => { setOpenMarkerCard(openMarkerCard === marker.id ? null : marker.id); }}
                         onDragStart={isOwner ? startMarkerDrag : () => {}} />
                     );
@@ -3291,12 +3304,15 @@ function App() {
                   <div style={{ padding:"6px 12px 4px",display:"flex",alignItems:"center",gap:6,borderTop:`0.5px solid ${T.border}` }}>
                     <span style={{ fontSize:10,color:T.muted,whiteSpace:"nowrap" }}>Pin size</span>
                     <div style={{ display:"flex",gap:3 }}>
-                      {MARKER_SIZES.map(s => (
-                        <button key={s.id} onClick={()=>{ setMarkerSizePref(s.id); localStorage.setItem("marker_size", s.id); }}
-                          style={{ width:26,height:22,borderRadius:5,border:`1.5px solid ${markerSizePref===s.id ? openMarkerColor : T.border}`,background:markerSizePref===s.id ? openMarkerColor+"28" : "transparent",color:markerSizePref===s.id ? openMarkerColor : T.muted,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:T.fBody,transition:"all 0.15s" }}>
+                      {MARKER_SIZES.map(s => {
+                        const active = getMarkerSize(openMarker.id) === s.id;
+                        return (
+                        <button key={s.id} onClick={()=>changeMarkerSize(openMarker.id, s.id)}
+                          style={{ width:26,height:22,borderRadius:5,border:`1.5px solid ${active ? openMarkerColor : T.border}`,background:active ? openMarkerColor+"28" : "transparent",color:active ? openMarkerColor : T.muted,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:T.fBody,transition:"all 0.15s" }}>
                           {s.label}
                         </button>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -3789,7 +3805,7 @@ function App() {
         onMovePoints={zone=>startZonePointEdit(zone)}
         onClose={()=>setZoneForm(null)} />}
       {poiForm && <POIFormModal form={poiForm} categoryIcons={categoryIcons} maps={maps} onSave={savePOI} onDelete={deletePOI} onDuplicate={duplicatePOI} onClose={()=>setPoiForm(null)} />}
-      {markerForm && <MarkerFormModal form={markerForm} onSave={saveMarker} onEdit={editMarker} onCancel={()=>setMarkerForm(null)} />}
+      {markerForm && <MarkerFormModal form={markerForm} initialSize={markerForm.marker ? getMarkerSize(markerForm.marker.id) : "S"} onSave={saveMarker} onEdit={editMarker} onCancel={()=>setMarkerForm(null)} />}
 
       {/* Folder form modal — rename OR confirm-delete */}
       {folderForm && (
@@ -4292,15 +4308,27 @@ function POIFormModal({ form, categoryIcons, maps, onSave, onDelete, onDuplicate
   );
 }
 
-function MarkerFormModal({ form, onSave, onEdit, onCancel }) {
+function MarkerFormModal({ form, onSave, onEdit, onCancel, initialSize = "S" }) {
   const isEdit = !!form.marker;
   const [label, setLabel] = useState(form.marker?.label||"");
   const [description, setDescription] = useState(form.marker?.description||"");
   const [locked, setLocked] = useState(form.marker?.locked||false);
+  const [size, setSize] = useState(initialSize);
   return (
     <Modal title={isEdit?"Edit Marker":"Place Marker"} onClose={onCancel} width={320}>
       <Field label="Title"><input value={label} onChange={e=>setLabel(e.target.value)} style={IS} placeholder="e.g. Camp site" autoFocus={!isTouchDevice} /></Field>
       <Field label="Description (optional)"><textarea value={description} onChange={e=>setDescription(e.target.value)} rows={3} style={IS} placeholder="Add a note..." /></Field>
+      <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:12 }}>
+        <span style={{ fontSize:12,color:"#888" }}>Pin size</span>
+        <div style={{ display:"flex",gap:4 }}>
+          {MARKER_SIZES.map(s => (
+            <button key={s.id} onClick={()=>setSize(s.id)}
+              style={{ width:32,height:26,borderRadius:6,border:`1.5px solid ${size===s.id?"#7C3AED":"#ddd"}`,background:size===s.id?"#EDE9FE":"transparent",color:size===s.id?"#5B21B6":"#666",fontSize:11,fontWeight:700,cursor:"pointer",transition:"all 0.15s" }}>
+              {s.label}
+            </button>
+          ))}
+        </div>
+      </div>
       {isEdit && (
         <div style={{ marginBottom:12 }}>
           <button onClick={()=>setLocked(l=>!l)} title={locked?"Unlock position":"Lock position"}
@@ -4311,8 +4339,8 @@ function MarkerFormModal({ form, onSave, onEdit, onCancel }) {
       )}
       <div style={{ display:"flex",gap:8 }}>
         {isEdit
-          ? <Btn variant="primary" onClick={()=>onEdit(form.marker,label,description,locked)} style={{ flex:1 }}>Save</Btn>
-          : <Btn variant="primary" onClick={()=>onSave(label,description)} style={{ flex:1 }}>Place Marker</Btn>
+          ? <Btn variant="primary" onClick={()=>onEdit(form.marker,label,description,locked,size)} style={{ flex:1 }}>Save</Btn>
+          : <Btn variant="primary" onClick={()=>onSave(label,description,size)} style={{ flex:1 }}>Place Marker</Btn>
         }
         <Btn onClick={onCancel}>Cancel</Btn>
       </div>
