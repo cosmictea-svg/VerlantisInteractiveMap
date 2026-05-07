@@ -1,0 +1,26 @@
+name: Verlantis DB Keep-Alive
+
+on:
+  schedule:
+    - cron: '0 9 */5 * *'
+  workflow_dispatch:
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    name: Ping Supabase
+
+    steps:
+      - name: Send keep-alive ping
+        run: |
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://iqmaumupuftguhurnsdt.supabase.co/rest/v1/pois?select=id&limit=1" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}")
+          echo "HTTP Response: $RESPONSE"
+          if [ "$RESPONSE" = "200" ] || [ "$RESPONSE" = "206" ]; then
+            echo "Keep-alive successful. Verlantis DB is alive."
+          else
+            echo "Unexpected response: $RESPONSE"
+            exit 1
+          fi
